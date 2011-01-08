@@ -116,7 +116,7 @@ struct SqliteDatabase {
         swap(pl, rhs.pl);
     }
     
-    version(TRANSACTION) {
+    version(none) {
         private bool _inTransaction = false;
         
         /++
@@ -232,7 +232,7 @@ struct SqliteQuery {
         assert(pl.statement);
         int index = 0;
         index = sqlite3_bind_parameter_index(pl.statement, cast(char*) parameter.toStringz);
-        enforceEx!SqliteException(index, format("name '%s' cannot be bound", parameter));
+        enforceEx!SqliteException(index, format("parameter named '%s' cannot be bound", parameter));
         bind(index, value);
     }
     
@@ -257,7 +257,7 @@ struct SqliteQuery {
             if (value is null)
                 result = sqlite3_bind_null(pl.statement, index);
             else
-                result = sqlite3_bind_blob(pl.statement, index, (cast(void[]) value).ptr, value.length, null);
+                result = sqlite3_bind_blob(pl.statement, index, (cast(ubyte[]) value).ptr, value.length, null);
         }
         else static if (is(T == void*)) {
             enforce(value is null, "cannot bind with non-null of type void*");
@@ -455,7 +455,12 @@ struct SqliteRowSet {
                 break;
                 
             case SQLITE_BLOB:
-                throw new Exception("not implented");
+                auto ptr = sqlite3_column_blob(_query.pl.statement, i);
+                auto length = sqlite3_column_bytes(_query.pl.statement, i);
+                ubyte[] blob;
+                blob.length = length;
+                memcpy(blob.ptr, ptr, length);
+                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(blob));
                 break;
             
             case SQLITE_NULL:
@@ -478,32 +483,6 @@ private:
 
 enum {
 	SQLITE_OK = 0,
-	SQLITE_ERROR = 1,
-	SQLITE_INTERNAL = 2,
-	SQLITE_PERM = 3,
-	SQLITE_ABORT = 4,
-	SQLITE_BUSY = 5,
-	SQLITE_LOCKED = 6,
-	SQLITE_NOMEM = 7,
-	SQLITE_READONLY = 8,
-	SQLITE_INTERRUPT = 9,
-	SQLITE_IOERR = 10,
-	SQLITE_CORRUPT = 11,
-	SQLITE_NOTFOUND = 12,
-	SQLITE_FULL = 13,
-	SQLITE_CANTOPEN = 14,
-	SQLITE_PROTOCOL = 15,
-	SQLITE_EMPTY = 16,
-	SQLITE_SCHEMA = 17,
-	SQLITE_TOOBIG = 18,
-	SQLITE_CONSTRAINT = 19,
-	SQLITE_MISMATCH = 20,
-	SQLITE_MISUSE = 21,
-	SQLITE_NOLFS = 22,
-	SQLITE_AUTH = 23,
-	SQLITE_FORMAT = 24,
-	SQLITE_RANGE = 25,
-	SQLITE_NOTADB = 26,
 	SQLITE_ROW = 100,
 	SQLITE_DONE = 101
 }
@@ -525,44 +504,26 @@ alias ulong sqlite3_uint64;
 
 extern(C):
 
-int sqlite3_errcode(sqlite3* db);
-/*const*/ char* sqlite3_errmsg(sqlite3* db);
-int sqlite3_open(
-  /*const*/ char* filename,   /* Database filename (UTF-8) */
-  sqlite3** ppDb              /* OUT: SQLite db handle */
-);
-int sqlite3_close(sqlite3* db);
-int sqlite3_prepare_v2(
-  sqlite3* db,                /* Database handle */
-  /*const*/ char* zSql,       /* SQL statement, UTF-8 encoded */
-  int nByte,                  /* Maximum length of zSql in bytes. */
-  sqlite3_stmt** ppStmt,      /* OUT: Statement handle */
-  /*const*/ char** pzTail     /* OUT: Pointer to unused portion of zSql */
-);
-int sqlite3_step(sqlite3_stmt* stmt);
-int sqlite3_finalize(sqlite3_stmt *pStmt);
-int sqlite3_reset(sqlite3_stmt *pStmt);
-
+int sqlite3_errcode(sqlite3*);
+char* sqlite3_errmsg(sqlite3*);
+int sqlite3_open(char*, sqlite3**);
+int sqlite3_close(sqlite3*);
+int sqlite3_prepare_v2(sqlite3*, char*, int, sqlite3_stmt**, char**);
+int sqlite3_step(sqlite3_stmt*);
+int sqlite3_finalize(sqlite3_stmt*);
+int sqlite3_reset(sqlite3_stmt*);
 int sqlite3_bind_blob(sqlite3_stmt*, int, void*, int n, void function(void*));
 int sqlite3_bind_double(sqlite3_stmt*, int, double);
-//int sqlite3_bind_int(sqlite3_stmt*, int, int);
 int sqlite3_bind_int64(sqlite3_stmt*, int, sqlite3_int64);
 int sqlite3_bind_null(sqlite3_stmt*, int);
 int sqlite3_bind_text(sqlite3_stmt*, int, char*, int n, void function(void*));
-//int sqlite3_bind_text16(sqlite3_stmt*, int, void*, int, void function(void*));
-//int sqlite3_bind_value(sqlite3_stmt*, int, sqlite3_value*);
-//int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
-int sqlite3_bind_parameter_index(sqlite3_stmt*, /*const*/ char* zName);
+int sqlite3_bind_parameter_index(sqlite3_stmt*, char*);
 int sqlite3_clear_bindings(sqlite3_stmt*);
-
-void* sqlite3_column_blob(sqlite3_stmt*, int iCol);
-int sqlite3_column_bytes(sqlite3_stmt*, int iCol);
-//int sqlite3_column_bytes16(sqlite3_stmt*, int iCol);
-double sqlite3_column_double(sqlite3_stmt*, int iCol);
-//int sqlite3_column_int(sqlite3_stmt*, int iCol);
-sqlite3_int64 sqlite3_column_int64(sqlite3_stmt*, int iCol);
-char* sqlite3_column_text(sqlite3_stmt*, int iCol);
-//void* sqlite3_column_text16(sqlite3_stmt*, int iCol);
-int sqlite3_column_type(sqlite3_stmt*, int iCol);
-char* sqlite3_column_name(sqlite3_stmt*, int N);
-int sqlite3_column_count(sqlite3_stmt* pStmt);
+void* sqlite3_column_blob(sqlite3_stmt*, int);
+int sqlite3_column_bytes(sqlite3_stmt*, int);
+double sqlite3_column_double(sqlite3_stmt*, int);
+sqlite3_int64 sqlite3_column_int64(sqlite3_stmt*, int);
+char* sqlite3_column_text(sqlite3_stmt*, int);
+int sqlite3_column_type(sqlite3_stmt*, int);
+char* sqlite3_column_name(sqlite3_stmt*, int);
+int sqlite3_column_count(sqlite3_stmt*);
