@@ -74,43 +74,46 @@ class SqliteException : Exception {
 SQLite database connection.
 +/
 struct SqliteDatabase {
-    private string _filename;
-    private sqlite3* _handle;
-    private uint* _refcount;
+    private struct payload {
+        private string filename;
+        private sqlite3* handle;
+        private int refcount;
+    }
+    private payload* pl;
 
     /++
     Opens a database with the name passed in the parameter.
     +/
     this(string filename) {
         //debug(SQLITE) writefln("Opening database '%s'", filename);
-        _refcount = new uint;
-        *_refcount = 1;
-        _filename = filename;
-        assert(_filename !is null);
-        auto result = sqlite3_open(cast(char*) _filename.toStringz, &_handle);
-        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(_handle)));
+        assert(filename);
+        pl = new payload;
+        pl.filename = filename;
+        auto result = sqlite3_open(cast(char*) pl.filename.toStringz, &pl.handle);
+        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.handle)));
+        pl.refcount = 1;
     }
 
     this(this) {
-        (*_refcount)++;
+        assert(pl);
+        pl.refcount++;
     }
     
     ~this() {
-        (*_refcount)--;
-        if (*_refcount == 0) {
+        assert(pl);
+        pl.refcount--;
+        if (pl.refcount == 0) {
             //debug(SQLITE) writefln("Closing database '%s'", _filename);
-            _filename = null;
-            auto result = sqlite3_close(_handle);
-            _handle = null;
-            enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(_handle)));
-            _refcount = null;
+            auto result = sqlite3_close(pl.handle);
+            enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.handle)));
+            pl = null;
         }
     }
     
     void opAssign(SqliteDatabase rhs) {
-        swap(_filename, rhs._filename);
-        swap(_handle, rhs._handle);
-        swap(_refcount, rhs._refcount);
+        assert(pl);
+        assert(rhs.pl);
+        swap(pl, rhs.pl);
     }
     
     version(TRANSACTION) {
@@ -147,16 +150,19 @@ struct SqliteDatabase {
     /++
     Returns the SQLite internal handle of the database connection.
     +/
-    @property sqlite3* sqliteHandle() {
-        return _handle;
+    @property sqlite3* handle() {
+        assert(pl);
+        return pl.handle;
     }
     
     private void retain() {
-        (*_refcount)++;
+        assert(pl);
+        pl.refcount++;
     }
     
     private void release() {
-        (*_refcount)--;
+        assert(pl);
+        pl.refcount--;
     }
 }
 
@@ -175,53 +181,57 @@ template isValidSqliteType(T) {
 /++
 +/
 struct SqliteQuery {
-    private SqliteDatabase* _db = null;
-    private string _sql;
-    private sqlite3_stmt* _statement;
-    private uint* _refcount;
-    private bool* _isdirty;
-
+    private struct payload {
+        private SqliteDatabase* db;
+        private string sql;
+        private sqlite3_stmt* statement;
+        private int refcount;
+        private bool isdirty;        
+    }
+    private payload* pl;
+    
     this(ref SqliteDatabase db, string sql) {
         //debug(SQLITE) writeln("Creating query");
-        _refcount = new uint;
-        *_refcount = 1;
-        _db = &db;
-        _db.retain;
-        _sql = sql;
+        pl = new payload;
+        pl.db = &db;
+        pl.db.retain;
+        pl.sql = sql;
         char* unused;
-        auto result = sqlite3_prepare_v2(_db._handle, cast(char*) _sql.toStringz,
-            _sql.length, &_statement, &unused);
-        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(_db._handle)));
+        auto result = sqlite3_prepare_v2(pl.db.handle, cast(char*) pl.sql.toStringz, pl.sql.length, &pl.statement, &unused);
+        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.db.handle)));
+        pl.refcount = 1;
+        pl.isdirty = false;
     }
     
     this(this) {
-        (*_refcount)++;
+        assert(pl);
+        pl.refcount++;
     }
 
     ~this() {
-        (*_refcount)--;
-        if (*_refcount == 0) {
+        assert(pl);
+        pl.refcount--;
+        if (pl.refcount == 0) {
             //debug(SQLITE) writeln("Deleting query");
-            sqlite3_finalize(_statement);
-            _sql = null;
-            _refcount = null;
-            _db.release;
-            _db = null;
+            sqlite3_finalize(pl.statement);
+            pl.db.release;
+            pl = null;
         }
     }
     
     void opAssign(SqliteQuery rhs) {
-        swap(_db, rhs._db);
-        swap(_sql, rhs._sql);
-        swap(_statement, rhs._statement);
-        swap(_refcount, rhs._refcount);
+        assert(pl);
+        assert(rhs.pl);
+        swap(pl, rhs.pl);
     }
     
     /++
     +/
     void bind(T)(string parameter, T value) {
+        assert(pl);
+        assert(pl.statement);
         int index = 0;
-        index = sqlite3_bind_parameter_index(_statement, cast(char*) parameter.toStringz);
+        index = sqlite3_bind_parameter_index(pl.statement, cast(char*) parameter.toStringz);
         enforceEx!SqliteException(index, format("name '%s' cannot be bound", parameter));
         bind(index, value);
     }
@@ -231,74 +241,82 @@ struct SqliteQuery {
     void bind(T)(int index, T value) {
         static assert(isValidSqliteType!T, "cannot convert a column value to type " ~ T.stringof);
 
-        assert(_statement !is null);
+        assert(pl);
+        assert(pl.statement);
         int result;
 
         static if (isSomeString!T) {
             //debug(SQLITE) writefln("binding a string at index %d ", index);
             if (value is null)
-                result = sqlite3_bind_null(_statement, index);
+                result = sqlite3_bind_null(pl.statement, index);
             else
-                result = sqlite3_bind_text(_statement, index, cast(char*) value.toStringz, value.length, null);
+                result = sqlite3_bind_text(pl.statement, index, cast(char*) value.toStringz, value.length, null);
         }
         else static if (isArray!T) {
             //debug(SQLITE) writefln("binding an array at index %d", index);
             if (value is null)
-                result = sqlite3_bind_null(_statement, index);
+                result = sqlite3_bind_null(pl.statement, index);
             else
-                result = sqlite3_bind_blob(_statement, index, (cast(void[]) value).ptr, value.length, null);
+                result = sqlite3_bind_blob(pl.statement, index, (cast(void[]) value).ptr, value.length, null);
         }
         else static if (is(T == void*)) {
             enforce(value is null, "cannot bind with non-null of type void*");
             //debug(SQLITE) writefln("binding a null value at index %d", index);
-            result = sqlite3_bind_null(_statement, index);
+            result = sqlite3_bind_null(pl.statement, index);
         }
         else static if (isIntegral!T || is(T == bool)) {
             //debug(SQLITE) writefln("binding an integral or bool at index %d", index);
-            result = sqlite3_bind_int64(_statement, index, cast(long) value);
+            result = sqlite3_bind_int64(pl.statement, index, cast(long) value);
         }
         else static if (isFloatingPoint!T) {
             //debug(SQLITE) writefln("binding a floating poing value at index %d", index);
-            result = sqlite3_bind_double(_statement, index, value);
+            result = sqlite3_bind_double(pl.statement, index, value);
         }
         else {
             static assert(false, "cannot bind with object of type " ~ T.stringof);
         }
 
-        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(_db._handle)));
+        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.db.handle)));
     }
     
     /++
     +/
     void execute() {
-        auto result = sqlite3_step(_statement);
+        assert(pl);
+        assert(pl.statement);
+        auto result = sqlite3_step(pl.statement);
         assert(result != SQLITE_ROW, "call to SqliteQuery.execute() on a query that return rows, use SqliteQuery.rows instead");
-        enforceEx!SqliteException(result == SQLITE_DONE, to!string(sqlite3_errmsg(_db._handle)));
+        enforceEx!SqliteException(result == SQLITE_DONE, to!string(sqlite3_errmsg(pl.db.handle)));
     }
     
     /++
     +/
     @property SqliteRowSet rows() {
-        enforceEx!SqliteException(!_isdirty, "SqliteQuery.rows called twice without resetting");
-        _isdirty = true;
+        assert(pl);
+        enforceEx!SqliteException(!pl.isdirty, "SqliteQuery.rows called twice without resetting");
+        pl.isdirty = true;
         return SqliteRowSet(&this);
     }
     
     /++
     +/
     void reset() {
-        auto result = sqlite3_reset(_statement);
-        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(_db._handle)));
-        sqlite3_clear_bindings(_statement);
-        _isdirty = false;
+        assert(pl);
+        assert(pl.statement);
+        auto result = sqlite3_reset(pl.statement);
+        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.db.handle)));
+        sqlite3_clear_bindings(pl.statement);
+        pl.isdirty = false;
     }
     
     private void retain() {
-        (*_refcount)++;
+        assert(pl);
+        pl.refcount++;
     }
     
     private void release() {
-        (*_refcount)--;
+        assert(pl);
+        pl.refcount--;
     }
 }
 
@@ -404,7 +422,7 @@ struct SqliteRowSet {
         _query = query;
         _query.retain;
         
-        sqliteResult = sqlite3_step(_query._statement);
+        sqliteResult = sqlite3_step(_query.pl.statement);
     }
     
     ~this() {
@@ -418,22 +436,22 @@ struct SqliteRowSet {
     
     @property SqliteRow front() {
         SqliteRow row;
-        auto colcount = sqlite3_column_count(_query._statement);
+        auto colcount = sqlite3_column_count(_query.pl.statement);
         row._columns.reserve(colcount);
         for (int i = 0; i < colcount; i++) {
-            auto name = to!string(sqlite3_column_name(_query._statement, i));
-            auto type = sqlite3_column_type(_query._statement, i);
+            auto name = to!string(sqlite3_column_name(_query.pl.statement, i));
+            auto type = sqlite3_column_type(_query.pl.statement, i);
             final switch(type) {
             case SQLITE_INTEGER:
-                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(sqlite3_column_int64(_query._statement, i)));
+                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(sqlite3_column_int64(_query.pl.statement, i)));
                 break;
                 
             case SQLITE_FLOAT:
-                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(sqlite3_column_double(_query._statement, i)));
+                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(sqlite3_column_double(_query.pl.statement, i)));
                 break;
 
             case SQLITE_TEXT:
-                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(to!string(sqlite3_column_text(_query._statement, i))));
+                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(to!string(sqlite3_column_text(_query.pl.statement, i))));
                 break;
                 
             case SQLITE_BLOB:
@@ -449,7 +467,7 @@ struct SqliteRowSet {
     }
     
     void popFront() {
-        sqliteResult = sqlite3_step(_query._statement);
+        sqliteResult = sqlite3_step(_query.pl.statement);
     }
 }
 unittest {

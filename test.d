@@ -29,8 +29,6 @@ void main() {
     }
     
     query = SqliteQuery(db, "SELECT * FROM person");
-    auto rows = query.rows;
-    query.reset;
     foreach (row; query.rows)
     {
         auto id = row["id"].as!int;
