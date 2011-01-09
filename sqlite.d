@@ -2,12 +2,14 @@
 /++
 Simple and easy SQLite interface.
 
+Executable must be linked to the SQLite library version 3.3.11 or later.
+
 Objects in this interface (SqliteDatabase and SqliteQuery) are reference-counted. When the last reference goes out of scope, the objects are automatically closed and finalized. The user does not have to explicitly open or close them.
 
 Example:
 ---
 // Open an SQLite database (here in memory)
-auto db = SqliteDatabase(":memory:");
+auto db = SqliteDatabase("");
 
 // Create a table
 auto query = SqliteQuery(db,
@@ -56,13 +58,9 @@ foreach (row; query.rows)
 }
 ---
 
-Issues:$(UL
-$(LI TEXT values must be UTF8-encoded.)
-)
+Copyright: Copyright Nicolas Sicard, 2011.
 
-Todo:$(UL
-$(LI implement backup API: $(LINK http://www.sqlite.org/backup.html).)
-)
+License: $(LINK2 http://boost.org/LICENSE_1_0.txt, Boost License 1.0).
 
 Author: Nicolas Sicard.
 +/
@@ -74,11 +72,12 @@ import std.exception;
 import std.string;
 import std.range;
 import std.traits;
+import std.utf;
 import std.variant;
 
 pragma(lib, "sqlite3");
 
-debug=SQLITE;
+//debug=SQLITE;
 debug(SQLITE) import std.stdio;
 
 /++
@@ -91,20 +90,53 @@ class SqliteException : Exception {
 }
 
 /++
-Once a SqliteDatabase object is created, the database is open and can be used directly. The database is automatically closed when the last reference to the object goes out of scope.
+SQLite thread mode (set at compile-time).
++/
+enum SqliteThreadMode {
+    SINGLETHREAD = 1, /// SQLite is unsafe to use in more than a single thread at once.
+    MULTITHREAD = 2, /// SQLite can be safely used by multiple threads provided that no single database connection is used simultaneously in two or more threads. 
+    SERIALIZED = 3 /// SQLite can be safely used by multiple threads with no restriction.
+}
+
+/++
+Metadata of the SQLite library.
++/
+struct Sqlite {
+    /// Gets the library's version string (e.g. 3.6.12).
+    static string versionString() {
+        return to!string(sqlite3_libversion());
+    }
+    
+     /// Gets the library's version number (e.g. 3006012).
+    static int versionNumber() {
+        return  sqlite3_libversion_number();
+    }
+    
+    ///Gets the library's thread mode.
+    static SqliteThreadMode threadMode() {
+        return cast(SqliteThreadMode) sqlite3_threadsafe();
+    }
+}
+unittest {
+    assert(Sqlite.versionNumber > 3003011);
+}
+
+/++
+An interface to a SQLite database connection.
+
+Once a SqliteDatabase object is created, the database is open and can be used directly. The database is automatically closed when the last reference to the object goes out of scope. SqliteDatabase is not thread-safe.
 +/
 struct SqliteDatabase {
     private struct payload {
-        private string filename;
-        private sqlite3* handle;
-        private int refcount;
+        string filename;
+        sqlite3* handle;
+        int refcount;
+        bool inTransaction;
     }
     private payload* pl;
 
     /++
-    Opens a database with the name passed in the parameter.
-    
-    If filename is empty, the database is open in a temporary file, and if filename is ":memory:", the database is open in memory (implied by SQLite).
+    Opens a database with the name passed in the parameter. The file name can be empty or set to ":memory:" according to the SQLite specification.
     +/
     this(string filename) {
         //debug(SQLITE) writefln("Opening database '%s'", filename);
@@ -112,8 +144,9 @@ struct SqliteDatabase {
         pl = new payload;
         pl.filename = filename;
         auto result = sqlite3_open(cast(char*) pl.filename.toStringz, &pl.handle);
-        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.handle)));
+        enforceEx!SqliteException(result == SQLITE_OK, errorMsg);
         pl.refcount = 1;
+        pl.inTransaction = false;
     }
 
     this(this) {
@@ -126,8 +159,12 @@ struct SqliteDatabase {
         pl.refcount--;
         if (pl.refcount == 0) {
             //debug(SQLITE) writefln("Closing database '%s'", _filename);
+            if (pl.inTransaction) {
+                commit;
+                enforceEx!SqliteException(errorCode == SQLITE_OK, errorMsg);                
+            }
             auto result = sqlite3_close(pl.handle);
-            enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.handle)));
+            enforceEx!SqliteException(result == SQLITE_OK, errorMsg);
             pl = null;
         }
     }
@@ -138,39 +175,72 @@ struct SqliteDatabase {
         swap(pl, rhs.pl);
     }
     
-    version(none) {
-        private bool _inTransaction = false;
-        
-        /++
-        Begins a transaction.
-        +/
-        void transaction() {
-            //debug(SQLITE) writeln("Beginning a transaction");
-            auto q = query("BEGIN TRANSACTION");
+    /++
+    Begins a transaction. No-op if already in _transaction.
+    +/
+    void transaction() {
+        //debug(SQLITE) writeln("Beginning a transaction");
+        if (!pl.inTransaction) {
+            auto q = SqliteQuery(this, "BEGIN TRANSACTION");
             q.execute;
-        }
-
-        /++
-        Commits the current transaction.
-        +/
-        void commit() {
-            //debug(SQLITE) writeln("Committing transaction");
-            auto q = query("COMMIT TRANSACTION");
-            q.execute;
-        }
-
-        /++
-        Rolls back the current transaction.
-        +/
-        void rollback() {
-            //debug(SQLITE) writeln("Rolling back transaction");
-            auto q = query("ROLLBACK TRANSACTION");
-            q.execute;
+            pl.inTransaction = true;
         }
     }
 
     /++
-    Returns the SQLite internal handle of the database connection.
+    Commits the current transaction. No-op if no transaction was started.
+    +/
+    void commit() {
+        //debug(SQLITE) writeln("Committing transaction");
+        if (pl.inTransaction) {
+            auto q = SqliteQuery(this, "COMMIT TRANSACTION");
+            q.execute;
+            pl.inTransaction = false;
+        }
+    }
+
+    /++
+    Rolls back the current transaction. No-op if no transaction was started.
+    +/
+    void rollback() {
+        //debug(SQLITE) writeln("Rolling back transaction");
+        if (pl.inTransaction) {
+            auto q = SqliteQuery(this, "ROLLBACK TRANSACTION");
+            q.execute;
+            pl.inTransaction = false;
+        }
+    }
+    
+    /++
+    Returns the number of database rows that were changed, inserted or deleted by the most recently completed query.
+    +/
+    @property int changes() {
+        return sqlite3_changes(pl.handle);
+    }
+
+    /++
+    Returns the number of database rows that were changed, inserted or deleted since the database was opened.
+    +/
+    @property int totalChanges() {
+        return sqlite3_total_changes(pl.handle);
+    }
+    
+    /++
+    Gets the SQLite error code of the last operation.
+    +/
+    @property int errorCode() {
+        return sqlite3_errcode(pl.handle);
+    }
+    
+    /++
+    Gets the SQLite error message of the last operation.
+    +/
+    @property string errorMsg() {
+        return to!string(sqlite3_errmsg(pl.handle));
+    }
+    
+    /++
+    Gets the SQLite internal _handle of the database connection.
     +/
     @property sqlite3* handle() {
         assert(pl);
@@ -187,29 +257,87 @@ struct SqliteDatabase {
         pl.refcount--;
     }
 }
-
-/++
-Detect whether type T is accepted as the type of a SQLite value.
-+/
-template isValidSqliteType(T) {
-    enum bool isValidSqliteType =
-           is(T == bool)
-        || isIntegral!T
-        || isFloatingPoint!T
-        || isArray!T
-        || isPointer!T;
+unittest {
+    auto db = SqliteDatabase("");
+    db.transaction;
+    db.commit;
 }
 
 /++
-Once a SqliteQuery object is created, the query can be used directly. The query is automatically closed when the last reference to the object goes out of scope. Use execute to execute queries that do not expect rows as their result (CREATE TABLE, INSERT, UPDATE...). Use rows without a prior call to execute for queries that expect rows as their result (SELECT).
+Detect whether type T is accepted as the type of a SQLite value. Accepted types are:
+$(UL
+    $(LI for INTEGER values: integral types, including bool)
+    $(LI for NUMERIC or REAL values: floating point types)
+    $(LI for TEXT values: string types and character types)
+    $(LI for BLOB values: arrays (but not void[]))
+    $(LI for NULL values: void*)
+)
++/
+template isValidSqliteType(T) {
+    enum bool isValidSqliteType =
+           is(Unqual!T == bool)
+        || isIntegral!T
+        || isSomeChar!T
+        || isFloatingPoint!T
+        || isSomeString!T
+        || (isArray!T && !is(ElementType!T == void))
+        || (isPointer!T && is(pointerTarget!T == void));
+}
+unittest {
+    assert(isValidSqliteType!bool);
+    assert(isValidSqliteType!byte);
+    assert(isValidSqliteType!ubyte);
+    assert(isValidSqliteType!short);
+    assert(isValidSqliteType!ushort);
+    assert(isValidSqliteType!int);
+    assert(isValidSqliteType!uint);
+    assert(isValidSqliteType!long);
+    assert(isValidSqliteType!ulong);
+    assert(isValidSqliteType!float);
+    assert(isValidSqliteType!double);
+    assert(isValidSqliteType!real);
+    assert(isValidSqliteType!char);
+    assert(isValidSqliteType!wchar);
+    assert(isValidSqliteType!dchar);
+    assert(isValidSqliteType!string);
+    assert(isValidSqliteType!wstring);
+    assert(isValidSqliteType!dstring);
+    assert(isValidSqliteType!(ubyte[]));
+    assert(isValidSqliteType!(typeof(null)));
+    enum { dummy }
+    assert(isValidSqliteType!(typeof(dummy)));
+    
+    struct s {}
+    union u {}
+    class c {}
+    interface i {}
+    enum e { dummy }
+    void f() {}
+    assert(!isValidSqliteType!(int*));
+    assert(!isValidSqliteType!s);
+    assert(!isValidSqliteType!u);
+    assert(!isValidSqliteType!c);
+    assert(!isValidSqliteType!i);
+    assert(!isValidSqliteType!(typeof(e.dummy)));
+    assert(!isValidSqliteType!(typeof(f)));
+    assert(!isValidSqliteType!void);
+    assert(!isValidSqliteType!(void[]));
+}
+
+/++
+An interface to SQLite query execution.
+
+Use execute to execute queries that do not expect rows as their result (CREATE TABLE, INSERT, UPDATE...). Use rows without a prior call to execute for queries that expect rows as their result (SELECT).
+
+Once a SqliteQuery object is created, the query can be used directly. The query is automatically closed when the last reference to the object goes out of scope.  SqliteDatabase is not thread-safe.
 +/
 struct SqliteQuery {
     private struct payload {
-        private SqliteDatabase* db;
-        private string sql;
-        private sqlite3_stmt* statement;
-        private int refcount;
-        private bool isdirty;        
+        SqliteDatabase* db;
+        string sql;
+        sqlite3_stmt* statement;
+        int refcount;
+        bool isdirty;        
     }
     private payload* pl;
     
@@ -221,7 +349,7 @@ struct SqliteQuery {
         pl.sql = sql;
         char* unused;
         auto result = sqlite3_prepare_v2(pl.db.handle, cast(char*) pl.sql.toStringz, pl.sql.length, &pl.statement, &unused);
-        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.db.handle)));
+        enforceEx!SqliteException(result == SQLITE_OK, pl.db.errorMsg);
         pl.refcount = 1;
         pl.isdirty = false;
     }
@@ -275,7 +403,7 @@ struct SqliteQuery {
             if (value is null)
                 result = sqlite3_bind_null(pl.statement, index);
             else
-                result = sqlite3_bind_text(pl.statement, index, cast(char*) value.toStringz, value.length, null);
+                result = sqlite3_bind_text(pl.statement, index, cast(char*) value.toUTF8.toStringz, value.length, null);
         }
         else static if (isArray!T) {
             //debug(SQLITE) writefln("binding an array at index %d", index);
@@ -293,6 +421,11 @@ struct SqliteQuery {
             //debug(SQLITE) writefln("binding an integral or bool at index %d", index);
             result = sqlite3_bind_int64(pl.statement, index, cast(long) value);
         }
+        else static if (isSomeChar!T) {
+            //debug(SQLITE) writefln("binding character at index %d", index);
+            auto character = toUTF8([value]);
+            result = result = sqlite3_bind_text(pl.statement, index, cast(char*) value.toUTF8.toStringz, value.length, null);
+        }
         else static if (isFloatingPoint!T) {
             //debug(SQLITE) writefln("binding a floating poing value at index %d", index);
             result = sqlite3_bind_double(pl.statement, index, value);
@@ -301,7 +434,7 @@ struct SqliteQuery {
             static assert(false, "cannot bind with object of type " ~ T.stringof);
         }
 
-        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.db.handle)));
+        enforceEx!SqliteException(result == SQLITE_OK, pl.db.errorMsg);
     }
     
     /++
@@ -312,11 +445,11 @@ struct SqliteQuery {
         assert(pl.statement);
         auto result = sqlite3_step(pl.statement);
         assert(result != SQLITE_ROW, "call to SqliteQuery.execute() on a query that return rows, use SqliteQuery.rows instead");
-        enforceEx!SqliteException(result == SQLITE_DONE, to!string(sqlite3_errmsg(pl.db.handle)));
+        enforceEx!SqliteException(result == SQLITE_DONE, pl.db.errorMsg);
     }
     
     /++
-    Gets the results of a query that returns rows.
+    Gets the results of a query that returns _rows.
     +/
     @property SqliteRowSet rows() {
         assert(pl);
@@ -332,7 +465,7 @@ struct SqliteQuery {
         assert(pl);
         assert(pl.statement);
         auto result = sqlite3_reset(pl.statement);
-        enforceEx!SqliteException(result == SQLITE_OK, to!string(sqlite3_errmsg(pl.db.handle)));
+        enforceEx!SqliteException(result == SQLITE_OK, pl.db.errorMsg);
         sqlite3_clear_bindings(pl.statement);
         pl.isdirty = false;
     }
@@ -352,14 +485,14 @@ struct SqliteQuery {
 The results of a query that returns rows, with an InputRange interface.
 +/
 struct SqliteRowSet {
-    private SqliteQuery* _query;
+    private SqliteQuery* query;
     private int sqliteResult;
     
     /++
     A single row.
     +/
     struct SqliteRow {
-        private SqliteColumn[] _columns;
+        private SqliteColumn[] columns;
         
         /++
         A single column
@@ -384,13 +517,16 @@ struct SqliteRowSet {
                     else static if (isIntegral!T) {
                         return to!T(data.get!long);
                     }
+                    else static if (isSomeChar!T) {
+                        return to!T(data.get!string[0]);
+                    }
                     else static if (isFloatingPoint!T) {
                         return to!T(data.get!double);
                     }
                     else static if (isSomeString!T) {
                         return to!T(data.get!string);
                     }
-                    else static if (isArray!T && !isSomeString!T) {
+                    else static if (isArray!T) {
                         return cast(T) data.get!T;
                     }
                 }
@@ -401,7 +537,7 @@ struct SqliteRowSet {
             /++
             Gets the value of the column converted to type T.
             
-            Same as above but throws an exception when a NULL value is converted into a type that cannot be null.
+            Same _as above but throws an exception when a NULL value is converted into a type that cannot be null.
             +/
             @property T as(T)() {
                 static if (isPointer!T || isDynamicArray!T) {
@@ -417,29 +553,20 @@ struct SqliteRowSet {
                         throw new SqliteException("cannot set a value of type " ~ T.stringof ~ " to null");                
                 }
             }
-            
-            /+debug(SQLITE) {
-                string toString() {
-                    if (data.hasValue)
-                        return to!string(data);
-                    else
-                        return "<null>";
-                }
-            }+/
         }
         
         /++
         Gets the number of columns in this row.
         +/
         @property int columnCount() {
-            return _columns.length;
+            return columns.length;
         }
         
         /++
         Gets the column at the given index.
         +/
         SqliteColumn opIndex(int index) {
-            auto f = filter!((SqliteColumn c) { return c.index == index; })(_columns);
+            auto f = filter!((SqliteColumn c) { return c.index == index; })(columns);
             if (!f.empty)
                 return f.front;
             else
@@ -450,30 +577,23 @@ struct SqliteRowSet {
         Gets the column from its name.
         +/
         SqliteColumn opIndex(string name) {
-            auto f = filter!((SqliteColumn c) { return c.name == name; })(_columns);
+            auto f = filter!((SqliteColumn c) { return c.name == name; })(columns);
             if (!f.empty)
                 return f.front;
             else
                 throw new SqliteException("invalid column name: " ~ name);
         }
-        
-        /+debug(SQLITE) {
-            string toString() {
-                return to!string(_columns);
-            }
-        }+/
     }
     
     private this(SqliteQuery* query) {
-        _query = query;
-        _query.retain;
-        
-        sqliteResult = sqlite3_step(_query.pl.statement);
+        query = query;
+        query.retain;
+        sqliteResult = sqlite3_step(query.pl.statement);
     }
     
     ~this() {
-        _query.release;
-        _query = null;
+        query.release;
+        query = null;
     }
     
     /++
@@ -488,35 +608,35 @@ struct SqliteRowSet {
     +/
     @property SqliteRow front() {
         SqliteRow row;
-        auto colcount = sqlite3_column_count(_query.pl.statement);
-        row._columns.reserve(colcount);
+        auto colcount = sqlite3_column_count(query.pl.statement);
+        row.columns.reserve(colcount);
         for (int i = 0; i < colcount; i++) {
-            auto name = to!string(sqlite3_column_name(_query.pl.statement, i));
-            auto type = sqlite3_column_type(_query.pl.statement, i);
+            auto name = to!string(sqlite3_column_name(query.pl.statement, i));
+            auto type = sqlite3_column_type(query.pl.statement, i);
             final switch(type) {
             case SQLITE_INTEGER:
-                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(sqlite3_column_int64(_query.pl.statement, i)));
+                row.columns ~= SqliteRow.SqliteColumn(i, name, Variant(sqlite3_column_int64(query.pl.statement, i)));
                 break;
                 
             case SQLITE_FLOAT:
-                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(sqlite3_column_double(_query.pl.statement, i)));
+                row.columns ~= SqliteRow.SqliteColumn(i, name, Variant(sqlite3_column_double(query.pl.statement, i)));
                 break;
 
             case SQLITE_TEXT:
-                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(to!string(sqlite3_column_text(_query.pl.statement, i))));
+                row.columns ~= SqliteRow.SqliteColumn(i, name, Variant(to!string(sqlite3_column_text(query.pl.statement, i))));
                 break;
                 
             case SQLITE_BLOB:
-                auto ptr = sqlite3_column_blob(_query.pl.statement, i);
-                auto length = sqlite3_column_bytes(_query.pl.statement, i);
+                auto ptr = sqlite3_column_blob(query.pl.statement, i);
+                auto length = sqlite3_column_bytes(query.pl.statement, i);
                 ubyte[] blob;
                 blob.length = length;
                 memcpy(blob.ptr, ptr, length);
-                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant(blob));
+                row.columns ~= SqliteRow.SqliteColumn(i, name, Variant(blob));
                 break;
             
             case SQLITE_NULL:
-                row._columns ~= SqliteRow.SqliteColumn(i, name, Variant());
+                row.columns ~= SqliteRow.SqliteColumn(i, name, Variant());
                 break;
             }
         }
@@ -527,7 +647,7 @@ struct SqliteRowSet {
     Jumps to the next row.
     +/
     void popFront() {
-        sqliteResult = sqlite3_step(_query.pl.statement);
+        sqliteResult = sqlite3_step(query.pl.statement);
     }
 }
 unittest {
@@ -559,12 +679,17 @@ alias ulong sqlite3_uint64;
 
 extern(C):
 
+char* sqlite3_libversion();
+int sqlite3_libversion_number();
+int sqlite3_threadsafe();
 int sqlite3_errcode(sqlite3*);
 char* sqlite3_errmsg(sqlite3*);
 int sqlite3_open(char*, sqlite3**);
 int sqlite3_close(sqlite3*);
 int sqlite3_prepare_v2(sqlite3*, char*, int, sqlite3_stmt**, char**);
 int sqlite3_step(sqlite3_stmt*);
+int sqlite3_changes(sqlite3*);
+int sqlite3_total_changes(sqlite3*);
 int sqlite3_finalize(sqlite3_stmt*);
 int sqlite3_reset(sqlite3_stmt*);
 int sqlite3_bind_blob(sqlite3_stmt*, int, void*, int n, void function(void*));
