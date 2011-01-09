@@ -2,49 +2,69 @@
 /++
 Simple and easy SQLite interface.
 
-Objects in this interface are reference-counted. When the last copy goes out of scope, the objects are automatically closed and finalized. The user does not have to explicitly open nor close them.
+Objects in this interface (SqliteDatabase and SqliteQuery) are reference-counted. When the last reference goes out of scope, the objects are automatically closed and finalized. The user does not have to explicitly open or close them.
 
 Example:
 ---
-import sqlite;
-import std.stdio, std.string;
-
+// Open an SQLite database (here in memory)
 auto db = SqliteDatabase(":memory:");
+
+// Create a table
 auto query = SqliteQuery(db,
     "CREATE TABLE person (
         id INTEGER PRIMARY KEY,
         last_name TEXT NOT NULL,
         first_name TEXT,
-        score REAL
+        score REAL,
+        photo BLOB
     )");
 query.execute;
 
-with (SqliteQuery(db, "INSERT INTO person (last_name, first_name, score)
-                       VALUES (:last_name, :first_name, :score)"))
+// Populate the table, using bindings
+with (SqliteQuery(db, "INSERT INTO person (last_name, first_name, score, photo)
+                       VALUES (:last_name, :first_name, :score, :photo)"))
 {
     bind(":last_name", "Smith");
     bind(":first_name", "Robert");
     bind(":score", 77.5);
+    ubyte[] photo = ...
+    bind(":photo", photo);
     execute;
-    reset;
+    
+    reset; // need to reset the query after execution
     bind(":last_name", "Doe");
     bind(":first_name", "John");
     bind(":score", null);
+    bind(":photo", null);
     execute;
 }
 
+// Count the persons in the table
+query = SqliteQuery(db, "SELECT COUNT(*) FROM person");
+writefln("Number of persons: %d", query.rows.front[0].as!int);
+
+// Fetch the data from the table
 query = SqliteQuery(db, "SELECT * FROM person");
 foreach (row; query.rows)
 {
     auto id = row["id"].as!int;
-    auto name = format("%s %s", row["first_name"].as!string, row["last_name"].as!string);
-    auto score = row["score"].as!(real, 0.0);
+    auto name = row["first_name"].as!string ~ row["last_name"].as!string;
+    auto score = row["score"].as!(real, 0.0); // score can be NULL, so provide 0.0 as
+                                              // a default value to replace NULLs
+    auto photo = row["photo"].as!(ubyte[]);
     writefln("[%d] %s scores %.1f", id, name, score);
 }
-
-query = SqliteQuery(db, "SELECT COUNT(*) FROM person");
-writefln("Number of persons: %d", query.rows.front[0].as!int);
 ---
+
+Issues:$(UL
+$(LI TEXT values must be UTF8-encoded.)
+)
+
+Todo:$(UL
+$(LI implement backup API: $(LINK http://www.sqlite.org/backup.html).)
+)
+
+Author: Nicolas Sicard.
 +/
 module sqlite;
 
@@ -71,7 +91,7 @@ class SqliteException : Exception {
 }
 
 /++
-SQLite database connection.
+Once a SqliteDatabase object is created, the database is open and can be used directly. The database is automatically closed when the last reference to the object goes out of scope.
 +/
 struct SqliteDatabase {
     private struct payload {
@@ -83,6 +103,8 @@ struct SqliteDatabase {
 
     /++
     Opens a database with the name passed in the parameter.
+    
+    If filename is empty, the database is open in a temporary file, and if filename is ":memory:", the database is open in memory (implied by SQLite).
     +/
     this(string filename) {
         //debug(SQLITE) writefln("Opening database '%s'", filename);
@@ -179,6 +201,7 @@ template isValidSqliteType(T) {
 }
 
 /++
+Once a SqliteQuery object is created, the query can be used directly. The query is automatically closed when the last reference to the object goes out of scope. Use execute to execute queries that do not expect rows as their result (CREATE TABLE, INSERT, UPDATE...). Use rows without a prior call to execute for queries that expect rows as their result (SELECT).
 +/
 struct SqliteQuery {
     private struct payload {
@@ -226,6 +249,7 @@ struct SqliteQuery {
     }
     
     /++
+    Binds a value to a named parameter in the query.
     +/
     void bind(T)(string parameter, T value) {
         assert(pl);
@@ -237,6 +261,7 @@ struct SqliteQuery {
     }
     
     /++
+    Binds a value to an indexed parameter in the query.
     +/
     void bind(T)(int index, T value) {
         static assert(isValidSqliteType!T, "cannot convert a column value to type " ~ T.stringof);
@@ -280,6 +305,7 @@ struct SqliteQuery {
     }
     
     /++
+    Execute a query that does not expect rows as its result.
     +/
     void execute() {
         assert(pl);
@@ -290,6 +316,7 @@ struct SqliteQuery {
     }
     
     /++
+    Gets the results of a query that returns rows.
     +/
     @property SqliteRowSet rows() {
         assert(pl);
@@ -299,6 +326,7 @@ struct SqliteQuery {
     }
     
     /++
+    Resets a query and clears all bindings.
     +/
     void reset() {
         assert(pl);
@@ -321,17 +349,20 @@ struct SqliteQuery {
 }
 
 /++
+The results of a query that returns rows, with an InputRange interface.
 +/
 struct SqliteRowSet {
     private SqliteQuery* _query;
     private int sqliteResult;
     
     /++
+    A single row.
     +/
     struct SqliteRow {
         private SqliteColumn[] _columns;
         
         /++
+        A single column
         +/
         struct SqliteColumn {
             int index;
@@ -339,6 +370,9 @@ struct SqliteRowSet {
             Variant data;
             
             /++
+            Gets the value of the column converted to type T.
+            
+            If the value is NULL, it is replaced by value.
             +/
             @property T as(T, T value)() {
                 static assert(isValidSqliteType!T, "cannot convert a column value to type " ~ T.stringof);
@@ -365,6 +399,9 @@ struct SqliteRowSet {
             }
             
             /++
+            Gets the value of the column converted to type T.
+            
+            Same as above but throws an exception when a NULL value is converted into a type that cannot be null.
             +/
             @property T as(T)() {
                 static if (isPointer!T || isDynamicArray!T) {
@@ -391,10 +428,16 @@ struct SqliteRowSet {
             }+/
         }
         
+        /++
+        Gets the number of columns in this row.
+        +/
         @property int columnCount() {
             return _columns.length;
         }
         
+        /++
+        Gets the column at the given index.
+        +/
         SqliteColumn opIndex(int index) {
             auto f = filter!((SqliteColumn c) { return c.index == index; })(_columns);
             if (!f.empty)
@@ -402,7 +445,10 @@ struct SqliteRowSet {
             else
                 throw new SqliteException(format("invalid column index: %d", index));
         }
-
+        
+        /++
+        Gets the column from its name.
+        +/
         SqliteColumn opIndex(string name) {
             auto f = filter!((SqliteColumn c) { return c.name == name; })(_columns);
             if (!f.empty)
@@ -430,10 +476,16 @@ struct SqliteRowSet {
         _query = null;
     }
     
+    /++
+    Tests whether no more rows are available.
+    +/
     @property bool empty() {
         return sqliteResult != SQLITE_ROW;
     }
     
+    /++
+    Gets the current row.
+    +/
     @property SqliteRow front() {
         SqliteRow row;
         auto colcount = sqlite3_column_count(_query.pl.statement);
@@ -471,6 +523,9 @@ struct SqliteRowSet {
         return row;
     }
     
+    /++
+    Jumps to the next row.
+    +/
     void popFront() {
         sqliteResult = sqlite3_step(_query.pl.statement);
     }
