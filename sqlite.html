@@ -9,57 +9,88 @@ Simple and easy SQLite interface.
 Executable must be linked to the SQLite library version 3.3.11 or later.
 <br><br>
 
-Objects in this interface (SqliteDatabase and SqliteQuery) are reference-counted. When the last reference goes out of scope, the objects are automatically closed and finalized. The user does not have to explicitly open or close them.
+Objects in this interface (Database and Query) are
+reference-counted. When the last reference goes out of scope, the objects are
+automatically closed and finalized. The user does not have to explicitly open
+or close them.
 
 <br><br>
 <b>Example:</b><br>
-<pre class="d_code"><font color=green>// Open an SQLite database (here in memory)
-</font><font color=blue>auto</font> db = SqliteDatabase(<font color=red>""</font>);
-
-<font color=green>// Create a table
-</font><font color=blue>auto</font> query = SqliteQuery(db,
-    <font color=red>"CREATE TABLE person (
-        id INTEGER PRIMARY KEY,
-        last_name TEXT NOT NULL,
-        first_name TEXT,
-        score REAL,
-        photo BLOB
-    )"</font>);
-query.execute;
-
-<font color=green>// Populate the table, using bindings
-</font><font color=blue>with</font> (SqliteQuery(db, <font color=red>"INSERT INTO person (last_name, first_name, score, photo)
-                       VALUES (:last_name, :first_name, :score, :photo)"</font>))
-{
-    bind(<font color=red>":last_name"</font>, <font color=red>"Smith"</font>);
-    bind(<font color=red>":first_name"</font>, <font color=red>"Robert"</font>);
-    bind(<font color=red>":score"</font>, 77.5);
-    <font color=blue>ubyte</font>[] photo = ...
-    bind(<font color=red>":photo"</font>, photo);
-    execute;
-
-    reset; <font color=green>// need to reset the query after execution
-</font>    bind(<font color=red>":last_name"</font>, <font color=red>"Doe"</font>);
-    bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>);
-    bind(<font color=red>":score"</font>, <font color=blue>null</font>);
-    bind(<font color=red>":photo"</font>, <font color=blue>null</font>);
-    execute;
+<pre class="d_code">writeln(<font color=red>"Opening a database in memory..."</font>);
+Database db;
+<font color=blue>try</font> {
+    db = Database(<font color=red>":memory:"</font>);
+}
+<font color=blue>catch</font> (SqliteException e) {
+    writefln(<font color=red>"Error opening database: %s."</font>, e.msg);
+    <font color=blue>return</font>;
 }
 
-<font color=green>// Count the persons in the table
-</font>query = SqliteQuery(db, <font color=red>"SELECT COUNT(*) FROM person"</font>);
-writefln(<font color=red>"Number of persons: %d"</font>, query.rows.front[0].as!<font color=blue>int</font>);
+writeln(<font color=red>"Creating a table..."</font>);
+<font color=blue>try</font> {
+    <font color=blue>auto</font> query = Query(db,
+        <font color=red>"CREATE TABLE person (
+            id INTEGER PRIMARY KEY,
+            last_name TEXT NOT NULL,
+            first_name TEXT,
+            score REAL,
+            photo BLOB
+        )"</font>);
+    query.execute;
+}
+<font color=blue>catch</font> (SqliteException e) {
+    writefln(<font color=red>"Error creating the table: %s."</font>, e.msg);
+}
 
-<font color=green>// Fetch the data from the table
-</font>query = SqliteQuery(db, <font color=red>"SELECT * FROM person"</font>);
-<font color=blue>foreach</font> (row; query.rows)
-{
-    <font color=blue>auto</font> id = row[<font color=red>"id"</font>].as!<font color=blue>int</font>;
-    <font color=blue>auto</font> name = row[<font color=red>"first_name"</font>].as!string ~ row[<font color=red>"last_name"</font>].as!string;
-    <font color=blue>auto</font> score = row[<font color=red>"score"</font>].as!(<font color=blue>real</font>, 0.0); <font color=green>// score can be NULL, so provide 0.0 as
-</font>                                              <font color=green>// a default value to replace NULLs
-</font>    <font color=blue>auto</font> photo = row[<font color=red>"photo"</font>].as!(<font color=blue>ubyte</font>[]);
-    writefln(<font color=red>"[%d] %s scores %.1f"</font>, id, name, score);
+writeln(<font color=red>"Populating the table..."</font>);
+<font color=blue>try</font> {
+    <font color=blue>with</font> (Query(db, <font color=red>"INSERT INTO person
+                    (last_name, first_name, score, photo)
+                    VALUES (:last_name, :first_name, :score, :photo)"</font>)) {
+        db.transaction;
+        <font color=blue>scope</font>(failure) db.rollback;
+        <font color=blue>scope</font>(success) db.commit;
+
+        bind(<font color=red>":last_name"</font>, <font color=red>"Smith"</font>);
+        bind(<font color=red>":first_name"</font>, <font color=red>"Robert"</font>);
+        bind(<font color=red>":score"</font>, 77.5);
+        <font color=blue>ubyte</font>[] photo = ...
+        bind(<font color=red>":photo"</font>, photo);
+        execute;
+
+        reset; <font color=green>// need to reset the query after execution
+</font>        bind(<font color=red>":last_name"</font>, <font color=red>"Doe"</font>);
+        bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>);
+        bind(<font color=red>":score"</font>, <font color=blue>null</font>);
+        bind(<font color=red>":photo"</font>, <font color=blue>null</font>);
+        execute;
+    }
+}
+<font color=blue>catch</font> (SqliteException e) {
+    writefln(<font color=red>"Error: %s."</font>, e.msg);
+}
+writefln(<font color=red>"--&gt; %d persons inserted."</font>, db.totalChanges);
+
+writeln(<font color=red>"Reading the table..."</font>);
+<font color=blue>try</font> {
+    <font color=green>// Count the persons in the table
+</font>    <font color=blue>auto</font> query = Query(db, <font color=red>"SELECT COUNT(*) FROM person"</font>);
+    writefln(<font color=red>"--&gt; Number of persons: %d"</font>, query.rows.front[0].to!<font color=blue>int</font>);
+
+    <font color=green>// Fetch the data from the table
+</font>    query = Query(db, <font color=red>"SELECT * FROM person"</font>);
+    <font color=blue>foreach</font> (row; query.rows) {
+        <font color=blue>auto</font> id = row[<font color=red>"id"</font>].to!<font color=blue>int</font>;
+        <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>].to!string,
+                                     row[<font color=red>"first_name"</font>].to!string);
+        <font color=blue>auto</font> score = row[<font color=red>"score"</font>].to!(<font color=blue>real</font>, 0.0); <font color=green>// score can be NULL,
+</font>        <font color=green>//           so provide 0.0 as a default value to replace NULLs
+</font>        <font color=blue>auto</font> photo = row[<font color=red>"photo"</font>].to!(<font color=blue>void</font>[]);
+        writefln(<font color=red>"--&gt; [%d] %s, score = %.1f"</font>, id, name, score);
+    }
+}
+<font color=blue>catch</font> (SqliteException e) {
+    writefln(<font color=red>"Error reading the database: %s."</font>, e.msg);
 }
 </pre>
 
@@ -76,20 +107,23 @@ Nicolas Sicard.<br><br>
 <dd>Exception thrown then SQLite functions return error codes.<br><br>
 
 </dd>
-<dt><big>enum <u>SqliteThreadMode</u>;
+<dt><big>enum <u>ThreadMode</u>;
 </big></dt>
 <dd>SQLite thread mode (set at compile-time).<br><br>
 
 <dl><dt><big><u>SINGLETHREAD</u></big></dt>
-<dd>SQLite is unsafe to use in more than a single thread at once.<br><br>
+<dd>SQLite is unsafe to use in more than<br><br>
 
 </dd>
 <dt><big><u>MULTITHREAD</u></big></dt>
-<dd>SQLite can be safely used by multiple threads provided that no single database connection is used simultaneously in two or more threads. <br><br>
+<dd>a single thread at once.
+ SQLite can be safely used by multiple threads<br><br>
 
 </dd>
 <dt><big><u>SERIALIZED</u></big></dt>
-<dd>SQLite can be safely used by multiple threads with no restriction.<br><br>
+<dd>provided that no single database connection
+ is used simultaneously in two or more threads. 
+ SQLite can be safely used by multiple threads<br><br>
 
 </dd>
 </dl>
@@ -108,47 +142,79 @@ Nicolas Sicard.<br><br>
 <dd>Gets the library's version number (e.g. 3006012).<br><br>
 
 </dd>
-<dt><big>static SqliteThreadMode <u>threadMode</u>();
+<dt><big>static ThreadMode <u>threadMode</u>();
 </big></dt>
 <dd>Gets the library's thread mode.<br><br>
 
 </dd>
 </dl>
 </dd>
-<dt><big>struct <u>SqliteDatabase</u>;
+<dt><big>struct <u>Database</u>;
 </big></dt>
 <dd>An interface to a SQLite database connection.
 <br><br>
-Once a <u>SqliteDatabase</u> object is created, the database is open and can be used directly. The database is automatically closed when the last reference to the object goes out of scope. <u>SqliteDatabase</u> is not thread-safe.<br><br>
+Once a <u>Database</u> object is created, the database is open and can be used
+directly. The database is automatically closed when the last reference to the
+object goes out of scope. If database error occur while the database is beeing
+closed in the destructor, a SqliteException is thrown.
+<br><br>
 
-<dl><dt><big>this(string <i>filename</i>);
+The <u>Database</u> object is not thread-safe, while the SQLite database engine
+itself can be.<br><br>
+
+<dl><dt><big>this(string <i>path</i>);
 </big></dt>
-<dd>Opens a database with the name passed in the parameter. The file name can be empty or set to ":memory:" according to the SQLite specification.<br><br>
+<dd>Opens a database with the name passed in the parameter.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>string <i>path</i></td>
+<td>the <i>path</i> of the database file. Can be empty or set to
+        ":memory:" according to the SQLite specification.</td></tr>
+</table><br>
+<b>Throws:</b><br>
+SqliteException when the database cannot be opened.<br><br>
 
 </dd>
 <dt><big>void <u>transaction</u>();
 </big></dt>
-<dd>Begins a <u>transaction</u>. No-op if already in transaction.<br><br>
+<dd>Begins a <u>transaction</u>.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when a <u>transaction</u> has already been starter (simple
+        transactions do not nest in SQLite).<br><br>
 
 </dd>
 <dt><big>void <u>commit</u>();
 </big></dt>
-<dd>Commits the current transaction. No-op if no transaction was started.<br><br>
+<dd>Commits the current transaction.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when no transaction is started.<br><br>
 
 </dd>
 <dt><big>void <u>rollback</u>();
 </big></dt>
-<dd>Rolls back the current transaction. No-op if no transaction was started.<br><br>
+<dd>Rolls back the current transaction.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when no transaction is started.<br><br>
+
+</dd>
+<dt><big>string <u>path</u>();
+</big></dt>
+<dd>Gets the database file name.<br><br>
 
 </dd>
 <dt><big>int <u>changes</u>();
 </big></dt>
-<dd>Returns the number of database rows that were changed, inserted or deleted by the most recently completed query.<br><br>
+<dd>Gets the number of database rows that were changed, inserted or deleted by
+    the most recently completed query.<br><br>
 
 </dd>
 <dt><big>int <u>totalChanges</u>();
 </big></dt>
-<dd>Returns the number of database rows that were changed, inserted or deleted since the database was opened.<br><br>
+<dd>Gets the number of database rows that were changed, inserted or deleted
+    since the database was opened.<br><br>
 
 </dd>
 <dt><big>int <u>errorCode</u>();
@@ -168,103 +234,103 @@ Once a <u>SqliteDatabase</u> object is created, the database is open and can be 
 </dd>
 </dl>
 </dd>
-<dt><big>template <u>isValidSqliteType</u>(T)</big></dt>
-<dd>Detect whether type T is accepted as the type of a SQLite value. Accpted types are:
-<ul>   <li>for INTEGER values: integral types, including bool and non-types enums</li>
-    <li>for NUMERIC or REAL values: floating point types</li>
-    <li>for TEXT values: string types and character types</li>
-    <li>for BLOB values: arrays (but not void[])</li>
-    <li>for NULL values: void*</li>
-</ul><br><br>
-
-</dd>
-<dt><big>struct <u>SqliteQuery</u>;
+<dt><big>struct <u>Query</u>;
 </big></dt>
 <dd>An interface to SQLite query execution.
 <br><br>
-Use execute to execute queries that do not expect rows as their result (CREATE TABLE, INSERT, UPDATE...). Use rows without a prior call to execute for queries that expect rows as their result (SELECT).
+Use execute to execute queries that do not expect rows as their result (CREATE
+TABLE, INSERT, UPDATE...). Use rows without a prior call to execute for
+queries that expect rows as their result (SELECT).
 <br><br>
 
-Once a <u>SqliteQuery</u> object is created, the query can be used directly. The query is automatically closed when the last reference to the object goes out of scope.  SqliteDatabase is not thread-safe.<br><br>
+Once a <u>Query</u> object is created, the query can be used directly. The
+query is automatically closed when the last reference to the object goes out
+of scope. If database error occur while the query is beeing
+closed in the destructor, a SqliteException is thrown.
+<br><br>
 
-<dl><dt><big>void <u>bind</u>(T)(string <i>parameter</i>, T <i>value</i>);
+Database is not thread-safe.<br><br>
+
+<dl><dt><big>this(ref Database <i>db</i>, string <i>sql</i>);
 </big></dt>
-<dd>Binds a value to a named parameter in the query.<br><br>
+<dd>Creates a new SQL query on an open database.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>Database <i>db</i></td>
+<td>the database on which the query will be run.</td></tr>
+<tr><td>string <i>sql</i></td>
+<td>the text of the query.</td></tr>
+</table><br>
+<b>Throws:</b><br>
+SqliteException when the query cannot be prepared.<br><br>
+
+</dd>
+<dt><big>void <u>bind</u>(T)(string <i>parameter</i>, T <i>value</i>);
+</big></dt>
+<dd>Binds a value to a named parameter in the query.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>parameter</td>
+<td>the name of the parameter to <u>bind</u> to in the SQL prepared
+        statement, including the symbol preceeding the actual name, e.g.
+        ":id".</td></tr>
+<tr><td>value</td>
+<td>the bound value.</td></tr>
+</table><br>
+<b>Throws:</b><br>
+SqliteException when parameter refers to an invalid binding or when
+        the value cannot be bound.<br><br>
 
 </dd>
 <dt><big>void <u>bind</u>(T)(int <i>index</i>, T <i>value</i>);
 </big></dt>
-<dd>Binds a value to an indexed parameter in the query.<br><br>
+<dd>Binds a value to an indexed parameter in the query.
+        index = the index of the parameter to <u>bind</u> to in the SQL prepared
+        statement.
+        value = the bound value.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when index is invalid or when the value cannot be
+        bound.<br><br>
 
 </dd>
 <dt><big>void <u>execute</u>();
 </big></dt>
-<dd>Execute a query that does not expect rows as its result.<br><br>
+<dd>Execute a query that does not expect rows as its result.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when the query cannot be executed.<br><br>
 
 </dd>
-<dt><big>SqliteRowSet <u>rows</u>();
+<dt><big>RowSet <u>rows</u>();
 </big></dt>
-<dd>Gets the results of a query that returns rows.<br><br>
+<dd>Gets the results of a query that returns rows.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when <u>rows</u>() is called twice whitout a prior reset of
+        the query.<br><br>
 
 </dd>
 <dt><big>void <u>reset</u>();
 </big></dt>
-<dd>Resets a query and clears all bindings.<br><br>
+<dd>Resets a query and clears all bindings.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when the querey could not be <u>reset</u>.<br><br>
 
 </dd>
 </dl>
 </dd>
-<dt><big>struct <u>SqliteRowSet</u>;
+<dt><big>struct <u>RowSet</u>;
 </big></dt>
 <dd>The results of a query that returns rows, with an InputRange interface.<br><br>
 
-<dl><dt><big>struct <u>SqliteRow</u>;
-</big></dt>
-<dd>A single row.<br><br>
-
-<dl><dt><big>struct <u>SqliteColumn</u>;
-</big></dt>
-<dd>A single column<br><br>
-
-<dl><dt><big>T <u>as</u>(T, T value)();
-</big></dt>
-<dd>Gets the value of the column converted to type T.
-<br><br>
-If the value is NULL, it is replaced by value.<br><br>
-
-</dd>
-<dt><big>T <u>as</u>(T)();
-</big></dt>
-<dd>Gets the value of the column converted to type T.
-<br><br>
-Same as above but throws an exception when a NULL value is converted into a type that cannot be <b>null</b>.<br><br>
-
-</dd>
-</dl>
-</dd>
-<dt><big>int <u>columnCount</u>();
-</big></dt>
-<dd>Gets the number of columns in this row.<br><br>
-
-</dd>
-<dt><big>SqliteColumn <u>opIndex</u>(int <i>index</i>);
-</big></dt>
-<dd>Gets the column at the given <i>index</i>.<br><br>
-
-</dd>
-<dt><big>SqliteColumn <u>opIndex</u>(string <i>name</i>);
-</big></dt>
-<dd>Gets the column from its <i>name</i>.<br><br>
-
-</dd>
-</dl>
-</dd>
-<dt><big>bool <u>empty</u>();
+<dl><dt><big>bool <u>empty</u>();
 </big></dt>
 <dd>Tests whether no more rows are available.<br><br>
 
 </dd>
-<dt><big>SqliteRow <u>front</u>();
+<dt><big>Row <u>front</u>();
 </big></dt>
 <dd>Gets the current row.<br><br>
 
@@ -272,6 +338,62 @@ Same as above but throws an exception when a NULL value is converted into a type
 <dt><big>void <u>popFront</u>();
 </big></dt>
 <dd>Jumps to the next row.<br><br>
+
+</dd>
+</dl>
+</dd>
+<dt><big>struct <u>Row</u>;
+</big></dt>
+<dd>A SQLite row.<br><br>
+
+<dl><dt><big>int <u>columnCount</u>();
+</big></dt>
+<dd>Gets the number of columns in this row.<br><br>
+
+</dd>
+<dt><big>Column <u>opIndex</u>(int <i>index</i>);
+</big></dt>
+<dd>Gets the column at the given <i>index</i>.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>int <i>index</i></td>
+<td>the <i>index</i> of the column in the SELECT statement.</td></tr>
+</table><br>
+<b>Throws:</b><br>
+SqliteException when the <i>index</i> is invalid.<br><br>
+
+</dd>
+<dt><big>Column <u>opIndex</u>(string <i>name</i>);
+</big></dt>
+<dd>Gets the column from its <i>name</i>.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>string <i>name</i></td>
+<td>the <i>name</i> of the column in the SELECT statement.</td></tr>
+</table><br>
+<b>Throws:</b><br>
+SqliteException when the <i>name</i> is invalid.<br><br>
+
+</dd>
+</dl>
+</dd>
+<dt><big>struct <u>Column</u>;
+</big></dt>
+<dd>A SQLite column.<br><br>
+
+<dl><dt><big>T <u>to</u>(T, T value)();
+</big></dt>
+<dd>Gets the value of the column converted to type T.
+    If the value is NULL, it is replaced by value.<br><br>
+
+</dd>
+<dt><big>T <u>to</u>(T)();
+</big></dt>
+<dd>Gets the value of the column converted to type T.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when a NULL value is converted into a type that cannot
+        be <b>null</b>.<br><br>
 
 </dd>
 </dl>
