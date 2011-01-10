@@ -224,7 +224,7 @@ SqliteException when no transaction is started.<br><br>
 </dd>
 <dt><big>string <u>errorMsg</u>();
 </big></dt>
-<dd>Gets the SQLite error message of the last operation.<br><br>
+<dd>Gets the SQLite error message of the last operation, including the error code.<br><br>
 
 </dd>
 <dt><big>sqlite3* <u>handle</u>();
@@ -249,7 +249,7 @@ of scope. If database error occur while the query is beeing
 closed in the destructor, a SqliteException is thrown.
 <br><br>
 
-Database is not thread-safe.<br><br>
+<u>Query</u> is not thread-safe.<br><br>
 
 <dl><dt><big>this(ref Database <i>db</i>, string <i>sql</i>);
 </big></dt>
@@ -294,14 +294,6 @@ SqliteException when index is invalid or when the value cannot be
         bound.<br><br>
 
 </dd>
-<dt><big>void <u>execute</u>();
-</big></dt>
-<dd>Execute a query that does not expect rows as its result.
-<br><br>
-<b>Throws:</b><br>
-SqliteException when the query cannot be executed.<br><br>
-
-</dd>
 <dt><big>RowSet <u>rows</u>();
 </big></dt>
 <dd>Gets the results of a query that returns rows.
@@ -309,6 +301,14 @@ SqliteException when the query cannot be executed.<br><br>
 <b>Throws:</b><br>
 SqliteException when <u>rows</u>() is called twice whitout a prior reset of
         the query.<br><br>
+
+</dd>
+<dt><big>void <u>execute</u>();
+</big></dt>
+<dd>Execute a query that does not expect rows as its result.
+<br><br>
+<b>Throws:</b><br>
+SqliteException when the query cannot be executed.<br><br>
 
 </dd>
 <dt><big>void <u>reset</u>();
