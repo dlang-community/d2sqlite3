@@ -80,12 +80,12 @@ writeln(<font color=red>"Reading the table..."</font>);
     <font color=green>// Fetch the data from the table
 </font>    query = Query(db, <font color=red>"SELECT * FROM person"</font>);
     <font color=blue>foreach</font> (row; query.rows) {
-        <font color=blue>auto</font> id = row[<font color=red>"id"</font>].to!<font color=blue>int</font>;
-        <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>].to!string,
-                                     row[<font color=red>"first_name"</font>].to!string);
-        <font color=blue>auto</font> score = row[<font color=red>"score"</font>].to!(<font color=blue>real</font>, 0.0); <font color=green>// score can be NULL,
+        <font color=blue>auto</font> id = row[<font color=red>"id"</font>].as!<font color=blue>int</font>;
+        <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>].as!string,
+                                     row[<font color=red>"first_name"</font>].as!string);
+        <font color=blue>auto</font> score = row[<font color=red>"score"</font>].as!(<font color=blue>real</font>, 0.0); <font color=green>// score can be NULL,
 </font>        <font color=green>//           so provide 0.0 as a default value to replace NULLs
-</font>        <font color=blue>auto</font> photo = row[<font color=red>"photo"</font>].to!(<font color=blue>void</font>[]);
+</font>        <font color=blue>auto</font> photo = row[<font color=red>"photo"</font>].as!(<font color=blue>void</font>[]);
         writefln(<font color=red>"--&gt; [%d] %s, score = %.1f"</font>, id, name, score);
     }
 }
@@ -176,7 +176,7 @@ SqliteException when no transaction is started.<br><br>
 </dd>
 <dt><big>string <u>path</u>();
 </big></dt>
-<dd>Gets the database file name.<br><br>
+<dd>Gets the database file path.<br><br>
 
 </dd>
 <dt><big>int <u>changes</u>();
@@ -355,19 +355,10 @@ SqliteException when the <i>name</i> is invalid.<br><br>
 </big></dt>
 <dd>A SQLite column.<br><br>
 
-<dl><dt><big>T <u>to</u>(T, T value)();
+<dl><dt><big>T <u>as</u>(T, T value = T.init)();
 </big></dt>
 <dd>Gets the value of the column converted to type T.
     If the value is NULL, it is replaced by value.<br><br>
-
-</dd>
-<dt><big>T <u>to</u>(T)();
-</big></dt>
-<dd>Gets the value of the column converted to type T.
-<br><br>
-<b>Throws:</b><br>
-SqliteException when a NULL value is converted into a type that cannot
-        be <b>null</b>.<br><br>
 
 </dd>
 </dl>
