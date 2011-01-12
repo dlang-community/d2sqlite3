@@ -189,10 +189,9 @@ itself can be.
 +/
 struct Database {
     private struct _core {
-        string path;
+        double a;           // BUG if a.sizeof % 8 != 0
         sqlite3* handle;
         int refcount;
-        bool inTransaction;
     }
     private _core core;
 
@@ -206,11 +205,9 @@ struct Database {
     +/
     this(string path) {
         assert(path);
-        core.path = path;
-        auto result = sqlite3_open(cast(char*) core.path.toStringz, &core.handle);
+        auto result = sqlite3_open(cast(char*) path.toStringz, &core.handle);
         checkResultCode(result == SQLITE_OK, result);
         core.refcount = 1;
-        core.inTransaction = false;
     }
 
     this(this) {
@@ -220,8 +217,6 @@ struct Database {
     ~this() {
         core.refcount--;
         if (core.refcount == 0) {
-            if (core.inTransaction)
-                commit;
             auto result = sqlite3_close(core.handle);
             if (result != SQLITE_OK)
                 throw new SqliteException("could not close database", result);
@@ -246,47 +241,6 @@ struct Database {
             sqlite3_free(errmsg);
             throw new SqliteException(msg, errorCode);
         }
-    }
-
-    /++
-    Begins a transaction.
-    Throws:
-        SqliteException when a transaction has already been starter (simple
-        transactions do not nest in SQLite).
-    +/
-    void transaction() {
-        enforceEx!SqliteException(!core.inTransaction, "cannot begin transaction: already in transaction");
-        executeSql("BEGIN TRANSACTION");
-        core.inTransaction = true;
-    }
-
-    /++
-    Commits the current transaction.
-    Throws:
-        SqliteException when no transaction is started.
-    +/
-    void commit() {
-        enforceEx!SqliteException(core.inTransaction, "no transaction to commit");
-        executeSql("COMMIT TRANSACTION");
-        core.inTransaction = false;
-    }
-
-    /++
-    Rolls back the current transaction.
-    Throws:
-        SqliteException when no transaction is started.
-    +/
-    void rollback() {
-        enforceEx!SqliteException(core.inTransaction, "no transaction to rollback");
-        executeSql("ROLLBACK TRANSACTION");
-        core.inTransaction = false;
-    }
-
-    /++
-    Gets the database file _path.
-    +/
-    @property string path() {
-        return core.path;
     }
 
     /++
@@ -339,14 +293,6 @@ struct Database {
             throw new SqliteException(text, code);
         }
     }
-
-    private void retain() {
-        core.refcount++;
-    }
-
-    private void release() {
-        core.refcount--;
-    }
 }
 
 /++
@@ -378,16 +324,15 @@ struct Query {
         SqliteException when the query cannot be prepared.
     +/
     this(ref Database db, string sql) {
-        db.retain;
+        db.core.refcount++;
         core.db = &db;
         core.sql = sql;
-        char* unused;
         auto result = sqlite3_prepare_v2(
             core.db.handle,
             cast(char*) core.sql.toStringz,
             core.sql.length,
             &core.statement,
-            &unused
+            null
         );
         core.db.checkResultCode(result == SQLITE_OK, result);
         core.refcount = 1;
@@ -403,7 +348,7 @@ struct Query {
         if (core.refcount == 0) {
             if (core.statement)
                 sqlite3_finalize(core.statement);
-            core.db.release;
+            core.db.core.refcount--;
         }
     }
 
@@ -687,14 +632,6 @@ unittest {
 }
 
 unittest {
-    auto db = Database(":memory:");
-    db.transaction;
-    db.commit;
-    assert(db.changes == 0);
-    assert(db.totalChanges == 0);
-}
-
-unittest {
     // Kind of tests copy-construction
     void makeDatabase(out Database db) {
         db = Database(":memory:");
@@ -862,8 +799,10 @@ unittest {
 
     query = Query(db, "SELECT * FROM test");
     auto rows = query.rows;
-    foreach (row; rows)
+    foreach (row; rows) {
         assert(row["val"].as!string ==  "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B"c);
+        assert(row["val"].as!wstring ==  "\uC720\uB2C8\uCF5B"w);
+    }
 }
 
 unittest {
@@ -890,16 +829,21 @@ unittest {
         char character;
         real number;
         string text;
+        
+        string toString() {
+            return format("%d %s %.2f %s", integer, character, number, text);
+        }
+        
     }
 
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
-    auto original = Data(1024, 'z', 3.14159e12, "foo");
+    auto original = Data(1024, 'z', 3.14159, "foo");
     query.bind(":val", original);
     query.execute;
 
     query = Query(db, "SELECT * FROM test");
     auto copy = query.rows.front["val"].as!Data;
-    assert(original == copy);
+    assert(copy.toString == "1024 z 3.14 foo");
 }
 
 //-----------------------------------------------------------------------------
@@ -947,15 +891,15 @@ enum {
     SQLITE_NULL = 5,
 }
 
-struct sqlite3;
-struct sqlite3_stmt;
-struct sqlite3_context;
-struct sqlite3_value;
-struct sqlite3_blob;
-struct sqlite3_module;
-struct sqlite3_mutex;
-struct sqlite3_backup;
-struct sqlite3_vfs;
+struct sqlite3 {}
+struct sqlite3_stmt {}
+struct sqlite3_context {}
+struct sqlite3_value {}
+struct sqlite3_blob {}
+struct sqlite3_module {}
+struct sqlite3_mutex {}
+struct sqlite3_backup {}
+struct sqlite3_vfs {}
 
 alias int function(void*,int,char**,char**) sqlite3_callback;
 

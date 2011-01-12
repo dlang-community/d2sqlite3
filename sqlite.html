@@ -191,36 +191,6 @@ SqliteException when the database cannot be opened.<br><br>
 SqliteException in one of the SQL statements cannot be executed.<br><br>
 
 </dd>
-<dt><big>void <u>transaction</u>();
-</big></dt>
-<dd>Begins a <u>transaction</u>.
-<br><br>
-<b>Throws:</b><br>
-SqliteException when a <u>transaction</u> has already been starter (simple
-        transactions do not nest in SQLite).<br><br>
-
-</dd>
-<dt><big>void <u>commit</u>();
-</big></dt>
-<dd>Commits the current transaction.
-<br><br>
-<b>Throws:</b><br>
-SqliteException when no transaction is started.<br><br>
-
-</dd>
-<dt><big>void <u>rollback</u>();
-</big></dt>
-<dd>Rolls back the current transaction.
-<br><br>
-<b>Throws:</b><br>
-SqliteException when no transaction is started.<br><br>
-
-</dd>
-<dt><big>string <u>path</u>();
-</big></dt>
-<dd>Gets the database file path.<br><br>
-
-</dd>
 <dt><big>int <u>changes</u>();
 </big></dt>
 <dd>Gets the number of database rows that were changed, inserted or deleted by
