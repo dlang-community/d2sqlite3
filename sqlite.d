@@ -116,8 +116,10 @@ version(unittest) { import std.stdio; }
 Exception thrown then SQLite functions return error codes.
 +/
 class SqliteException : Exception {
-    this(string msg) {
+    int code;
+    this(string msg, int code = -1) {
         super(msg);
+        this.code = code;
     }
 }
 
@@ -168,7 +170,7 @@ struct Database {
         assert(path);
         core.path = path;
         auto result = sqlite3_open(cast(char*) core.path.toStringz, &core.handle);
-        enforceEx!SqliteException(result == SQLITE_OK, errorMsg);
+        checkResultCode(result == SQLITE_OK, result);
         core.refcount = 1;
         core.inTransaction = false;
     }
@@ -183,7 +185,7 @@ struct Database {
             if (core.inTransaction)
                 commit;
             auto result = sqlite3_close(core.handle);
-            enforceEx!SqliteException(result == SQLITE_OK, errorMsg);
+            checkResultCode(result == SQLITE_OK, result);
         }
     }
 
@@ -277,6 +279,18 @@ struct Database {
         return core.handle;
     }
 
+    private void checkResultCode(bool pred, int code) {
+        if (!pred) {
+            string text;
+            if (code == errorCode)
+                text = errorMsg;
+            else
+                text = format("error %d", code); // TODO: use text from http://www.sqlite.org/c3ref/c_abort.html
+            throw new SqliteException(text, code);
+                
+        }
+    }
+
     private void retain() {
         core.refcount++;
     }
@@ -331,7 +345,7 @@ struct Query {
             &core.statement,
             &unused
         );
-        enforceEx!SqliteException(result == SQLITE_OK, core.db.errorMsg);
+        core.db.checkResultCode(result == SQLITE_OK, result);
         core.refcount = 1;
         core.isClean = true;
         core.rows = RowSet(&this);
@@ -344,10 +358,8 @@ struct Query {
     ~this() {
         core.refcount--;
         if (core.refcount == 0) {
-            if (core.statement) {
-                auto result = sqlite3_finalize(core.statement);
-                enforceEx!SqliteException(result == SQLITE_OK, core.db.errorMsg);
-            }
+            if (core.statement)
+                sqlite3_finalize(core.statement);
             core.db.release;
         }
     }
@@ -368,10 +380,10 @@ struct Query {
         the value cannot be bound.
     +/
     void bind(T)(string parameter, T value) {
-        assert(core.statement);
+        enforceEx!SqliteException(core.statement, "no statement to bind to");
         int index = 0;
         index = sqlite3_bind_parameter_index(core.statement, cast(char*) parameter.toStringz);
-        enforceEx!SqliteException(index, format("parameter named '%s' cannot be bound", parameter));
+        enforceEx!SqliteException(index > 0, format("parameter named '%s' cannot be bound", parameter));
         bind(index, value);
     }
 
@@ -385,8 +397,7 @@ struct Query {
         bound.
     +/
     void bind(T)(int index, T value) {
-        assert(core.statement);
-
+        enforceEx!SqliteException(core.statement, "no statement to bind to");
         int result;
         static if (isImplicitlyConvertible!(Unqual!T, long))
             result = sqlite3_bind_int64(core.statement, index, cast(long) value);
@@ -423,7 +434,7 @@ struct Query {
         else
             static assert(isValidSqliteType!T, "cannot bind a void value");
 
-        enforceEx!SqliteException(result == SQLITE_OK, core.db.errorMsg);
+        core.db.checkResultCode(result == SQLITE_OK, result);
     }
 
     /++
@@ -433,7 +444,6 @@ struct Query {
         the query.
     +/
     @property ref RowSet rows() {
-        assert(core.statement);
         enforceEx!SqliteException(core.isClean, "rows() called but the query needs to be reset");
         if (!core.rows.isInitialized)
             core.rows.initialize;
@@ -446,14 +456,13 @@ struct Query {
         SqliteException when the query cannot be executed.
     +/
     void execute() {
-        assert(core.statement);
         enforceEx!SqliteException(core.isClean, "execute() called but the query needs to be reset");
         auto result = sqlite3_step(core.statement);
-        assert(result != SQLITE_ROW,
+        enforceEx!SqliteException(result != SQLITE_ROW,
             "call to Query.execute() on a query that return rows, "
             "use Query.rows instead"
         );
-        enforceEx!SqliteException(result == SQLITE_DONE, to!string(result)/+core.db.errorMsg+/);
+        core.db.checkResultCode(result == SQLITE_OK || result == SQLITE_DONE, result);
         core.isClean = false;
     }
 
@@ -463,9 +472,8 @@ struct Query {
         SqliteException when the querey could not be reset.
     +/
     void reset() {
-        assert(core.statement);
         auto result = sqlite3_reset(core.statement);
-        enforceEx!SqliteException(result == SQLITE_OK, core.db.errorMsg);
+        core.db.checkResultCode(result == SQLITE_OK, result);
         sqlite3_clear_bindings(core.statement);
         core.isClean = true;
         core.rows = RowSet(&this);
@@ -486,6 +494,7 @@ struct RowSet {
 
     private void initialize() {
         sqliteResult = sqlite3_step(query.core.statement);
+        query.core.db.checkResultCode(sqliteResult == SQLITE_ROW || sqliteResult == SQLITE_DONE, sqliteResult);
         isInitialized = true;
     }
 
@@ -654,7 +663,7 @@ unittest {
 }
 
 unittest {
-    // Tests copy-construction
+    // Kind of tests copy-construction
     void makeDatabase(out Database db) {
         db = Database(":memory:");
     }
@@ -669,6 +678,35 @@ unittest {
     makeDatabase(db);
     makeQuery(query, db);
     assert(readEncoding(query).startsWith("UTF"));
+}
+
+unittest {
+    // Tests empty statements
+    auto db = Database(":memory:");
+    auto query = Query(db, ";");
+    
+    try
+        query.execute;
+    catch (SqliteException e)
+        assert(e.code == SQLITE_MISUSE);
+    
+    query.reset;
+    try
+        auto rows = query.rows;
+    catch (SqliteException e)
+        assert(e.code == SQLITE_MISUSE);
+}
+
+unittest {
+    // Tests multiple statements in query string
+    auto db = Database(":memory:");
+    auto query = Query(db, "CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
+    query.execute; // Second statement should not execute, so no "table exists" error
+    query.reset;
+    try
+        query.execute; // This time, should return "table exists" error
+    catch (SqliteException e)
+        assert(e.code == SQLITE_SCHEMA);
 }
 
 unittest {
@@ -848,9 +886,67 @@ private:
 
 enum {
 	SQLITE_OK = 0,
+	SQLITE_ERROR,
+	SQLITE_INTERNAL,
+	SQLITE_PERM,
+	SQLITE_ABORT,
+	SQLITE_BUSY,
+	SQLITE_LOCKED,
+	SQLITE_NOMEM,
+	SQLITE_READONLY,
+	SQLITE_INTERRUPT,
+	SQLITE_IOERR,
+	SQLITE_CORRUPT,
+	SQLITE_NOTFOUND,
+	SQLITE_FULL,
+	SQLITE_CANTOPEN,
+	SQLITE_PROTOCOL,
+	SQLITE_EMPTY,
+	SQLITE_SCHEMA,
+	SQLITE_TOOBIG,
+	SQLITE_CONSTRAINT,
+	SQLITE_MISMATCH,
+	SQLITE_MISUSE,
+	SQLITE_NOLFS,
+	SQLITE_AUTH,
+	SQLITE_FORMAT,
+	SQLITE_RANGE,
+	SQLITE_NOTADB,
 	SQLITE_ROW = 100,
-	SQLITE_DONE = 101
+	SQLITE_DONE
 }
+/+
+#define SQLITE_OK           0   /* Successful result */
+/* beginning-of-error-codes */
+#define SQLITE_ERROR        1   /* SQL error or missing database */
+#define SQLITE_INTERNAL     2   /* Internal logic error in SQLite */
+#define SQLITE_PERM         3   /* Access permission denied */
+#define SQLITE_ABORT        4   /* Callback routine requested an abort */
+#define SQLITE_BUSY         5   /* The database file is locked */
+#define SQLITE_LOCKED       6   /* A table in the database is locked */
+#define SQLITE_NOMEM        7   /* A malloc() failed */
+#define SQLITE_READONLY     8   /* Attempt to write a readonly database */
+#define SQLITE_INTERRUPT    9   /* Operation terminated by sqlite3_interrupt()*/
+#define SQLITE_IOERR       10   /* Some kind of disk I/O error occurred */
+#define SQLITE_CORRUPT     11   /* The database disk image is malformed */
+#define SQLITE_NOTFOUND    12   /* NOT USED. Table or record not found */
+#define SQLITE_FULL        13   /* Insertion failed because database is full */
+#define SQLITE_CANTOPEN    14   /* Unable to open the database file */
+#define SQLITE_PROTOCOL    15   /* Database lock protocol error */
+#define SQLITE_EMPTY       16   /* Database is empty */
+#define SQLITE_SCHEMA      17   /* The database schema changed */
+#define SQLITE_TOOBIG      18   /* String or BLOB exceeds size limit */
+#define SQLITE_CONSTRAINT  19   /* Abort due to constraint violation */
+#define SQLITE_MISMATCH    20   /* Data type mismatch */
+#define SQLITE_MISUSE      21   /* Library used incorrectly */
+#define SQLITE_NOLFS       22   /* Uses OS features not supported on host */
+#define SQLITE_AUTH        23   /* Authorization denied */
+#define SQLITE_FORMAT      24   /* Auxiliary database format error */
+#define SQLITE_RANGE       25   /* 2nd parameter to sqlite3_bind out of range */
+#define SQLITE_NOTADB      26   /* File opened that is not a database file */
+#define SQLITE_ROW         100  /* sqlite3_step() has another row ready */
+#define SQLITE_DONE        101  /* sqlite3_step() has finished executing */
++/
 
 enum {
     SQLITE_INTEGER = 1,
