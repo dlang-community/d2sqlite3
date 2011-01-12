@@ -2,46 +2,77 @@
 /++
 Simple and easy SQLite interface.
 
-Executable must be linked to the SQLite library version 3.3.11 or later.
+This module provides a simple "object-oriented" interface to the SQLite database
+engine. The complete C API is also available.
 
-Objects in this interface (Database and Query) are
-reference-counted. When the last reference goes out of scope, the objects are
-automatically closed and finalized. The user does not have to explicitly open
-or close them.
+Objects in this interface (Database and Query) are reference-counted. When the
+last reference goes out of scope, the objects are automatically closed and
+finalized. The user does not have to explicitly open or close them.
+
+Executable using this module must be linked to the SQLite library version 3.3.11
+or later.
+
+Usage:
+$(OL
+    $(LI Create a Database object, providing the path of the database file (or an
+    empty path, or the reserved path ":memory:").)
+    $(LI Execute SQL code according to your need:
+    $(UL
+        $(LI If you don't need parameter binding, create a Query object with a
+        single SQL statement and either use Query.execute() if you don't expect
+        the query to return rows, or use Query.rows() directly in the other
+        case.)
+        $(LI If you need parameter binding, create a Query object with a single
+        SQL statement that includes binding names, and use Query.bind() as many
+        times as necessary to bind all values. Then either use Query.execute()
+        if you don't expect the query to return rows, or use Query.rows()
+        directly in the other case.)
+        $(LI If you don't need parameter bindings and if you can ignore the rows
+        that the query could return, you can use the facility function
+        Database.executeSql(). In this case, more than one statements can be
+        executed in one call, as long as they are separated by semi-colons.)
+    ))
+)
 
 Example:
 ---
-writeln("Opening a database in memory...");
+// Open a database in memory.
 Database db;
-try {
+try
+{
     db = Database(":memory:");
 }
-catch (SqliteException e) {
-    writefln("Error opening database: %s.", e.msg);
+catch (SqliteException e)
+{
+    // Error opening the database.
     return;
 }
 
-writeln("Creating a table...");
-try {
-    auto query = Query(db,
+// Create a table.
+try
+{
+    db.executeSql(
         "CREATE TABLE person (
             id INTEGER PRIMARY KEY,
             last_name TEXT NOT NULL,
             first_name TEXT,
             score REAL,
-            photo BLOB
-        )");
-    query.execute;
+            photo BLOB)"
+    );
 }
-catch (SqliteException e) {
-    writefln("Error creating the table: %s.", e.msg);
+catch (SqliteException e)
+{
+    // Error creating the table.
 }
 
-writeln("Populating the table...");
-try {
+// Populate the table.
+try
+{
     with (Query(db, "INSERT INTO person
                     (last_name, first_name, score, photo)
-                    VALUES (:last_name, :first_name, :score, :photo)")) {
+                    VALUES (:last_name, :first_name, :score, :photo)"))
+    {
+        // Explicit transaction so that either all insertions succeed or none.
         db.transaction;
         scope(failure) db.rollback;
         scope(success) db.commit;
@@ -49,11 +80,11 @@ try {
         bind(":last_name", "Smith");
         bind(":first_name", "Robert");
         bind(":score", 77.5);
-        ubyte[] photo = ...
+        ubyte[] photo = ... // store the photo as raw array of data.
         bind(":photo", photo);
         execute;
 
-        reset; // need to reset the query after execution
+        reset; // need to reset the query after execution.
         bind(":last_name", "Doe");
         bind(":first_name", "John");
         bind(":score", null);
@@ -61,31 +92,33 @@ try {
         execute;
     }
 }
-catch (SqliteException e) {
-    writefln("Error: %s.", e.msg);
+catch (SqliteException e)
+{
+    // Error executing the query.
 }
-writefln("--> %d persons inserted.", db.totalChanges);
+assert(db.totalChanges == 2); // Two 'persons' were inserted.
 
-writeln("Reading the table...");
-try {
-    // Count the persons in the table
+// Reading the table
+try
+{
+    // Count the persons in the table (there should be two of them).
     auto query = Query(db, "SELECT COUNT(*) FROM person");
-    writefln("--> Number of persons: %d", query.rows.front[0].to!int);
+    assert(query.rows.front[0].to!int == 2);
 
-    // Fetch the data from the table
+    // Fetch the data from the table.
     query = Query(db, "SELECT * FROM person");
-    foreach (row; query.rows) {
+    foreach (row; query.rows)
+    {
         auto id = row["id"].as!int;
-        auto name = format("%s, %s", row["last_name"].as!string,
-                                     row["first_name"].as!string);
-        auto score = row["score"].as!(real, 0.0); // score can be NULL,
-        //           so provide 0.0 as a default value to replace NULLs
+        auto name = format("%s, %s", row["last_name"].as!string, row["first_name"].as!string);
+        auto score = row["score"].as!(real, 0.0); // score can be NULL, so provide 0.0 as a default value to replace NULLs.
         auto photo = row["photo"].as!(void[]);
-        writefln("--> [%d] %s, score = %.1f", id, name, score);
+        ... // Use the data as you wish.
     }
 }
-catch (SqliteException e) {
-    writefln("Error reading the database: %s.", e.msg);
+catch (SqliteException e)
+{
+    // Error reading the database.
 }
 ---
 
@@ -108,7 +141,7 @@ import std.variant;
 
 pragma(lib, "sqlite3");
 
-debug=SQLITE;
+//debug=SQLITE;
 debug(SQLITE) import std.stdio;
 version(unittest) { import std.stdio; }
 
@@ -118,7 +151,12 @@ Exception thrown then SQLite functions return error codes.
 class SqliteException : Exception {
     int code;
     this(string msg, int code = -1) {
-        super(msg);
+        string text;    
+        if (code > 0)
+            text = format("error %d: %s", code, msg);
+        else
+            text = msg;
+        super(text);
         this.code = code;
     }
 }
@@ -185,12 +223,29 @@ struct Database {
             if (core.inTransaction)
                 commit;
             auto result = sqlite3_close(core.handle);
-            checkResultCode(result == SQLITE_OK, result);
+            if (result != SQLITE_OK)
+                throw new SqliteException("could not close database", result);
         }
     }
 
     void opAssign(Database rhs) {
         swap(core, rhs.core);
+    }
+
+    /++
+    Execute one or many SQL statements. Rows returned by any of these statements
+    are ignored.
+    Throws:
+        SqliteException in one of the SQL statements cannot be executed.
+    +/
+    void executeSql(string sql) {
+        char* errmsg;
+        sqlite3_exec(core.handle, cast(char*) sql.toStringz, null, null, &errmsg);
+        if (errmsg !is null) {
+            auto msg = to!string(errmsg);
+            sqlite3_free(errmsg);
+            throw new SqliteException(msg, errorCode);
+        }
     }
 
     /++
@@ -201,8 +256,7 @@ struct Database {
     +/
     void transaction() {
         enforceEx!SqliteException(!core.inTransaction, "cannot begin transaction: already in transaction");
-        auto q = Query(this, "BEGIN TRANSACTION");
-        q.execute;
+        executeSql("BEGIN TRANSACTION");
         core.inTransaction = true;
     }
 
@@ -213,8 +267,7 @@ struct Database {
     +/
     void commit() {
         enforceEx!SqliteException(core.inTransaction, "no transaction to commit");
-        auto q = Query(this, "COMMIT TRANSACTION");
-        q.execute;
+        executeSql("COMMIT TRANSACTION");
         core.inTransaction = false;
     }
 
@@ -225,8 +278,7 @@ struct Database {
     +/
     void rollback() {
         enforceEx!SqliteException(core.inTransaction, "no transaction to rollback");
-        auto q = Query(this, "ROLLBACK TRANSACTION");
-        q.execute;
+        executeSql("ROLLBACK TRANSACTION");
         core.inTransaction = false;
     }
 
@@ -268,7 +320,7 @@ struct Database {
     +/
     @property string errorMsg() {
         assert(core.handle);
-        return format("error %d '%s'", errorCode, to!string(sqlite3_errmsg(core.handle)));
+        return to!string(sqlite3_errmsg(core.handle));
     }
 
     /++
@@ -281,13 +333,10 @@ struct Database {
 
     private void checkResultCode(bool pred, int code) {
         if (!pred) {
-            string text;
+            string text = "";
             if (code == errorCode)
                 text = errorMsg;
-            else
-                text = format("error %d", code); // TODO: use text from http://www.sqlite.org/c3ref/c_abort.html
             throw new SqliteException(text, code);
-                
         }
     }
 
@@ -303,14 +352,10 @@ struct Database {
 /++
 An interface to SQLite query execution.
 
-Use execute to execute queries that do not expect rows as their result (CREATE
-TABLE, INSERT, UPDATE...). Use rows without a prior call to execute for
-queries that expect rows as their result (SELECT).
-
-Once a Query object is created, the query can be used directly. The
-query is automatically closed when the last reference to the object goes out
-of scope. If database error occur while the query is beeing
-closed in the destructor, a SqliteException is thrown.
+Once a Query object is created, the query can be used directly. The object is
+automatically disposed of when the last reference to the object goes out of
+scope. If database error occur while the query is beeing closed in the
+destructor, a SqliteException is thrown.
 
 Query is not thread-safe.
 +/
@@ -320,7 +365,6 @@ struct Query {
         string sql;
         sqlite3_stmt* statement;
         int refcount;
-        bool isClean = true;
         RowSet rows = void;
     }
     private _core core;
@@ -347,7 +391,6 @@ struct Query {
         );
         core.db.checkResultCode(result == SQLITE_OK, result);
         core.refcount = 1;
-        core.isClean = true;
         core.rows = RowSet(&this);
     }
 
@@ -389,6 +432,7 @@ struct Query {
 
     /++
     Binds a value to an indexed parameter in the query.
+    Params:
         index = the index of the parameter to bind to in the SQL prepared
         statement.
         value = the bound value.
@@ -439,43 +483,36 @@ struct Query {
 
     /++
     Gets the results of a query that returns _rows.
-    Throws:
-        SqliteException when rows() is called twice whitout a prior reset of
-        the query.
+    
+    There is no need to call execute() before a call to rows().
     +/
     @property ref RowSet rows() {
-        enforceEx!SqliteException(core.isClean, "rows() called but the query needs to be reset");
         if (!core.rows.isInitialized)
             core.rows.initialize;
         return core.rows;
     }
-
+    
     /++
-    Execute a query that does not expect rows as its result.
-    Throws:
-        SqliteException when the query cannot be executed.
+    Executes the query.
+    
+    Use rows() directly if the query is expected to return rows. 
     +/
     void execute() {
-        enforceEx!SqliteException(core.isClean, "execute() called but the query needs to be reset");
-        auto result = sqlite3_step(core.statement);
-        enforceEx!SqliteException(result != SQLITE_ROW,
-            "call to Query.execute() on a query that return rows, "
-            "use Query.rows instead"
-        );
-        core.db.checkResultCode(result == SQLITE_OK || result == SQLITE_DONE, result);
-        core.isClean = false;
+        rows();
     }
 
     /++
-    Resets a query and clears all bindings.
+    Resets a query, optionally clearing all bindings.
+    Params:
+        clearBindings = sets whether the bindings should also be cleared.
     Throws:
-        SqliteException when the querey could not be reset.
+        SqliteException when the query could not be reset.
     +/
-    void reset() {
+    void reset(bool clearBindings = true) {
         auto result = sqlite3_reset(core.statement);
         core.db.checkResultCode(result == SQLITE_OK, result);
-        sqlite3_clear_bindings(core.statement);
-        core.isClean = true;
+        if (clearBindings)
+            sqlite3_clear_bindings(core.statement);
         core.rows = RowSet(&this);
     }
 }
@@ -641,11 +678,6 @@ struct Column {
             return value;
     }
 }
-unittest {
-    string text = "TEXT";
-    auto col = Column(0, "", Variant(text));
-    assert(col.as!string == "TEXT");
-}
 
 //-----------------------------------------------------------------------------
 // TESTS
@@ -683,16 +715,16 @@ unittest {
 unittest {
     // Tests empty statements
     auto db = Database(":memory:");
-    auto query = Query(db, ";");
     
     try
-        query.execute;
+        db.executeSql(";");
     catch (SqliteException e)
         assert(e.code == SQLITE_MISUSE);
     
-    query.reset;
-    try
+    try {
+        auto query = Query(db, ";");
         auto rows = query.rows;
+    }
     catch (SqliteException e)
         assert(e.code == SQLITE_MISUSE);
 }
@@ -700,22 +732,20 @@ unittest {
 unittest {
     // Tests multiple statements in query string
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
-    query.execute; // Second statement should not execute, so no "table exists" error
-    query.reset;
+    int result;
     try
-        query.execute; // This time, should return "table exists" error
+        db.executeSql("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
     catch (SqliteException e)
-        assert(e.code == SQLITE_SCHEMA);
+        assert(e.code == SQLITE_ERROR);
 }
 
 unittest {
     // Tests Query.rows()
     static assert(isInputRange!RowSet);
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val INTEGER)");
-    query.execute;
-    query = Query(db, "INSERT INTO test (val) VALUES (:val)");
+    db.executeSql("CREATE TABLE test (val INTEGER)");
+
+    auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", 1024);
     query.execute;
     query = Query(db, "SELECT * FROM test");
@@ -728,12 +758,11 @@ unittest {
 unittest {
     // Tests Database.changes() and Database.totalChanges()
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val INTEGER)");
-    query.execute;
+    db.executeSql("CREATE TABLE test (val INTEGER)");
     assert(db.changes == 0);
     assert(db.totalChanges == 0);
 
-    query = Query(db, "INSERT INTO test (val) VALUES (:val)");
+    auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", 1024);
     query.execute;
     assert(db.changes == 1);
@@ -743,10 +772,9 @@ unittest {
 unittest {
     // Tests NULL values
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val INTEGER)");
-    query.execute;
+    db.executeSql("CREATE TABLE test (val INTEGER)");
 
-    query = Query(db, "INSERT INTO test (val) VALUES (:val)");
+    auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", null);
     query.execute;
 
@@ -757,10 +785,9 @@ unittest {
 unittest {
     // Tests INTEGER values
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val INTEGER)");
-    query.execute;
+    db.executeSql("CREATE TABLE test (val INTEGER)");
 
-    query = Query(db, "INSERT INTO test (val) VALUES (:val)");
+    auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     int i = 1;
     query.bind(":val", &i);
     query.execute;
@@ -800,10 +827,9 @@ unittest {
 unittest {
     // Tests FLOAT values
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val FLOAT)");
-    query.execute;
+    db.executeSql("CREATE TABLE test (val FLOAT)");
 
-    query = Query(db, "INSERT INTO test (val) VALUES (:val)");
+    auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", 1.0F);
     query.execute;
     query.reset;
@@ -822,10 +848,9 @@ unittest {
 unittest {
     // Tests TEXT values
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val TEXT)");
-    query.execute;
+    db.executeSql("CREATE TABLE test (val TEXT)");
 
-    query = Query(db, "INSERT INTO test (val) VALUES (:val)");
+    auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B"c);
     query.execute;
     query.reset;
@@ -844,10 +869,9 @@ unittest {
 unittest {
     // Tests BLOB values with arrays
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val BLOB)");
-    query.execute;
+    db.executeSql("CREATE TABLE test (val BLOB)");
 
-    query = Query(db, "INSERT INTO test (val) VALUES (:val)");
+    auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     int[] array = [1, 2, 3, 4];
     query.bind(":val", array);
     query.execute;
@@ -859,8 +883,7 @@ unittest {
 unittest {
     // Tests BLOB values with structs
     auto db = Database(":memory:");
-    auto query = Query(db, "CREATE TABLE test (val BLOB)");
-    query.execute;
+    db.executeSql("CREATE TABLE test (val BLOB)");
 
     struct Data {
         int integer;
@@ -869,7 +892,7 @@ unittest {
         string text;
     }
 
-    query = Query(db, "INSERT INTO test (val) VALUES (:val)");
+    auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     auto original = Data(1024, 'z', 3.14159e12, "foo");
     query.bind(":val", original);
     query.execute;
@@ -915,38 +938,6 @@ enum {
 	SQLITE_ROW = 100,
 	SQLITE_DONE
 }
-/+
-#define SQLITE_OK           0   /* Successful result */
-/* beginning-of-error-codes */
-#define SQLITE_ERROR        1   /* SQL error or missing database */
-#define SQLITE_INTERNAL     2   /* Internal logic error in SQLite */
-#define SQLITE_PERM         3   /* Access permission denied */
-#define SQLITE_ABORT        4   /* Callback routine requested an abort */
-#define SQLITE_BUSY         5   /* The database file is locked */
-#define SQLITE_LOCKED       6   /* A table in the database is locked */
-#define SQLITE_NOMEM        7   /* A malloc() failed */
-#define SQLITE_READONLY     8   /* Attempt to write a readonly database */
-#define SQLITE_INTERRUPT    9   /* Operation terminated by sqlite3_interrupt()*/
-#define SQLITE_IOERR       10   /* Some kind of disk I/O error occurred */
-#define SQLITE_CORRUPT     11   /* The database disk image is malformed */
-#define SQLITE_NOTFOUND    12   /* NOT USED. Table or record not found */
-#define SQLITE_FULL        13   /* Insertion failed because database is full */
-#define SQLITE_CANTOPEN    14   /* Unable to open the database file */
-#define SQLITE_PROTOCOL    15   /* Database lock protocol error */
-#define SQLITE_EMPTY       16   /* Database is empty */
-#define SQLITE_SCHEMA      17   /* The database schema changed */
-#define SQLITE_TOOBIG      18   /* String or BLOB exceeds size limit */
-#define SQLITE_CONSTRAINT  19   /* Abort due to constraint violation */
-#define SQLITE_MISMATCH    20   /* Data type mismatch */
-#define SQLITE_MISUSE      21   /* Library used incorrectly */
-#define SQLITE_NOLFS       22   /* Uses OS features not supported on host */
-#define SQLITE_AUTH        23   /* Authorization denied */
-#define SQLITE_FORMAT      24   /* Auxiliary database format error */
-#define SQLITE_RANGE       25   /* 2nd parameter to sqlite3_bind out of range */
-#define SQLITE_NOTADB      26   /* File opened that is not a database file */
-#define SQLITE_ROW         100  /* sqlite3_step() has another row ready */
-#define SQLITE_DONE        101  /* sqlite3_step() has finished executing */
-+/
 
 enum {
     SQLITE_INTEGER = 1,
@@ -962,10 +953,11 @@ struct sqlite3_context;
 struct sqlite3_value;
 struct sqlite3_blob;
 struct sqlite3_module;
-struct sqlite3_callback;
 struct sqlite3_mutex;
 struct sqlite3_backup;
 struct sqlite3_vfs;
+
+alias int function(void*,int,char**,char**) sqlite3_callback;
 
 extern(C):
 void* sqlite3_aggregate_context(sqlite3_context*,int);
