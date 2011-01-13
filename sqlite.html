@@ -305,7 +305,12 @@ SqliteException in one of the SQL statements cannot be executed.<br><br>
 </big></dt>
 <dd>An interface to SQLite query execution.<br><br>
 
-<dl><dt><big>alias <u>params</u>;
+<dl><dt><big>sqlite3_stmt* <u>statement</u>();
+</big></dt>
+<dd>Gets the SQLite internal handle of the query <u>statement</u>.<br><br>
+
+</dd>
+<dt><big>alias <u>params</u>;
 </big></dt>
 <dd>The bindable parameters of the query.<br><br>
 
