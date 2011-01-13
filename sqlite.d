@@ -1,36 +1,38 @@
 // Written in the D programming language
 /++
-Simple and easy SQLite interface.
+Simple SQLite interface.
 
-This module provides a simple "object-oriented" interface to the SQLite database
-engine. The complete C API is also available.
+This module provides a simple "object-oriented" interface to the SQLite
+database engine. The complete C API is also available.
 
-Objects in this interface (Database and Query) are reference-counted. When the
-last reference goes out of scope, the objects are automatically closed and
-finalized. The user does not have to explicitly open or close them.
+Objects in this interface (Database and Query) automatically create the SQLite
+objects they need. They are reference-counted, so that when their last
+reference goes out of scope, the underlying SQLite objects are automatically
+closed and finalized. They are not thread-safe, while the SQLite database
+engine itself can be.
 
-Executable using this module must be linked to the SQLite library version 3.3.11
-or later.
+Executables using this module must be linked to the SQLite library version
+3.3.11 or later.
 
 Usage:
 $(OL
-    $(LI Create a Database object, providing the path of the database file (or an
-    empty path, or the reserved path ":memory:").)
+    $(LI Create a Database object, providing the path of the database file (or
+    an empty path, or the reserved path ":memory:").)
     $(LI Execute SQL code according to your need:
     $(UL
         $(LI If you don't need parameter binding, create a Query object with a
-        single SQL statement and either use Query.execute() if you don't expect
+        single SQL statement and either use Query.run() if you don't expect
         the query to return rows, or use Query.rows() directly in the other
         case.)
-        $(LI If you need parameter binding, create a Query object with a single
-        SQL statement that includes binding names, and use Query.bind() as many
-        times as necessary to bind all values. Then either use Query.execute()
-        if you don't expect the query to return rows, or use Query.rows()
-        directly in the other case.)
-        $(LI If you don't need parameter bindings and if you can ignore the rows
-        that the query could return, you can use the facility function
-        Database.executeSql(). In this case, more than one statements can be
-        executed in one call, as long as they are separated by semi-colons.)
+        $(LI If you need parameter binding, create a Query object with a
+        single SQL statement that includes binding names, and use Query.bind()
+        as many times as necessary to bind all values. Then either use
+        Query.run() if you don't expect the query to return rows, or use
+        Query.rows() directly in the other case.)
+        $(LI If you don't need parameter bindings and if you can ignore the
+        rows that the query could return, you can use the facility function
+        Database.execute(). In this case, more than one statements can be run
+        in one call, as long as they are separated by semi-colons.)
     ))
 )
 
@@ -51,7 +53,7 @@ catch (SqliteException e)
 // Create a table.
 try
 {
-    db.executeSql(
+    db.execute(
         "CREATE TABLE person (
             id INTEGER PRIMARY KEY,
             last_name TEXT NOT NULL,
@@ -73,23 +75,23 @@ try
                     VALUES (:last_name, :first_name, :score, :photo)"))
     {
         // Explicit transaction so that either all insertions succeed or none.
-        db.transaction;
-        scope(failure) db.rollback;
-        scope(success) db.commit;
+        db.execute("BEGIN TRANSACTION");
+        scope(failure) db.execute("ROLLBACK TRANSACTION");
+        scope(success) db.execute("COMMIT TRANSACTION");
 
-        bind(":last_name", "Smith");
-        bind(":first_name", "Robert");
-        bind(":score", 77.5);
+        bind(":last_name", "Smith",
+             ":first_name", "Robert",
+             ":score", 77.5);
         ubyte[] photo = ... // store the photo as raw array of data.
         bind(":photo", photo);
-        execute;
+        run;
 
         reset; // need to reset the query after execution.
-        bind(":last_name", "Doe");
-        bind(":first_name", "John");
-        bind(":score", null);
-        bind(":photo", null);
-        execute;
+        bind(":last_name", "Doe",
+             ":first_name", "John",
+             ":score", null,
+             ":photo", null);
+        run;
     }
 }
 catch (SqliteException e)
@@ -111,9 +113,10 @@ try
     {
         auto id = row["id"].as!int;
         auto name = format("%s, %s", row["last_name"].as!string, row["first_name"].as!string);
-        auto score = row["score"].as!(real, 0.0); // score can be NULL, so provide 0.0 as a default value to replace NULLs.
+        // the score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs.
+        auto score = row["score"].as!(real, 0.0);
         auto photo = row["photo"].as!(void[]);
-        ... // Use the data as you wish.
+        ... // Use the data.
     }
 }
 catch (SqliteException e)
@@ -124,7 +127,7 @@ catch (SqliteException e)
 
 Copyright: Copyright Nicolas Sicard, 2011.
 
-License: $(LINK2 http://boost.org/LICENSE_1_0.txt, Boost License 1.0).
+License: no license yet.
 
 Author: Nicolas Sicard.
 +/
@@ -178,14 +181,6 @@ struct Sqlite {
 
 /++
 An interface to a SQLite database connection.
-
-Once a Database object is created, the database is open and can be used
-directly. The database is automatically closed when the last reference to the
-object goes out of scope. If database error occur while the database is beeing
-closed in the destructor, a SqliteException is thrown.
-
-The Database object is not thread-safe, while the SQLite database engine
-itself can be.
 +/
 struct Database {
     private struct _core {
@@ -233,7 +228,7 @@ struct Database {
     Throws:
         SqliteException in one of the SQL statements cannot be executed.
     +/
-    void executeSql(string sql) {
+    void execute(string sql) {
         char* errmsg;
         sqlite3_exec(core.handle, cast(char*) sql.toStringz, null, null, &errmsg);
         if (errmsg !is null) {
@@ -297,13 +292,6 @@ struct Database {
 
 /++
 An interface to SQLite query execution.
-
-Once a Query object is created, the query can be used directly. The object is
-automatically disposed of when the last reference to the object goes out of
-scope. If database error occur while the query is beeing closed in the
-destructor, a SqliteException is thrown.
-
-Query is not thread-safe.
 +/
 struct Query {
     private struct _core {
@@ -357,42 +345,42 @@ struct Query {
     }
 
     /++
-    Binds a value to a named parameter in the query.
+    Binds values to named parameters in the query.
     Params:
-        parameter = the name of the parameter to bind to in the SQL prepared
-        statement, including the symbol preceeding the actual name, e.g.
-        ":id".
-        value = the bound value.
+        args = a tuple of the parameters and bound values. Even positions in
+        the tuple: the names or the indices of the parameters to _bind to in
+        the SQL prepared statement (the name must include the symbol
+        preceeding the actual name, e.g. ":id"). Odd positions in the tuple:
+        the bound values.
     Throws:
         SqliteException when parameter refers to an invalid binding or when
         the value cannot be bound.
     +/
-    void bind(T)(string parameter, T value) {
-        enforceEx!SqliteException(core.statement, "no statement to bind to");
-        int index = 0;
-        index = sqlite3_bind_parameter_index(core.statement, cast(char*) parameter.toStringz);
-        enforceEx!SqliteException(index > 0, format("parameter named '%s' cannot be bound", parameter));
-        bind(index, value);
-    }
+    void bind(T...)(T args) {
+        static assert(args.length >=2 && args.length % 2 == 0, "unexpected number of parameters");
 
-    /++
-    Binds a value to an indexed parameter in the query.
-    Params:
-        index = the index of the parameter to bind to in the SQL prepared
-        statement.
-        value = the bound value.
-    Throws:
-        SqliteException when index is invalid or when the value cannot be
-        bound.
-    +/
-    void bind(T)(int index, T value) {
-        enforceEx!SqliteException(core.statement, "no statement to bind to");
+        alias args[0] key;
+        alias typeof(key) K;
+        alias args[1] value;
+        alias typeof(args[1]) V;
+
+        static assert(isSomeString!K || isImplicitlyConvertible!(K, int), "unexpected type for column reference: " ~ K.stringof);
+        
+        assert(core.statement);
+        
+        static if (isSomeString!K) {
+            // If key is a string, find the correspondig index
+            int index = sqlite3_bind_parameter_index(core.statement, cast(char*) key.toStringz);
+            enforceEx!SqliteException(index > 0, format("parameter named '%s' cannot be bound", key));            
+        } else
+            int index = key;
+
         int result;
-        static if (isImplicitlyConvertible!(Unqual!T, long))
+        static if (isImplicitlyConvertible!(Unqual!V, long))
             result = sqlite3_bind_int64(core.statement, index, cast(long) value);
-        else static if (isImplicitlyConvertible!(Unqual!T, real))
+        else static if (isImplicitlyConvertible!(Unqual!V, real))
             result = sqlite3_bind_double(core.statement, index, value);
-        else static if (isSomeString!T) {
+        else static if (isSomeString!V) {
             if (value is null)
                 result = sqlite3_bind_null(core.statement, index);
             else {
@@ -400,7 +388,7 @@ struct Query {
                 result = sqlite3_bind_text(core.statement, index, cast(char*) utf8.toStringz, utf8.length, null);
             }
         }
-        else static if (isPointer!T && !is(T == void*)) {
+        else static if (isPointer!V && !is(V == void*)) {
             if (value is null)
                 result = sqlite3_bind_null(core.statement, index);
             else {
@@ -408,28 +396,31 @@ struct Query {
                 return;
             }
         }
-        else static if (is(T == void*))
+        else static if (is(V == void*))
             result = sqlite3_bind_null(core.statement, index);
-        else static if (isArray!T) {
+        else static if (isArray!V) {
             void[] buffer = cast(void[]) value;
             result = sqlite3_bind_blob(core.statement, index, cast(void*) buffer.ptr, buffer.length, null);
         }
-        else static if (!is(T == void)) {
+        else static if (!is(V == void)) {
             void[] buffer;
-            buffer.length = T.sizeof;
+            buffer.length = V.sizeof;
             memcpy(buffer.ptr, &value, buffer.length);
             result = sqlite3_bind_blob( core.statement, index, cast(void*) buffer.ptr, buffer.length, null);
         }
         else
-            static assert(isValidSqliteType!T, "cannot bind a void value");
+            static assert(false, "cannot bind a value of type " ~ V.stringof);
 
         core.db.checkResultCode(result == SQLITE_OK, result);
+        
+        static if (args.length >= 4)
+            bind(args[2 .. $]);
     }
 
     /++
     Gets the results of a query that returns _rows.
     
-    There is no need to call execute() before a call to rows().
+    There is no need to call run() before a call to rows().
     +/
     @property ref RowSet rows() {
         if (!core.rows.isInitialized)
@@ -442,7 +433,7 @@ struct Query {
     
     Use rows() directly if the query is expected to return rows. 
     +/
-    void execute() {
+    void run() {
         rows();
     }
 
@@ -484,6 +475,7 @@ struct RowSet {
     Tests whether no more rows are available.
     +/
     @property bool empty() {
+        assert(query.core.statement);
         return sqliteResult == SQLITE_DONE;
     }
 
@@ -491,6 +483,7 @@ struct RowSet {
     Gets the current row.
     +/
     @property Row front() {
+        assert(query.core.statement);
         Row row;
         auto colcount = sqlite3_column_count(query.core.statement);
         row.columns.reserve(colcount);
@@ -532,6 +525,7 @@ struct RowSet {
     Jumps to the next row.
     +/
     void popFront() {
+        assert(query.core.statement);
         sqliteResult = sqlite3_step(query.core.statement);
     }
 }
@@ -654,7 +648,7 @@ unittest {
     auto db = Database(":memory:");
     
     try
-        db.executeSql(";");
+        db.execute(";");
     catch (SqliteException e)
         assert(e.code == SQLITE_MISUSE);
     
@@ -671,7 +665,7 @@ unittest {
     auto db = Database(":memory:");
     int result;
     try
-        db.executeSql("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
+        db.execute("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
     catch (SqliteException e)
         assert(e.code == SQLITE_ERROR);
 }
@@ -680,11 +674,11 @@ unittest {
     // Tests Query.rows()
     static assert(isInputRange!RowSet);
     auto db = Database(":memory:");
-    db.executeSql("CREATE TABLE test (val INTEGER)");
+    db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", 1024);
-    query.execute;
+    query.run;
     query = Query(db, "SELECT * FROM test");
     assert(!query.rows.empty);
     assert(query.rows.front["val"].as!int == 1024);
@@ -695,13 +689,13 @@ unittest {
 unittest {
     // Tests Database.changes() and Database.totalChanges()
     auto db = Database(":memory:");
-    db.executeSql("CREATE TABLE test (val INTEGER)");
+    db.execute("CREATE TABLE test (val INTEGER)");
     assert(db.changes == 0);
     assert(db.totalChanges == 0);
 
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", 1024);
-    query.execute;
+    query.run;
     assert(db.changes == 1);
     assert(db.totalChanges == 1);
 }
@@ -709,11 +703,11 @@ unittest {
 unittest {
     // Tests NULL values
     auto db = Database(":memory:");
-    db.executeSql("CREATE TABLE test (val INTEGER)");
+    db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", null);
-    query.execute;
+    query.run;
 
     query = Query(db, "SELECT * FROM test");
     assert(query.rows.front["val"].as!(int, -1024) == -1024);
@@ -722,84 +716,81 @@ unittest {
 unittest {
     // Tests INTEGER values
     auto db = Database(":memory:");
-    db.executeSql("CREATE TABLE test (val INTEGER)");
+    db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     int i = 1;
     query.bind(":val", &i);
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", 1L);
-    query.execute;
+    query.run;
     assert(db.changes == 1);
     assert(db.totalChanges == 2);
     query.reset;
     query.bind(":val", 1U);
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", 1UL);
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", true);
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", '\&copy;');
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", '\x72');
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", '\u1032');
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", '\U0000FF32');
-    query.execute;
+    query.run;
 
     query = Query(db, "SELECT * FROM test");
-    auto rows = query.rows;
-    foreach (row; rows)
+    foreach (row; query.rows)
         assert(row["val"].as!long > 0);
 }
 
 unittest {
     // Tests FLOAT values
     auto db = Database(":memory:");
-    db.executeSql("CREATE TABLE test (val FLOAT)");
+    db.execute("CREATE TABLE test (val FLOAT)");
 
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", 1.0F);
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", 1.0);
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", 1.0L);
-    query.execute;
+    query.run;
 
     query = Query(db, "SELECT * FROM test");
-    auto rows = query.rows;
-    foreach (row; rows)
+    foreach (row; query.rows)
         assert(row["val"].as!real > 0);
 }
 
 unittest {
     // Tests TEXT values
     auto db = Database(":memory:");
-    db.executeSql("CREATE TABLE test (val TEXT)");
+    db.execute("CREATE TABLE test (val TEXT)");
 
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B"c);
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", "\uC720\uB2C8\uCF5B"w);
-    query.execute;
+    query.run;
     query.reset;
     query.bind(":val", "\uC720\uB2C8\uCF5B"d);
-    query.execute;
+    query.run;
 
     query = Query(db, "SELECT * FROM test");
-    auto rows = query.rows;
-    foreach (row; rows) {
+    foreach (row; query.rows) {
         assert(row["val"].as!string ==  "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B"c);
         assert(row["val"].as!wstring ==  "\uC720\uB2C8\uCF5B"w);
     }
@@ -808,12 +799,12 @@ unittest {
 unittest {
     // Tests BLOB values with arrays
     auto db = Database(":memory:");
-    db.executeSql("CREATE TABLE test (val BLOB)");
+    db.execute("CREATE TABLE test (val BLOB)");
 
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     int[] array = [1, 2, 3, 4];
     query.bind(":val", array);
-    query.execute;
+    query.run;
 
     query = Query(db, "SELECT * FROM test");
     assert(query.rows.front["val"].as!(int[]) == [1, 2, 3, 4]);
@@ -822,7 +813,7 @@ unittest {
 unittest {
     // Tests BLOB values with structs
     auto db = Database(":memory:");
-    db.executeSql("CREATE TABLE test (val BLOB)");
+    db.execute("CREATE TABLE test (val BLOB)");
 
     struct Data {
         int integer;
@@ -839,11 +830,30 @@ unittest {
     auto query = Query(db, "INSERT INTO test (val) VALUES (:val)");
     auto original = Data(1024, 'z', 3.14159, "foo");
     query.bind(":val", original);
-    query.execute;
+    query.run;
 
     query = Query(db, "SELECT * FROM test");
     auto copy = query.rows.front["val"].as!Data;
     assert(copy.toString == "1024 z 3.14 foo");
+}
+
+unittest {
+    // Tests multiple bindings
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
+    auto query = Query(db, "INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
+    query.bind(":t", "TEXT", ":i", 1024, ":f", 3.14);
+    query.run;
+    query.reset;
+    query.bind(3, "TEXT", 1, 1024, 2, 3.14);
+    query.run;
+    
+    query = Query(db, "SELECT * FROM test");
+    foreach (row; query.rows) {
+        assert(row["i"].as!int == 1024);
+        assert(row["f"].as!double == 3.14);
+        assert(row["t"].as!string == "TEXT");
+    }
 }
 
 //-----------------------------------------------------------------------------
