@@ -100,10 +100,10 @@ try
                     (last_name, first_name, score, photo)
                     VALUES (:last_name, :first_name, :score, :photo)"))
     {
-        params[":last_name"] = "Amy";
-        params[":first_name"] = "Knight";
-        params[3] = 89.1;
-        params[":photo"] = ...;
+        params.bind(":last_name", "Amy");
+        params.bind(":first_name", "Knight");
+        params.bind(3, 89.1);
+        params.bind(":photo", ...);
         run;
     }
 }
@@ -174,8 +174,8 @@ import std.variant;
 
 pragma(lib, "sqlite3");
 
-//debug=SQLITE;
-//debug(SQLITE) import std.stdio;
+debug=SQLITE;
+debug(SQLITE) import std.stdio;
 //version(unittest) { import std.stdio; }
 
 /++
@@ -216,9 +216,25 @@ An interface to a SQLite database connection.
 struct Database {
     private struct _core {
         sqlite3* handle;
-        int refcount;
+        int refcount = 1;
     }
     private _core core;
+    
+    private void _retain() {
+        core.refcount++;
+        debug(SQLITE) writefln("[+] Database @%x has refcount %d.", core.handle, core.refcount);        
+    }
+    
+    private void _release() {
+        core.refcount--;
+        debug(SQLITE) writefln("[-] Database @%x has refcount %d.", core.handle, core.refcount);
+        assert(core.refcount >= 0);
+        if (core.refcount == 0) {
+            auto result = sqlite3_close(core.handle);
+            enforce(result == SQLITE_OK, new SqliteException(result));
+            debug(SQLITE) writefln("[x] Database @%x closed.", core.handle);
+        }
+    }
 
     /++
     Opens a database with the name passed in the parameter.
@@ -232,19 +248,15 @@ struct Database {
         assert(path);
         auto result = sqlite3_open(cast(char*) path.toStringz, &core.handle);
         enforce(result == SQLITE_OK, new SqliteException(result));
-        core.refcount = 1;
+        debug(SQLITE) writefln("[=] Database @%x has refcount %d.", core.handle, core.refcount);
     }
 
     this(this) {
-        core.refcount++;
+        _retain;
     }
 
     ~this() {
-        core.refcount--;
-        if (core.refcount == 0) {
-            auto result = sqlite3_close(core.handle);
-            enforce(result == SQLITE_OK, new SqliteException(result));
-        }
+        _release;
     }
 
     void opAssign(Database rhs) {
@@ -385,74 +397,86 @@ struct Query {
         string sql;
         sqlite3_stmt* statement;
         int refcount = 1;
+        Parameters params = void;
+        RowSet rows = void;
     }
-    private _core core = void;
-    private Parameters _params = void;
-    private RowSet _rows = void;
+    private _core core;
+    
+    private void _retain() {
+        core.refcount++;
+        debug(SQLITE) writefln("[+] Query '%s' has refcount '%d'.", core.sql, core.refcount);       
+    }
+    
+    private void _release() {
+        core.refcount--;
+        debug(SQLITE) writefln("[-] Query '%s' has refcount '%d'.", core.sql, core.refcount);
+        assert(core.refcount >= 0);
+        if (core.refcount == 0) {
+            if (core.statement)
+                sqlite3_finalize(core.statement);
+            if (core.db) {
+                core.db._release;
+                core.db = null;                
+            }
+            debug(SQLITE) writefln("[x] Query '%s' closed.", core.sql);
+        }
+    }
 
     private this(Database* db, string sql) {
         assert(db);
         assert(db.core.handle);
-        db.core.refcount++;
+        db._retain;
         core.db = db;
         core.sql = sql;
-        core.refcount = 1;
+        debug(SQLITE) writefln("[=] Query '%s' has refcount '%d'.", core.sql, core.refcount);
         auto result = sqlite3_prepare_v2(
-            core.db.handle,
+            db.core.handle,
             cast(char*) core.sql.toStringz,
             core.sql.length,
             &core.statement,
             null
         );
         enforce(result == SQLITE_OK, new SqliteException(result));
-        _params = Parameters(core.statement);
+        core.params = Parameters(core.statement);
     }
 
     this(this) {
-        core.refcount++;
+        _retain;
     }
 
     ~this() {
-        core.refcount--;
-        if (core.refcount == 0) {
-            if (core.statement)
-                sqlite3_finalize(core.statement);
-            if (core.db)
-                core.db.core.refcount--;
-        }
+        _release;
     }
 
     void opAssign(Query rhs) {
         swap(core, rhs.core);
-        swap(_params, rhs._params);
-        swap(_rows, rhs._rows);
     }
     
     /++
     Gets the SQLite internal handle of the query statement.
     +/
     @property sqlite3_stmt* statement() {
+        writeln(core.statement);
         return core.statement;
     }
     
     /++
     The bindable parameters of the query.
     +/
-    alias _params params;
-    /* @property ref Parameters params() {
-        return _params;
-    }*/
+    @property Parameters params() {
+        return core.params;
+    }
 
     /++
     Gets the results of a query that returns _rows.
     There is no need to call run() before a call to rows().
     +/
     @property ref RowSet rows() {
-        if (!_rows.isInitialized) {
-            _rows = RowSet(&this);
-            _rows.initialize;            
+        if (!core.rows.isInitialized) {
+            core.rows = RowSet(core.statement);
+            core.rows.initialize;            
         }
-        return _rows;
+        return core.rows;
     }
     
     /++
@@ -472,7 +496,7 @@ struct Query {
         if (core.statement) {
             auto result = sqlite3_reset(core.statement);
             enforce(result == SQLITE_OK, new SqliteException(result));
-            _rows = RowSet(&this);
+            core.rows = RowSet(core.statement);
         }
     }
 }
@@ -483,8 +507,8 @@ The bound parameters of a query.
 struct Parameters {
     private sqlite3_stmt* statement;
     
-    private this(sqlite3_stmt* stmt) {
-        this.statement = stmt;
+    private this(sqlite3_stmt* statement) {
+        this.statement = statement;
     }
     
     /++
@@ -518,6 +542,8 @@ struct Parameters {
     Throws:
         SqliteException when parameter refers to an invalid binding or when
         the value cannot be bound.
+    Bugs:
+        Does not work due to bug #5202
     +/
     void opIndexAssign(T)(T value, int index) {
         enforce(statement, new SqliteException("no parameter in prepared statement"));
@@ -595,26 +621,18 @@ struct Parameters {
 The results of a query that returns rows, with an InputRange interface.
 +/
 struct RowSet {
-    private Query* query;
+    private sqlite3_stmt* statement;
     private int sqliteResult = SQLITE_DONE;
     private bool isInitialized = false;
 
-    private this(Query* query) {
-        assert(query);
-        this.query = query;
-        query.core.refcount++;
-    }
-    
-    ~this() {
-        if (query)
-            query.core.refcount--;
-        query = null;
+    private this(sqlite3_stmt* statement) {
+        this.statement = statement;
     }
 
     private void initialize() {
-        if (query.core.statement) {
+        if (statement) {
             // Try to fetch first row
-            sqliteResult = sqlite3_step(query.core.statement);
+            sqliteResult = sqlite3_step(statement);
             enforce(sqliteResult == SQLITE_ROW || sqliteResult == SQLITE_DONE, new SqliteException(sqliteResult));                        
         }
         else
@@ -635,29 +653,30 @@ struct RowSet {
     +/
     @property Row front() {
         assert(isInitialized && !empty);
+        assert(statement);
         Row row;
-        auto colcount = sqlite3_column_count(query.core.statement);
+        auto colcount = sqlite3_column_count(statement);
         row.columns.reserve(colcount);
         for (int i = 0; i < colcount; i++) {
-            auto name = to!string(sqlite3_column_name(query.core.statement, i));
-            auto type = sqlite3_column_type(query.core.statement, i);
+            auto name = to!string(sqlite3_column_name(statement, i));
+            auto type = sqlite3_column_type(statement, i);
             final switch (type) {
             case SQLITE_INTEGER:
-                row.columns ~= Column(i, name, Variant(sqlite3_column_int64(query.core.statement, i)));
+                row.columns ~= Column(i, name, Variant(sqlite3_column_int64(statement, i)));
                 break;
 
             case SQLITE_FLOAT:
-                row.columns ~= Column(i, name, Variant(sqlite3_column_double(query.core.statement, i)));
+                row.columns ~= Column(i, name, Variant(sqlite3_column_double(statement, i)));
                 break;
 
             case SQLITE_TEXT:
-                auto str = to!string(sqlite3_column_text(query.core.statement, i));
+                auto str = to!string(sqlite3_column_text(statement, i));
                 row.columns ~= Column(i, name, Variant(str));
                 break;
 
             case SQLITE_BLOB:
-                auto ptr = sqlite3_column_blob(query.core.statement, i);
-                auto length = sqlite3_column_bytes(query.core.statement, i);
+                auto ptr = sqlite3_column_blob(statement, i);
+                auto length = sqlite3_column_bytes(statement, i);
                 ubyte[] blob;
                 blob.length = length;
                 memcpy(blob.ptr, ptr, length);
@@ -677,7 +696,8 @@ struct RowSet {
     +/
     void popFront() {
         assert(isInitialized && !empty);
-        sqliteResult = sqlite3_step(query.core.statement);
+        assert(statement);
+        sqliteResult = sqlite3_step(statement);
     }
 }
 
@@ -782,19 +802,29 @@ unittest {
 }
 
 unittest {
-    // Kind of tests copy-construction
-    void makeDatabase(out Database db) {
-        db = Database(":memory:");
+    // Kind of tests copy-construction and reference-counting.
+    RowSet rows;
+    {
+        Query select;
+        Parameters params;
+        {
+            Query insert;
+            {
+                auto db = Database(":memory:");
+                db.execute("CREATE TABLE test (val INTEGER)");
+                insert = db.query("INSERT INTO test (val) VALUES (:val)");
+                auto pms = insert.params;
+                params = pms;
+                
+                select = db.query("SELECT * FROM test");
+            }
+            insert.params.bind(":val", 1024);
+            insert.run;
+        }
+        auto rws = select.rows;
+        rows = rws;
     }
-    string readEncoding(Query query) {
-        assert(query.core.statement);
-        assert(query.core.db.core.handle);
-        return query.rows.front[0].as!string;
-    }
-    Database db;
-    makeDatabase(db);
-    auto query = db.query("PRAGMA encoding");
-    assert(readEncoding(query).startsWith("UTF"));
+    // assert(rows.front["val"].as!int == 1024); // WON'T WORK: query has been finalized when going out of scope.
 }
 
 unittest {
@@ -802,7 +832,7 @@ unittest {
     auto db = Database(":memory:");
     db.execute(";");
     auto query = db.query("-- This is a comment !");
-    assert(query.rows.empty);
+    //assert(query.rows.empty);
 }
 
 unittest {
@@ -838,10 +868,10 @@ unittest {
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params[":val"] = 2048;
+    query.params.bind(":val", 2048);
     query.run;
     query.reset;
-    query.params[1] = 2048;
+    query.params.bind(1, 2048);
     query.run;
     query.reset;
     query.params.bind(1, 2048);
@@ -862,7 +892,7 @@ unittest {
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params[":val"] = 2048;
+    query.params.bind(":val", 2048);
     query.run;
     
     query = db.query("SELECT val FROM test");
@@ -908,33 +938,33 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     int i = 1;
-    query.params[":val"] = &i;
+    query.params.bind(":val", &i);
     query.run;
     query.reset;
-    query.params[":val"] = 1L;
+    query.params.bind(":val", 1L);
     query.run;
     assert(db.changes == 1);
     assert(db.totalChanges == 2);
     query.reset;
-    query.params[":val"] = 1U;
+    query.params.bind(":val", 1U);
     query.run;
     query.reset;
-    query.params[":val"] = 1UL;
+    query.params.bind(":val", 1UL);
     query.run;
     query.reset;
-    query.params[":val"] = true;
+    query.params.bind(":val", true);
     query.run;
     query.reset;
-    query.params[":val"] = '\&copy;';
+    query.params.bind(":val", '\&copy;');
     query.run;
     query.reset;
-    query.params[":val"] = '\x72';
+    query.params.bind(":val", '\x72');
     query.run;
     query.reset;
-    query.params[":val"] = '\u1032';
+    query.params.bind(":val", '\u1032');
     query.run;
     query.reset;
-    query.params[":val"] = '\U0000FF32';
+    query.params.bind(":val", '\U0000FF32');
     query.run;
 
     query = db.query("SELECT * FROM test");
@@ -948,13 +978,13 @@ unittest {
     db.execute("CREATE TABLE test (val FLOAT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params[":val"] = 1.0F;
+    query.params.bind(":val", 1.0F);
     query.run;
     query.reset;
-    query.params[":val"] = 1.0;
+    query.params.bind(":val", 1.0);
     query.run;
     query.reset;
-    query.params[":val"] = 1.0L;
+    query.params.bind(":val", 1.0L);
     query.run;
 
     query = db.query("SELECT * FROM test");
@@ -968,13 +998,13 @@ unittest {
     db.execute("CREATE TABLE test (val TEXT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params[":val"] = "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B"c;
+    query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B"c);
     query.run;
     query.reset;
-    query.params[":val"] = "\uC720\uB2C8\uCF5B"w;
+    query.params.bind(":val", "\uC720\uB2C8\uCF5B"w);
     query.run;
     query.reset;
-    query.params[":val"] = "\uC720\uB2C8\uCF5B"d;
+    query.params.bind(":val", "\uC720\uB2C8\uCF5B"d);
     query.run;
 
     query = db.query("SELECT * FROM test");
@@ -991,7 +1021,7 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     int[] array = [1, 2, 3, 4];
-    query.params[":val"] = array;
+    query.params.bind(":val", array);
     query.run;
 
     query = db.query("SELECT * FROM test");
@@ -1017,7 +1047,7 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     auto original = Data(1024, 'z', 3.14159, "foo");
-    query.params[":val"] = original;
+    query.params.bind(":val", original);
     query.run;
 
     query = db.query("SELECT * FROM test");
