@@ -105,10 +105,10 @@ Executables using this module must be linked to the SQLite library version
                     (last_name, first_name, score, photo)
                     VALUES (:last_name, :first_name, :score, :photo)"</font>))
     {
-        params[<font color=red>":last_name"</font>] = <font color=red>"Amy"</font>;
-        params[<font color=red>":first_name"</font>] = <font color=red>"Knight"</font>;
-        params[3] = 89.1;
-        params[<font color=red>":photo"</font>] = ...;
+        params.bind(<font color=red>":last_name"</font>, <font color=red>"Amy"</font>);
+        params.bind(<font color=red>":first_name"</font>, <font color=red>"Knight"</font>);
+        params.bind(3, 89.1);
+        params.bind(<font color=red>":photo"</font>, ...);
         run;
     }
 }
@@ -310,14 +310,24 @@ SqliteException in one of the SQL statements cannot be executed.<br><br>
 <dd>Gets the SQLite internal handle of the query <u>statement</u>.<br><br>
 
 </dd>
-<dt><big>alias <u>params</u>;
+<dt><big>Parameters <u>params</u>();
 </big></dt>
-<dd>The bindable parameters of the query.<br><br>
+<dd>Gets the bindable parameters of the query.
+<br><br>
+<b>Returns:</b><br>
+A Parameters object. The returned object becomes invalid when
+        the Query goes out of scope.<br><br>
 
 </dd>
 <dt><big>RowSet <u>rows</u>();
 </big></dt>
 <dd>Gets the results of a query that returns rows.
+<br><br>
+<b>Returns:</b><br>
+A RowSet object that can be used as an InputRange. The returned
+        object becomes invalid when the Query goes out of scope.
+<br><br>
+
     There is no need to call run() before a call to <u>rows</u>().<br><br>
 
 </dd>
@@ -365,7 +375,10 @@ SqliteException when parameter refers to an invalid binding or when
 <br><br>
 <b>Throws:</b><br>
 SqliteException when parameter refers to an invalid binding or when
-        the value cannot be bound.<br><br>
+        the value cannot be bound.
+<br><br>
+<font color=red>BUGS:</font><br>
+Does not work due to bug #5202<br><br>
 
 </dd>
 <dt><big>int <u>length</u>();

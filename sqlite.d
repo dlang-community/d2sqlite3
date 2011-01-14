@@ -174,7 +174,7 @@ import std.variant;
 
 pragma(lib, "sqlite3");
 
-debug=SQLITE;
+//debug=SQLITE;
 debug(SQLITE) import std.stdio;
 //version(unittest) { import std.stdio; }
 
@@ -456,12 +456,14 @@ struct Query {
     Gets the SQLite internal handle of the query statement.
     +/
     @property sqlite3_stmt* statement() {
-        writeln(core.statement);
         return core.statement;
     }
     
     /++
-    The bindable parameters of the query.
+    Gets the bindable parameters of the query.
+    Returns:
+        A Parameters object. The returned object becomes invalid when
+        the Query goes out of scope.
     +/
     @property Parameters params() {
         return core.params;
@@ -469,6 +471,10 @@ struct Query {
 
     /++
     Gets the results of a query that returns _rows.
+    Returns:
+        A RowSet object that can be used as an InputRange. The returned
+        object becomes invalid when the Query goes out of scope.
+    
     There is no need to call run() before a call to rows().
     +/
     @property ref RowSet rows() {
@@ -803,28 +809,19 @@ unittest {
 
 unittest {
     // Kind of tests copy-construction and reference-counting.
-    RowSet rows;
+    Query select;
     {
-        Query select;
-        Parameters params;
+        Query insert;
         {
-            Query insert;
-            {
-                auto db = Database(":memory:");
-                db.execute("CREATE TABLE test (val INTEGER)");
-                insert = db.query("INSERT INTO test (val) VALUES (:val)");
-                auto pms = insert.params;
-                params = pms;
-                
-                select = db.query("SELECT * FROM test");
-            }
-            insert.params.bind(":val", 1024);
-            insert.run;
+            auto db = Database(":memory:");
+            db.execute("CREATE TABLE test (val INTEGER)");
+            insert = db.query("INSERT INTO test (val) VALUES (:val)");
+            select = db.query("SELECT * FROM test");
         }
-        auto rws = select.rows;
-        rows = rws;
+        insert.params.bind(":val", 1024);
+        insert.run;
     }
-    // assert(rows.front["val"].as!int == 1024); // WON'T WORK: query has been finalized when going out of scope.
+    assert(select.rows.front["val"].as!int == 1024);
 }
 
 unittest {
