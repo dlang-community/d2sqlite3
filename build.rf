@@ -1,9 +1,0 @@
--O
--inline
--release
--lib
--odlib
--oflibdsqlite3
--H
--Hdimport
-sqlite.d

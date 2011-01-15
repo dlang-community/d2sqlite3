@@ -1,3 +1,4 @@
 *.d.deps
 /import/
 /lib/
+/c_source/sqlite3.o
