@@ -63,7 +63,7 @@ try
     );
 }
 catch (SqliteException e)
-{
+{ 
     // Error creating the table.
 }
 
@@ -462,8 +462,7 @@ struct Query {
     /++
     Gets the bindable parameters of the query.
     Returns:
-        A Parameters object. The returned object becomes invalid when
-        the Query goes out of scope.
+        A Parameters object. Becomes invalid when the Query goes out of scope.
     +/
     @property Parameters params() {
         return core.params;
@@ -472,10 +471,8 @@ struct Query {
     /++
     Gets the results of a query that returns _rows.
     Returns:
-        A RowSet object that can be used as an InputRange. The returned
-        object becomes invalid when the Query goes out of scope.
-    
-    There is no need to call run() before a call to rows().
+        A RowSet object that can be used as an InputRange. Becomes invalid
+        when the Query goes out of scope.
     +/
     @property ref RowSet rows() {
         if (!core.rows.isInitialized) {
