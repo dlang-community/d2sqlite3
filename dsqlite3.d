@@ -170,7 +170,10 @@ import std.variant;
 
 //debug=SQLITE;
 debug(SQLITE) import std.stdio;
-//version(unittest) { import std.stdio; }
+version (unittest) {
+    //import std.stdio;
+    void main() {}
+}
 
 /++
 Exception thrown then SQLite functions return errors.
@@ -183,8 +186,8 @@ class SqliteException : Exception {
         super(format("error %d", code));
     }
     
-    this(string msg) {
-        this.code = -1;
+    this(string msg, int code = -1) {
+        this.code = code;
         super(msg);
     }
 }
@@ -192,11 +195,11 @@ class SqliteException : Exception {
 /++
 Metadata of the SQLite library.
 +/
-struct Sqlite {
+static struct Sqlite3 {
     /++
     Gets a list of the compile-options of the library.
     +/
-    static immutable(string)[] compileOptions() {
+    static @property immutable(string)[] compileOptions() {
         static string[] _co = null;
         if (!_co) {
             auto app = appender!string;
@@ -216,7 +219,7 @@ struct Sqlite {
     /++
     Gets the default encoding.
     +/
-    static string encoding() {
+    static @property string encoding() {
         auto db = Database(":memory:");
         auto query = db.query("PRAGMA encoding");
         auto rows = query.rows;
@@ -227,16 +230,22 @@ struct Sqlite {
     /++
     Gets the library's version string (e.g. 3.6.12).
     +/
-    static string versionString() {
+    static @property string versionString() {
         return to!string(sqlite3_libversion());
     }
 
     /++
     Gets the library's version number (e.g. 3006012).
     +/
-    static int versionNumber() {
+    static @property int versionNumber() {
         return sqlite3_libversion_number();
     }
+}
+
+unittest {
+    assert(Sqlite3.encoding[0..4] == "UTF-");
+    assert(Sqlite3.versionString[0..2] == "3.");
+    assert(Sqlite3.versionNumber > 3003011, "incompatible SQLite version");
 }
 
 /++
@@ -276,7 +285,7 @@ struct Database {
     this(string path) {
         assert(path);
         auto result = sqlite3_open(cast(char*) path.toStringz, &core.handle);
-        enforce(result == SQLITE_OK, new SqliteException(result));
+        enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
         debug(SQLITE) writefln("[=] Database @%x has refcount %d.", core.handle, core.refcount);
     }
 
@@ -417,6 +426,20 @@ struct Database {
     }
 }
 
+unittest {
+    // Tests Database.changes() and Database.totalChanges()
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val INTEGER)");
+    assert(db.changes == 0);
+    assert(db.totalChanges == 0);
+
+    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+    query.params.bind(":val", 1024);
+    query.run;
+    assert(db.changes == 1);
+    assert(db.totalChanges == 1);
+}
+
 /++
 An interface to SQLite query execution.
 +/
@@ -465,7 +488,7 @@ struct Query {
             &core.statement,
             null
         );
-        enforce(result == SQLITE_OK, new SqliteException(result));
+        enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result));
         core.params = Parameters(core.statement);
     }
 
@@ -527,10 +550,45 @@ struct Query {
     void reset() {
         if (core.statement) {
             auto result = sqlite3_reset(core.statement);
-            enforce(result == SQLITE_OK, new SqliteException(result));
+            enforce(result == SQLITE_OK, new SqliteException(core.db.errorMsg, result));
             core.rows = RowSet(core.statement);
         }
     }
+}
+
+unittest {
+    // Tests empty statements
+    auto db = Database(":memory:");
+    db.execute(";");
+    auto query = db.query("-- This is a comment !");
+    assert(query.rows.empty);
+}
+
+unittest {
+    // Tests multiple statements in query string
+    auto db = Database(":memory:");
+    int result;
+    try
+        db.execute("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
+    catch (SqliteException e)
+        assert(e.msg.canFind("test"));
+}
+
+unittest {
+    // Tests Query.rows()
+    static assert(isInputRange!RowSet);
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val INTEGER)");
+
+    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+    query.params.bind(":val", 1024);
+    query.run;
+    assert(query.rows.empty);
+    query = db.query("SELECT * FROM test");
+    assert(!query.rows.empty);
+    assert(query.rows.front[0].as!int == 1024);
+    query.rows.popFront();
+    assert(query.rows.empty);
 }
 
 /++
@@ -647,6 +705,49 @@ struct Parameters {
             enforce(result == SQLITE_OK, new SqliteException(result));
         }
     } 
+}
+
+unittest {
+    // Tests Parmeters
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val INTEGER)");
+
+    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+    query.params.bind(":val", 2048);
+    query.run;
+    query.reset;
+    query.params.bind(1, 2048);
+    query.run;
+    query.reset;
+    query.params.bind(1, 2048);
+    query.run;
+    query.reset;
+    query.params.bind(":val", 2048);
+    query.run;
+    
+    query = db.query("SELECT * FROM test");
+    foreach (row; query.rows) {
+        assert(row[0].as!int == 2048);
+    }
+}
+
+unittest {
+    // Tests multiple bindings
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
+    auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
+    query.params.bind(":t", "TEXT", ":i", 1024, ":f", 3.14);
+    query.run;
+    query.reset;
+    query.params.bind(3, "TEXT", 1, 1024, 2, 3.14);
+    query.run;
+    
+    query = db.query("SELECT * FROM test");
+    foreach (row; query.rows) {
+        assert(row["i"].as!int == 1024);
+        assert(row["f"].as!double == 3.14);
+        assert(row["t"].as!string == "TEXT");
+    }
 }
 
 /++
@@ -799,7 +900,7 @@ struct Column {
     Gets the value of the column converted _to type T.
     If the value is NULL, it is replaced by value.
     +/
-    @property T as(T, T value = T.init)() {
+    T as(T, T value = T.init)() {
         alias Unqual!T U;
         if (data.hasValue) {
             static if (is(U == bool))
@@ -824,89 +925,8 @@ struct Column {
         else
             return value;
     }
-}
-
-//-----------------------------------------------------------------------------
-// TESTS
-//-----------------------------------------------------------------------------
-unittest {
-    assert(Sqlite.versionNumber > 3003011, "incompatible SQLite version");
-}
-
-unittest {
-    // Kind of tests copy-construction and reference-counting.
-    Query select;
-    {
-        Query insert;
-        {
-            auto db = Database(":memory:");
-            db.execute("CREATE TABLE test (val INTEGER)");
-            insert = db.query("INSERT INTO test (val) VALUES (:val)");
-            select = db.query("SELECT * FROM test");
-        }
-        insert.params.bind(":val", 1024);
-        insert.run;
-    }
-    assert(select.rows.front["val"].as!int == 1024);
-}
-
-unittest {
-    // Tests empty statements
-    auto db = Database(":memory:");
-    db.execute(";");
-    auto query = db.query("-- This is a comment !");
-    //assert(query.rows.empty);
-}
-
-unittest {
-    // Tests multiple statements in query string
-    auto db = Database(":memory:");
-    int result;
-    try
-        db.execute("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
-    catch (SqliteException e)
-        assert(e.msg.canFind("test"));
-}
-
-unittest {
-    // Tests Query.rows()
-    static assert(isInputRange!RowSet);
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 1024);
-    query.run;
-    assert(query.rows.empty);
-    query = db.query("SELECT * FROM test");
-    assert(!query.rows.empty);
-    assert(query.rows.front[0].as!int == 1024);
-    query.rows.popFront();
-    assert(query.rows.empty);
-}
-
-unittest {
-    // Tests Parmeters
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 2048);
-    query.run;
-    query.reset;
-    query.params.bind(1, 2048);
-    query.run;
-    query.reset;
-    query.params.bind(1, 2048);
-    query.run;
-    query.reset;
-    query.params.bind(":val", 2048);
-    query.run;
     
-    query = db.query("SELECT * FROM test");
-    foreach (row; query.rows) {
-        assert(row[0].as!int == 2048);
-    }
+    alias as!string toString;
 }
 
 unittest {
@@ -927,17 +947,20 @@ unittest {
 }
 
 unittest {
-    // Tests Database.changes() and Database.totalChanges()
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-    assert(db.changes == 0);
-    assert(db.totalChanges == 0);
-
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 1024);
-    query.run;
-    assert(db.changes == 1);
-    assert(db.totalChanges == 1);
+    // Kind of tests copy-construction and reference-counting.
+    Query select;
+    {
+        Query insert;
+        {
+            auto db = Database(":memory:");
+            db.execute("CREATE TABLE test (val INTEGER)");
+            insert = db.query("INSERT INTO test (val) VALUES (:val)");
+            select = db.query("SELECT * FROM test");
+        }
+        insert.params.bind(":val", 1024);
+        insert.run;
+    }
+    assert(select.rows.front["val"].as!int == 1024);
 }
 
 unittest {
@@ -1077,29 +1100,9 @@ unittest {
     assert(copy.toString == "1024 z 3.14 foo");
 }
 
-unittest {
-    // Tests multiple bindings
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
-    auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
-    query.params.bind(":t", "TEXT", ":i", 1024, ":f", 3.14);
-    query.run;
-    query.reset;
-    query.params.bind(3, "TEXT", 1, 1024, 2, 3.14);
-    query.run;
-    
-    query = db.query("SELECT * FROM test");
-    foreach (row; query.rows) {
-        assert(row["i"].as!int == 1024);
-        assert(row["f"].as!double == 3.14);
-        assert(row["t"].as!string == "TEXT");
-    }
-}
-
 //-----------------------------------------------------------------------------
 // SQLite C API
 //-----------------------------------------------------------------------------
-private: extern(C):
 
 enum SQLITE_OK = 0;
 enum SQLITE_ERROR = 1;
@@ -1328,6 +1331,8 @@ enum SQLITE_DBSTATUS_MAX = 3;
 enum SQLITE_STMTSTATUS_FULLSCAN_STEP = 1;
 enum SQLITE_STMTSTATUS_SORT = 2;
 enum SQLITE_STMTSTATUS_AUTOINDEX = 3;
+
+extern(C):
 
 struct sqlite3;
 struct sqlite3_stmt;
