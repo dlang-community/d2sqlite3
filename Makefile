@@ -27,3 +27,6 @@ clean:
 
 unittest: c_source/sqlite3.o dsqlite3.d
 	dmd -debug -w -unittest c_source/sqlite3.o -run dsqlite3.d
+
+doc: c_source/sqlite3.o dsqlite3.ddoc dsqlite3.d
+	dmd -o- -c -unittest c_source/sqlite3.o dsqlite3.ddoc -Dddoc -Dfdsqlite3.xml -X -Xfdoc/dsqlite3.json -D dsqlite3.d
