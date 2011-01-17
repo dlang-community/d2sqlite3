@@ -1,42 +1,39 @@
+/+
+
+Test module for DDoc2LaTeX.
+
+Please say something.
+
+Author:
+    Nicolas Sicard
+
++/
+module test;
+
 import std.stdio;
 
-struct OpIndexAssign {
-    void opIndexAssign(uint val, uint index) {}
-    uint opIndex(uint index) { return 42; }
-}
+/++
+Traite un tableau de données.
 
-struct Struct {
-    OpIndexAssign oas;
+Cette importante fonction traite un tableau de données et revoie
+une chaîne contenant les données traitées. En case d'impossibilité
+de traiter les données, le second paramètre est fixé à faux.
 
-    OpIndexAssign getter() @property {
-        return oas;
-    }
-}
+Params:
+    array = le tableau de données à traiter
+    rescue = l'indicateur de réussite
 
-void main() {
-    Struct s;
-    s.oas[5] = 5;  // Works
-    s.getter()[5] = 5;  // Fails
-}
-
-__EOF__ 
-
-struct Param {
-    void opIndexAssign(string value, string key) {
-        writeln(key, " = ", value);
-    }
-}
-
-struct Thing {
-    Param _params;
-    
-    @property Param params() {
-        return _params;
-    }
+Examples:
+---
+double[] my_data = [5.1, 7.9, 1.2, 1.0, 4.3];
+bool ok;
+auto result = go_and_return(my_data, ok);
+---
++/
+string go_and_return(in double[] array, out bool rescue)
+{
+    return "this";
 }
 
 void main() {
-    Thing thing;
-    thing.params()["name"] = "Thing"; // OK
-    thing.params["name"] = "Thing"; // Error: no [] operator overload for type Param
 }

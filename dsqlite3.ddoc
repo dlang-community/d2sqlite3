@@ -1,43 +1,62 @@
-D_CODE = <code>$0</code>
+D_CODE = \lstset{language=C++,basicstyle=\small\ttfamily,commentstyle=\itshape,showstringspaces=false,extendedchars=true}
+\begin{lstlisting}
+$0\end{lstlisting}
 D_COMMENT = $0
 D_STRING  = $0
 D_KEYWORD = $0
 D_PSYMBOL = $0
 D_PARAM	  = $0
-DDOC = <documentation>$(BODY)</documentation>
-DDOC_COMMENT   = <!-- $0 -->
-DDOC_DECL      = <declaration>$0</declaration>
-DDOC_DECL_DD   = <desc>$0</desc>
-DDOC_DITTO     = <ditto>$0</ditto>
-DDOC_SECTIONS  = <sections>$0</sections>
-DDOC_SUMMARY   = <summary>$0</summary>
-DDOC_DESCRIPTION = <description>$0</description>
-DDOC_AUTHORS   = <authors>$0</authors>
-DDOC_BUGS      = <bugs>$0</bugs>
-DDOC_COPYRIGHT = <copyright>$0</copyright>
-DDOC_DATE = <date>$0</date>
-DDOC_DEPRECATED = <deprecated>$0</deprecated>
-DDOC_EXAMPLES  = <examples>$0</examples>
-DDOC_HISTORY   = <history>$0</history>
-DDOC_LICENSE   = <license>$0</license>
-DDOC_RETURNS   = <returns>$0</returns>
-DDOC_SEE_ALSO  = <seealso>$0</seealso>
-DDOC_STANDARDS = <standards>$0</standards>
-DDOC_THROWS    = <throws>$0</throws>
-DDOC_VERSION   = <version>$0</version>
-DDOC_SECTION_H = <header>$0</header>
-DDOC_SECTION   = <section>$0</section>
-DDOC_MEMBERS   = <members>$0</members>
-DDOC_MODULE_MEMBERS   = <module>$0</module>
-DDOC_CLASS_MEMBERS    = <class>$0</class>
-DDOC_STRUCT_MEMBERS   = <struct>$0</struct>
-DDOC_ENUM_MEMBERS     = <enum>$0</enum>
-DDOC_TEMPLATE_MEMBERS = <template>$0</template>
-DDOC_PARAMS    = <params>$0</params>
-DDOC_PARAM_ROW = $0
-DDOC_PARAM_ID  = <id>$0</id>
-DDOC_PARAM_DESC  = <desc>$0</desc>
+DDOC = \documentclass[10pt,unicode]{iutbase}
+\usepackage{listings}
+\lstset{language=C++,basicstyle=\small\ttfamily,commentstyle=\itshape,showstringspaces=false,extendedchars=true}
+\title{$(TITLE)}
+\begin{document}
+\maketitle
+$(BODY)
+\end{document}
+DDOC_COMMENT   = 
+DDOC_DECL      = \lstset{language=C++,basicstyle=\large\ttfamily,commentstyle=\itshape,showstringspaces=false,extendedchars=true}
+\begin{lstlisting}
+$0\end{lstlisting}
+DDOC_DECL_DD   = $0
+DDOC_DITTO     = $0
+DDOC_SECTIONS  = $0
+DDOC_SUMMARY   = $0
+DDOC_DESCRIPTION = $0
+DDOC_AUTHORS   = $0
+DDOC_BUGS      = $0
+DDOC_COPYRIGHT = $0
+DDOC_DATE = $0
+DDOC_DEPRECATED = $0
+DDOC_EXAMPLES  = \paragraph{Exemple} \
+
+$0
+DDOC_HISTORY   = $0
+DDOC_LICENSE   = $0
+DDOC_RETURNS   = $0
+DDOC_SEE_ALSO  = $0
+DDOC_STANDARDS = $0
+DDOC_THROWS    = $0
+DDOC_VERSION   = $0
+DDOC_SECTION_H = $0
+DDOC_SECTION   = $0
+DDOC_MEMBERS   = $0
+DDOC_MODULE_MEMBERS   = $0
+DDOC_CLASS_MEMBERS    = $0
+DDOC_STRUCT_MEMBERS   = $0
+DDOC_ENUM_MEMBERS     = $0
+DDOC_TEMPLATE_MEMBERS = $0
+DDOC_PARAMS    = \paragraph{Paramètres} \
+
+\begin{tabular}{|l|l|}
+\hline
+$0
+\hline
+\end{tabular}
+DDOC_PARAM_ROW = $0 \\ \hline
+DDOC_PARAM_ID  = \lstinline`$0` &
+DDOC_PARAM_DESC  = $0
 DDOC_BLANKLINE	= 
-DDOC_PSYMBOL	= <symbol>$0</symbol>
-DDOC_KEYWORD	= <keyword>$0</keyword>
-DDOC_PARAM	= <param>$0</param>
+DDOC_PSYMBOL	= $0
+DDOC_KEYWORD	= $0
+DDOC_PARAM	= $0

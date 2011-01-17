@@ -168,7 +168,7 @@ import std.traits;
 import std.utf;
 import std.variant;
 
-//debug=SQLITE;
+debug=SQLITE;
 debug(SQLITE) import std.stdio;
 version (unittest) {
     //import std.stdio;
@@ -197,27 +197,9 @@ Metadata of the SQLite library.
 +/
 static struct Sqlite3 {
     /++
-    Gets a list of the compile-options of the library.
-    +/
-    static @property immutable(string)[] compileOptions() {
-        static string[] _co = null;
-        if (!_co) {
-            auto app = appender!string;
-            int n = 0;
-            char* option;
-            while(true) {
-                option = sqlite3_compileoption_get(n);
-                if (!option)
-                    break;
-                app.put(to!string(option));
-                n++;
-            }
-        }
-        return _co.idup;
-    }
-    
-    /++
     Gets the default encoding.
+    This function executes a query on a temporary database to 
+    obtain its result.
     +/
     static @property string encoding() {
         auto db = Database(":memory:");
@@ -237,7 +219,7 @@ static struct Sqlite3 {
     /++
     Gets the library's version number (e.g. 3006012).
     +/
-    static @property int versionNumber() {
+    static @property int versionNumber() nothrow {
         return sqlite3_libversion_number();
     }
 }
@@ -256,21 +238,21 @@ struct Database {
         sqlite3* handle;
         int refcount = 1;
     }
-    private _core core;
+    private _core* core; // shared between copies of this Database object.
     
-    private void _retain() {
+    private void _retain() nothrow {
+        assert(core);
         core.refcount++;
-        debug(SQLITE) writefln("[+] Database @%x has refcount %d.", core.handle, core.refcount);        
     }
     
     private void _release() {
+        assert(core);
         core.refcount--;
-        debug(SQLITE) writefln("[-] Database @%x has refcount %d.", core.handle, core.refcount);
         assert(core.refcount >= 0);
         if (core.refcount == 0) {
             auto result = sqlite3_close(core.handle);
             enforce(result == SQLITE_OK, new SqliteException(result));
-            debug(SQLITE) writefln("[x] Database @%x closed.", core.handle);
+            core = null;
         }
     }
 
@@ -284,12 +266,12 @@ struct Database {
     +/
     this(string path) {
         assert(path);
+        core = new _core;
         auto result = sqlite3_open(cast(char*) path.toStringz, &core.handle);
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
-        debug(SQLITE) writefln("[=] Database @%x has refcount %d.", core.handle, core.refcount);
     }
 
-    this(this) {
+    nothrow this(this)  {
         _retain;
     }
 
@@ -297,7 +279,7 @@ struct Database {
         _release;
     }
 
-    void opAssign(Database rhs) {
+    void opAssign(Database rhs) nothrow {
         swap(core, rhs.core);
     }
     
@@ -422,8 +404,22 @@ struct Database {
     }
     
     private void checkHandle() {
+        assert(core);
         enforce(core.handle, new SqliteException("database not open"));
     }
+}
+
+unittest {
+    // Test copy-construction and reference counting.
+    Database db1 = void;
+    {
+        db1 = Database(":memory:");
+        assert(db1.core.refcount == 1);
+        auto db2 = db1;
+        assert(db1.core.refcount == 2);
+        assert(db2.core.refcount == 2);        
+    }
+    assert(db1.core.refcount == 1);
 }
 
 unittest {
@@ -452,25 +448,25 @@ struct Query {
         Parameters params = void;
         RowSet rows = void;
     }
-    private _core core;
+    private _core* core;
     
-    private void _retain() {
-        core.refcount++;
-        debug(SQLITE) writefln("[+] Query '%s' has refcount '%d'.", core.sql, core.refcount);       
+    private void _retain() nothrow {
+        assert(core);
+        core.refcount++;     
     }
     
     private void _release() {
+        assert(core);
         core.refcount--;
-        debug(SQLITE) writefln("[-] Query '%s' has refcount '%d'.", core.sql, core.refcount);
         assert(core.refcount >= 0);
         if (core.refcount == 0) {
-            if (core.statement)
-                sqlite3_finalize(core.statement);
-            if (core.db) {
-                core.db._release;
-                core.db = null;                
+            if (core.statement) {
+                auto result = sqlite3_finalize(core.statement);
+                enforce(result == SQLITE_OK, new SqliteException(result));
             }
-            debug(SQLITE) writefln("[x] Query '%s' closed.", core.sql);
+            if (core.db)
+                core.db._release;              
+            core = null;
         }
     }
 
@@ -478,9 +474,9 @@ struct Query {
         assert(db);
         assert(db.core.handle);
         db._retain;
+        core = new _core;
         core.db = db;
         core.sql = sql;
-        debug(SQLITE) writefln("[=] Query '%s' has refcount '%d'.", core.sql, core.refcount);
         auto result = sqlite3_prepare_v2(
             db.core.handle,
             cast(char*) core.sql.toStringz,
@@ -492,7 +488,7 @@ struct Query {
         core.params = Parameters(core.statement);
     }
 
-    this(this) {
+    nothrow this(this) {
         _retain;
     }
 
@@ -500,14 +496,15 @@ struct Query {
         _release;
     }
 
-    void opAssign(Query rhs) {
+    void opAssign(Query rhs) nothrow {
         swap(core, rhs.core);
     }
     
     /++
     Gets the SQLite internal handle of the query statement.
     +/
-    @property sqlite3_stmt* statement() {
+    @property sqlite3_stmt* statement() nothrow {
+        assert(core);
         return core.statement;
     }
     
@@ -516,7 +513,8 @@ struct Query {
     Returns:
         A Parameters object. Becomes invalid when the Query goes out of scope.
     +/
-    @property Parameters params() {
+    @property ref Parameters params() nothrow {
+        assert(core);
         return core.params;
     }
 
@@ -527,6 +525,7 @@ struct Query {
         when the Query goes out of scope.
     +/
     @property ref RowSet rows() {
+        assert(core);
         if (!core.rows.isInitialized) {
             core.rows = RowSet(core.statement);
             core.rows.initialize;            
@@ -548,12 +547,26 @@ struct Query {
         SqliteException when the query could not be reset.
     +/
     void reset() {
+        assert(core && core.statement);
         if (core.statement) {
             auto result = sqlite3_reset(core.statement);
             enforce(result == SQLITE_OK, new SqliteException(core.db.errorMsg, result));
             core.rows = RowSet(core.statement);
         }
     }
+}
+
+unittest {
+    // Test copy-construction and reference counting.
+    Database db = Database(":memory:");
+    auto q1 = db.query("SELECT 1024");
+    {
+        assert(q1.core.refcount == 1);
+        auto q2 = q1;
+        assert(q1.core.refcount == 2);
+        assert(q2.core.refcount == 2);        
+    }
+    assert(q1.core.refcount == 1);
 }
 
 unittest {
@@ -597,7 +610,7 @@ The bound parameters of a query.
 struct Parameters {
     private sqlite3_stmt* statement;
     
-    private this(sqlite3_stmt* statement) {
+    private this(sqlite3_stmt* statement) nothrow {
         this.statement = statement;
     }
     
@@ -619,7 +632,8 @@ struct Parameters {
         alias typeof(key) K;
         alias args[1] value;
         // The binding key is either a string or an integer.
-        static assert(isSomeString!K || isImplicitlyConvertible!(K, int), "unexpected type for column reference: " ~ K.stringof);
+        static assert(isSomeString!K || isImplicitlyConvertible!(K, int),
+                      "unexpected type for column reference: " ~ K.stringof);
         // Do the actual binding.
         opIndexAssign(value, key);
         // Recursive call for the next two arguments.
@@ -633,7 +647,7 @@ struct Parameters {
         SqliteException when parameter refers to an invalid binding or when
         the value cannot be bound.
     Bugs:
-        Does not work due to bug #5202
+        Does not work with Query.params due to DMD issue #5202
     +/
     void opIndexAssign(T)(T value, int index) {
         enforce(statement, new SqliteException("no parameter in prepared statement"));
@@ -690,7 +704,7 @@ struct Parameters {
     /++
     Gets the number of parameters.
     +/
-    int length() {
+    int length() nothrow {
         if (!statement)
             return 0;
         return sqlite3_bind_parameter_count(statement);
@@ -758,7 +772,7 @@ struct RowSet {
     private int sqliteResult = SQLITE_DONE;
     private bool isInitialized = false;
 
-    private this(sqlite3_stmt* statement) {
+    private this(sqlite3_stmt* statement) nothrow {
         this.statement = statement;
     }
 
@@ -766,7 +780,8 @@ struct RowSet {
         if (statement) {
             // Try to fetch first row
             sqliteResult = sqlite3_step(statement);
-            enforce(sqliteResult == SQLITE_ROW || sqliteResult == SQLITE_DONE, new SqliteException(sqliteResult));                        
+            enforce(sqliteResult == SQLITE_ROW || sqliteResult == SQLITE_DONE,
+                    new SqliteException(sqliteResult));                        
         }
         else
             sqliteResult = SQLITE_DONE; // No statement, so RowSet is empty;
@@ -776,7 +791,7 @@ struct RowSet {
     /++
     Tests whether no more rows are available.
     +/
-    @property bool empty() {
+    @property bool empty() nothrow {
         assert(isInitialized);
         return sqliteResult == SQLITE_DONE;
     }
@@ -830,7 +845,7 @@ struct RowSet {
     /++
     Jumps to the next row.
     +/
-    void popFront() {
+    void popFront() nothrow {
         assert(isInitialized && !empty);
         assert(statement);
         sqliteResult = sqlite3_step(statement);
@@ -846,7 +861,7 @@ struct Row {
     /++
     Gets the number of columns in this row.
     +/
-    @property int columnCount() {
+    @property int columnCount() nothrow {
         return columns.length;
     }
 
@@ -944,23 +959,6 @@ unittest {
         assert(front["val"].as!int == 2048);
         assert(front.val.as!int == 2048);
     }
-}
-
-unittest {
-    // Kind of tests copy-construction and reference-counting.
-    Query select;
-    {
-        Query insert;
-        {
-            auto db = Database(":memory:");
-            db.execute("CREATE TABLE test (val INTEGER)");
-            insert = db.query("INSERT INTO test (val) VALUES (:val)");
-            select = db.query("SELECT * FROM test");
-        }
-        insert.params.bind(":val", 1024);
-        insert.run;
-    }
-    assert(select.rows.front["val"].as!int == 1024);
 }
 
 unittest {
@@ -1332,8 +1330,6 @@ enum SQLITE_STMTSTATUS_FULLSCAN_STEP = 1;
 enum SQLITE_STMTSTATUS_SORT = 2;
 enum SQLITE_STMTSTATUS_AUTOINDEX = 3;
 
-extern(C):
-
 struct sqlite3;
 struct sqlite3_stmt;
 struct sqlite3_context;
@@ -1343,6 +1339,8 @@ struct sqlite3_module;
 struct sqlite3_mutex;
 struct sqlite3_backup;
 struct sqlite3_vfs;
+
+extern(C): nothrow:
 
 alias int function(void*,int,char**,char**) sqlite3_callback;
 
