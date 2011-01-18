@@ -1,32 +1,50 @@
 # SQLite3 for D makefile
+# © 2011, Nicolas Sicard
 
+# Commands
 CC = gcc
-CFLAGS = -O3 -arch i386
+CFLAGS = -Os -arch i386
 DC = dmd
 DFLAGS = 
 
-LIBDIR = lib
-LIBNAME = libdsqlite3
-IMPORTDIR = import
+# Build
+LIB_NAME = d2sqlite3
+LIB_PREFIX = lib
+LIB_EXT = .a
+LIB_FILENAME = $(LIB_PREFIX)$(LIB_NAME)$(LIB_EXT)
+BUILD_DIR = lib
+BUILD_TARGET = $(BUILD_DIR)/$(LIB_FILENAME)
+D_OPTIMIZATION = -O -inline -release
+D_OPTIMIZATION = -debug
+D_FLAGS = $(D_OPTIMIZATION) -of$(BUILD_DIR)/$(LIB_NAME)
 
-all: $(LIBDIR)/$(LIBNAME).a $(IMPORTDIR)/dsqlite3.di
+# Sources
+D_SRC = sqlite3.d \
+        sql3fun.d \
+		sql3schema.d
 
-$(IMPORTDIR)/dsqlite3.di:
-	dmd -o- -c -O -inline -release -H -Hd$(IMPORTDIR) c_source/sqlite3.o dsqlite3.d
+# DI files
+DI_DIR = import
+DI_FILES = $(D_SRC:.d=.di)
 
-$(LIBDIR)/$(LIBNAME).a: c_source/sqlite3.o dsqlite3.d
-	dmd -O -inline -release -lib -od$(LIBDIR) -of$(LIBNAME) c_source/sqlite3.o dsqlite3.d
+all: $(BUILD_TARGET) $(DI_FILES)
+
+%.di: %.d
+	dmd -o- -c -O -inline -release -H -Hd$(DI_DIR) $<
+
+$(BUILD_TARGET): c_source/sqlite3.o $(D_SRC)
+	dmd -O -inline -release -lib -od$(BUILD_DIR) -of$(LIB_FILENAME) c_source/sqlite3.o $(D_SRC)
 
 c_source/sqlite3.o: c_source/sqlite3.c
 	$(CC) -o c_source/sqlite3.o -c c_source/sqlite3.c $(CFLAGS)
 
 clean:
 	rm -f c_source/sqlite3.o
-	rm -f $(LIBDIR)/$(LIBNAME).a
-	rm -f $(IMPORTDIR)/dsqlite3.di
+	rm -f $(BUILD_TARGET)
+	rm -f $(DI_DIR)/*.di
 
-unittest: c_source/sqlite3.o dsqlite3.d
-	dmd -debug -w -unittest c_source/sqlite3.o -run dsqlite3.d
+unittest: c_source/sqlite3.o $(D_SRC)
+	dmd -debug -w -unittest c_source/sqlite3.o -run $(D_SRC) 
 
-doc: c_source/sqlite3.o dsqlite3.d
-	dmd -o- -c -unittest c_source/sqlite3.o -Dddoc -Dfdsqlite3.html -D dsqlite3.d
+doc: c_source/sqlite3.o $(D_SRC)
+	dmd -o- -c -unittest c_source/sqlite3.o -Dddoc -D $(D_SRC)

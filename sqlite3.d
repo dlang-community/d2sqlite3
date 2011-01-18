@@ -156,7 +156,7 @@ License:
 Author:
     Nicolas Sicard.
 +/
-module dsqlite3;
+module sqlite3;
 
 import std.algorithm;
 import std.array;
@@ -170,10 +170,7 @@ import std.variant;
 
 debug=SQLITE;
 debug(SQLITE) import std.stdio;
-version (unittest) {
-    //import std.stdio;
-    void main() {}
-}
+version(unittest) { void main() {} }
 
 /++
 Exception thrown then SQLite functions return errors.
