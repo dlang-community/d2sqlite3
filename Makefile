@@ -1,50 +1,59 @@
 # SQLite3 for D makefile
 # © 2011, Nicolas Sicard
 
-# Commands
-CC = gcc
-CFLAGS = -Os -arch i386
-DC = dmd
-DFLAGS = 
-
-# Build
+# Configuration
 LIB_NAME = d2sqlite3
 LIB_PREFIX = lib
 LIB_EXT = .a
-LIB_FILENAME = $(LIB_PREFIX)$(LIB_NAME)$(LIB_EXT)
 BUILD_DIR = lib
+CFLAGS = -Os -arch i386
+DFLAGS = -O -inline -release
+#D_OPTIMIZATION = -debug
+DOC_DIR = doc
+DI_DIR = import
+
+# Commands
+CC = cc
+DC = dmd
+
+# Build
+LIB_FILENAME = $(LIB_PREFIX)$(LIB_NAME)$(LIB_EXT)
 BUILD_TARGET = $(BUILD_DIR)/$(LIB_FILENAME)
-D_OPTIMIZATION = -O -inline -release
-D_OPTIMIZATION = -debug
-D_FLAGS = $(D_OPTIMIZATION) -of$(BUILD_DIR)/$(LIB_NAME)
 
 # Sources
 D_SRC = sqlite3.d \
         sql3fun.d \
 		sql3schema.d
 
-# DI files
-DI_DIR = import
-DI_FILES = $(D_SRC:.d=.di)
+C_SRC_DIR = c_source
+C_SRC = $(wildcard $(C_SRC_DIR)/*.c)
+C_OBJ = $(C_SRC:.c=.o)
 
-all: $(BUILD_TARGET) $(DI_FILES)
+all: build doc unittest
 
-%.di: %.d
-	dmd -o- -c -O -inline -release -H -Hd$(DI_DIR) $<
+build: $(C_OBJ) $(D_SRC)
+	$(DC) $(DFLAGS) -lib -od$(BUILD_DIR) -of$(LIB_FILENAME) -H -Hd$(DI_DIR) $(C_OBJ) $(D_SRC)
 
-$(BUILD_TARGET): c_source/sqlite3.o $(D_SRC)
-	dmd -O -inline -release -lib -od$(BUILD_DIR) -of$(LIB_FILENAME) c_source/sqlite3.o $(D_SRC)
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-c_source/sqlite3.o: c_source/sqlite3.c
-	$(CC) -o c_source/sqlite3.o -c c_source/sqlite3.c $(CFLAGS)
+#%.di: %.d
+#	$(DC) -o- -c $(D_OPTIMIZATION) $<
+
+.PHONY: clean doc unittest
+
+unittest: $(C_OBJ) $(D_SRC)
+	dmd -debug -w -unittest -cov $(C_OBJ) -run $(D_SRC) 
+
+doc: $(D_SRC)
+	dmd -o- -c -Dd$(DOC_DIR) -D $(C_OBJ) $(D_SRC)
 
 clean:
-	rm -f c_source/sqlite3.o
-	rm -f $(BUILD_TARGET)
-	rm -f $(DI_DIR)/*.di
-
-unittest: c_source/sqlite3.o $(D_SRC)
-	dmd -debug -w -unittest c_source/sqlite3.o -run $(D_SRC) 
-
-doc: c_source/sqlite3.o $(D_SRC)
-	dmd -o- -c -unittest c_source/sqlite3.o -Dddoc -D $(D_SRC)
+	-rm -f $(C_SRC_DIR)/*.o
+	-rm -f $(BUILD_TARGET)
+	-rmdir $(BUILD_DIR)
+	-rm -f $(DI_DIR)/*.di
+	-rmdir $(DI_DIR)
+	-rm -f *.lst
+	-rm -f $(DOC_DIR)/*html
+	-rmdir $(DOC_DIR)

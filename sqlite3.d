@@ -60,7 +60,7 @@ try
     );
 }
 catch (SqliteException e)
-{ 
+{
     // Error creating the table.
 }
 
@@ -91,7 +91,7 @@ try
                     ":photo", null);
         run;
     }
-    
+
     // Alternate use.
     with (db.query("INSERT INTO person
                     (last_name, first_name, score, photo)
@@ -170,32 +170,38 @@ import std.variant;
 
 debug=SQLITE;
 debug(SQLITE) import std.stdio;
-version(unittest) { void main() {} }
+version(unittest) {
+    import std.file;
+    void main() {}
+}
+
 
 /++
-Exception thrown then SQLite functions return errors.
+Exception thrown then SQLite functions return an error.
 +/
 class SqliteException : Exception {
     int code;
-    
+
     this(int code) {
         this.code = code;
         super(format("error %d", code));
     }
-    
+
     this(string msg, int code = -1) {
         this.code = code;
         super(msg);
     }
 }
 
+
 /++
-Metadata of the SQLite library.
+Metadata from the SQLite library.
 +/
-static struct Sqlite3 {
+struct Sqlite3 {
     /++
     Gets the default encoding.
-    This function executes a query on a temporary database to 
+
+    This function executes a query on a temporary database to
     obtain its result.
     +/
     static @property string encoding() {
@@ -205,7 +211,7 @@ static struct Sqlite3 {
         assert(!rows.empty);
         return rows.front[0].as!string;
     }
-    
+
     /++
     Gets the library's version string (e.g. 3.6.12).
     +/
@@ -227,6 +233,19 @@ unittest {
     assert(Sqlite3.versionNumber > 3003011, "incompatible SQLite version");
 }
 
+
+/++
+Transaction types.
+
+See $(LINK http://www.sqlite.org/lang_transaction.html)
++/
+enum Transaction : string {
+    deferred = "DEFERRED", /// Deferred transaction (the default).
+    immediate = "IMMEDIATE", /// Transaction with write lock.
+    exclusive = "EXCLUSIVE" /// Transaction with read and write lock.
+}
+
+
 /++
 An interface to a SQLite database connection.
 +/
@@ -236,20 +255,22 @@ struct Database {
         int refcount = 1;
     }
     private _core* core; // shared between copies of this Database object.
-    
+
     private void _retain() nothrow {
-        assert(core);
-        core.refcount++;
+        if (core) {
+            core.refcount++;
+        }
     }
-    
+
     private void _release() {
-        assert(core);
-        core.refcount--;
-        assert(core.refcount >= 0);
-        if (core.refcount == 0) {
-            auto result = sqlite3_close(core.handle);
-            enforce(result == SQLITE_OK, new SqliteException(result));
-            core = null;
+        if (core) {
+            core.refcount--;
+            assert(core.refcount >= 0);
+            if (core.refcount == 0) {
+                auto result = sqlite3_close(core.handle);
+                enforce(result == SQLITE_OK, new SqliteException(result));
+                core = null;
+            }
         }
     }
 
@@ -279,58 +300,89 @@ struct Database {
     void opAssign(Database rhs) nothrow {
         swap(core, rhs.core);
     }
-    
+
     /++
-    Transaction types.
+    Compiles internal statistics to optimize indexing.
+
+    See $(LINK http://www.sqlite.org/lang_analyze.html)
     +/
-    enum Transaction : string {
-        deferred = "DEFERRED", /// Deferred transaction (the default).
-        immediate = "IMMEDIATE", /// Transaction with write lock.
-        exclusive = "EXCLUSIVE" /// Transaction with read and write lock.
+    void analyze() {
+        execute("ANALYZE");
     }
-    
+
+    /++
+    Attaches a database.
+
+    See $(LINK http://www.sqlite.org/lang_attach.html)
+
+    Params:
+        fileName = the file name of the database.
+        databaseName = the name with which the database will be referred to.
+    +/
+    void attach(string fileName, string databaseName) {
+        enforce(!databaseName.empty, new SqliteException("database name cannot be empty"));
+        execute(format(`ATTACH "%s" AS %s`, fileName, databaseName));
+    }
+
     /++
     Begins a transaction.
+
+    See $(LINK http://www.sqlite.org/lang_transaction.html)
+
+    Params:
+        type = the _type of the transaction.
     +/
     void begin(Transaction type = Transaction.deferred) {
         execute("BEGIN " ~ type);
     }
-    alias begin transaction; /// ditto
-    
+
+    /++
+    Gets the number of database rows that were changed, inserted or deleted by
+    the most recently completed query.
+    +/
+    @property int changes() {
+        checkHandle;
+        return sqlite3_changes(core.handle);
+    }
+
     /++
     Commits all transactions.
+
+    See $(LINK http://www.sqlite.org/lang_transaction.html)
+    )
     +/
     void commit() {
         execute("COMMIT");
     }
-    
+
     /++
-    Rolls back to the given save point or rolls back all transaction if
-    savepoint is null.
+    Detaches a database.
+
+    See $(LINK http://www.sqlite.org/lang_detach.html)
+
     Params:
-        savepoint = the name of the save point.
+        databaseName = the name of the database to detach.
     +/
-    void rollback(string savepoint = null) {
-        if (savepoint)
-            execute("ROLLBACK TO " ~ savepoint);
-        else
-            execute("ROLLBACK");
+    void detach(string databaseName) {
+        execute("DETACH " ~ databaseName);
     }
-    
+
     /++
-    Creates a transaction save point.
+    Gets the SQLite error code of the last operation.
     +/
-    void savepoint(string name) {
-        execute("SAVEPOINT " ~ name);
+    @property int errorCode() {
+        checkHandle;
+        return sqlite3_errcode(core.handle);
     }
-    
+
     /++
-    Releases a transaction save point.
+    Gets the SQLite error message of the last operation.
     +/
-    void release(string savepoint) {
-        execute("RELEASE " ~ savepoint);
+    @property string errorMsg() {
+        checkHandle;
+        return to!string(sqlite3_errmsg(core.handle));
     }
-    
+
     /++
     Execute one or many SQL statements. Rows returned by any of these statements
     are ignored.
@@ -347,24 +399,179 @@ struct Database {
             throw new SqliteException(msg);
         }
     }
-    
+
     /++
-    Creates a query on the database and returns it.
-    Params:
-        sql = the SQL code of the query.
+    Gets the SQLite internal _handle of the database connection.
     +/
-    Query query(string sql) {
+    @property sqlite3* handle() {
+        checkHandle;
+        return core.handle;
+    }
+
+    /++
+    Creates a _query on the database and returns it.
+    Params:
+        sql = the SQL code of the _query.
+    +/
+    auto query(string sql) {
+        /++
+        An interface to SQLite query execution.
+        +/
+        static struct Query {
+            private struct _core {
+                Database* db;
+                string sql;
+                sqlite3_stmt* statement;
+                int refcount = 1;
+                Parameters params = void;
+                RowSet rows = void;
+            }
+            private _core* core;
+
+            private void _retain() nothrow {
+                if (core) {
+                    core.refcount++;
+                }
+            }
+
+            private void _release() {
+                if (core) {
+                    core.refcount--;
+                    assert(core.refcount >= 0);
+                    if (core.refcount == 0) {
+                        if (core.statement) {
+                            auto result = sqlite3_finalize(core.statement);
+                            enforce(result == SQLITE_OK, new SqliteException(result));
+                        }
+                        if (core.db)
+                            core.db._release;
+                        core = null;
+                    }
+                }
+            }
+
+            private this(Database* db, string sql) {
+                assert(db);
+                assert(db.core.handle);
+                db._retain;
+                core = new _core;
+                core.db = db;
+                core.sql = sql;
+                auto result = sqlite3_prepare_v2(
+                    db.core.handle,
+                    cast(char*) core.sql.toStringz,
+                    core.sql.length,
+                    &core.statement,
+                    null
+                );
+                enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result));
+                core.params = Parameters(core.statement);
+            }
+
+            nothrow this(this) {
+                _retain;
+            }
+
+            ~this() {
+                _release;
+            }
+
+            void opAssign(Query rhs) nothrow {
+                swap(core, rhs.core);
+            }
+
+            /++
+            Gets the bindable parameters of the query.
+            Returns:
+                A Parameters object. Becomes invalid when the Query goes out of scope.
+            +/
+            @property ref Parameters params() nothrow {
+                assert(core);
+                return core.params;
+            }
+
+            /++
+            Resets a query.
+            Throws:
+                SqliteException when the query could not be reset.
+            +/
+            void reset() {
+                assert(core && core.statement);
+                if (core.statement) {
+                    auto result = sqlite3_reset(core.statement);
+                    enforce(result == SQLITE_OK, new SqliteException(core.db.errorMsg, result));
+                    core.rows = RowSet(core.statement);
+                }
+            }
+
+            /++
+            Gets the results of a query that returns _rows.
+            Returns:
+                A RowSet object that can be used as an InputRange. Becomes invalid
+                when the Query goes out of scope.
+            +/
+            @property ref RowSet rows() {
+                assert(core);
+                if (!core.rows.isInitialized) {
+                    core.rows = RowSet(core.statement);
+                    core.rows.initialize;
+                }
+                return core.rows;
+            }
+
+            /++
+            Executes the query.
+            Use rows() directly if the query is expected to return rows.
+            +/
+            void run() {
+                rows();
+            }
+
+            /++
+            Gets the SQLite internal handle of the query statement.
+            +/
+            @property sqlite3_stmt* statement() nothrow {
+                assert(core);
+                return core.statement;
+            }
+        }
+
         checkHandle;
         return Query(&this, sql);
     }
 
     /++
-    Gets the number of database rows that were changed, inserted or deleted by
-    the most recently completed query.
+    Releases a transaction save point.
+
+    See $(LINK http://www.sqlite.org/lang_savepoint.html)
     +/
-    @property int changes() {
-        checkHandle;
-        return sqlite3_changes(core.handle);
+    void release(string savepoint) {
+        execute("RELEASE " ~ savepoint);
+    }
+
+    /++
+    Rolls back to the given save point or rolls back all transaction if
+    savepoint is null.
+
+    See $(LINK http://www.sqlite.org/lang_savepoint.html)
+
+    Params:
+        savepoint = the name of the save point.
+    +/
+    void rollback(string savepoint = null) {
+        if (savepoint)
+            execute("ROLLBACK TO " ~ savepoint);
+        else
+            execute("ROLLBACK");
+    }
+
+    /++
+    Creates a transaction save point.
+
+    See $(LINK http://www.sqlite.org/lang_savepoint.html)
+    +/
+    void savepoint(string name) {
+        execute("SAVEPOINT " ~ name);
     }
 
     /++
@@ -377,29 +584,14 @@ struct Database {
     }
 
     /++
-    Gets the SQLite error code of the last operation.
+    Optimizes the size of the database file.
+
+    See $(LINK http://www.sqlite.org/lang_vacuum.html)
     +/
-    @property int errorCode() {
-        checkHandle;
-        return sqlite3_errcode(core.handle);
+    void vacuum() {
+        execute("VACUUM");
     }
 
-    /++
-    Gets the SQLite error message of the last operation, including the error code.
-    +/
-    @property string errorMsg() {
-        checkHandle;
-        return to!string(sqlite3_errmsg(core.handle));
-    }
-
-    /++
-    Gets the SQLite internal _handle of the database connection.
-    +/
-    @property sqlite3* handle() {
-        checkHandle;
-        return core.handle;
-    }
-    
     private void checkHandle() {
         assert(core);
         enforce(core.handle, new SqliteException("database not open"));
@@ -407,161 +599,73 @@ struct Database {
 }
 
 unittest {
-    // Test copy-construction and reference counting.
-    Database db1 = void;
+    // Tests database creation.
+    auto db = Database(":memory:");
+    assert(db.handle);
+    assert(db.errorCode == SQLITE_OK);
+    assert(db.errorMsg == "not an error");
+}
+
+unittest {
+    // Tests copy-construction and reference counting.
+    Database db1;
     {
         db1 = Database(":memory:");
         assert(db1.core.refcount == 1);
         auto db2 = db1;
         assert(db1.core.refcount == 2);
-        assert(db2.core.refcount == 2);        
+        assert(db2.core.refcount == 2);
     }
     assert(db1.core.refcount == 1);
+    Database db3;
 }
 
 unittest {
-    // Tests Database.changes() and Database.totalChanges()
+    // Tests miscellaneous functionalities.
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-    assert(db.changes == 0);
-    assert(db.totalChanges == 0);
+    db.attach("test.db", "other_db");
+    db.detach("other_db");
+    assert(std.file.exists("test.db"));
+    std.file.remove("test.db");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 1024);
-    query.run;
-    assert(db.changes == 1);
-    assert(db.totalChanges == 1);
-}
+    db.begin;
+        db.execute("CREATE TABLE test (dummy BLOB)");
+        assert(db.changes == 0);
+        assert(db.totalChanges == 0);
+    db.rollback;
 
-/++
-An interface to SQLite query execution.
-+/
-struct Query {
-    private struct _core {
-        Database* db;
-        string sql;
-        sqlite3_stmt* statement;
-        int refcount = 1;
-        Parameters params = void;
-        RowSet rows = void;
-    }
-    private _core* core;
-    
-    private void _retain() nothrow {
-        assert(core);
-        core.refcount++;     
-    }
-    
-    private void _release() {
-        assert(core);
-        core.refcount--;
-        assert(core.refcount >= 0);
-        if (core.refcount == 0) {
-            if (core.statement) {
-                auto result = sqlite3_finalize(core.statement);
-                enforce(result == SQLITE_OK, new SqliteException(result));
-            }
-            if (core.db)
-                core.db._release;              
-            core = null;
-        }
-    }
+    db.begin;
+        db.execute("CREATE TABLE test (val INTEGER)");
+        assert(db.changes == 0);
+        assert(db.totalChanges == 0);
+    db.savepoint("aftercreation");
+        db.execute("INSERT INTO test (val) VALUES (42)");
+        assert(db.changes == 1);
+        assert(db.totalChanges == 1);
+    db.rollback("aftercreation");
+    db.release("aftercreation");
+        db.execute("INSERT INTO test (val) VALUES (84)");
+        assert(db.changes == 1);
+        //assert(db.totalChanges == 1); // == 2 !!
+    db.commit;
 
-    private this(Database* db, string sql) {
-        assert(db);
-        assert(db.core.handle);
-        db._retain;
-        core = new _core;
-        core.db = db;
-        core.sql = sql;
-        auto result = sqlite3_prepare_v2(
-            db.core.handle,
-            cast(char*) core.sql.toStringz,
-            core.sql.length,
-            &core.statement,
-            null
-        );
-        enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result));
-        core.params = Parameters(core.statement);
-    }
+    db.vacuum;
+    db.analyze;
 
-    nothrow this(this) {
-        _retain;
-    }
-
-    ~this() {
-        _release;
-    }
-
-    void opAssign(Query rhs) nothrow {
-        swap(core, rhs.core);
-    }
-    
-    /++
-    Gets the SQLite internal handle of the query statement.
-    +/
-    @property sqlite3_stmt* statement() nothrow {
-        assert(core);
-        return core.statement;
-    }
-    
-    /++
-    Gets the bindable parameters of the query.
-    Returns:
-        A Parameters object. Becomes invalid when the Query goes out of scope.
-    +/
-    @property ref Parameters params() nothrow {
-        assert(core);
-        return core.params;
-    }
-
-    /++
-    Gets the results of a query that returns _rows.
-    Returns:
-        A RowSet object that can be used as an InputRange. Becomes invalid
-        when the Query goes out of scope.
-    +/
-    @property ref RowSet rows() {
-        assert(core);
-        if (!core.rows.isInitialized) {
-            core.rows = RowSet(core.statement);
-            core.rows.initialize;            
-        }
-        return core.rows;
-    }
-    
-    /++
-    Executes the query.
-    Use rows() directly if the query is expected to return rows. 
-    +/
-    void run() {
-        rows();
-    }
-
-    /++
-    Resets a query.
-    Throws:
-        SqliteException when the query could not be reset.
-    +/
-    void reset() {
-        assert(core && core.statement);
-        if (core.statement) {
-            auto result = sqlite3_reset(core.statement);
-            enforce(result == SQLITE_OK, new SqliteException(core.db.errorMsg, result));
-            core.rows = RowSet(core.statement);
-        }
-    }
+    auto query = db.query("SELECT COUNT(*) FROM test");
+    assert(query.rows.front[0].as!int == 1);
 }
 
 unittest {
     // Test copy-construction and reference counting.
     Database db = Database(":memory:");
-    auto q1 = db.query("SELECT 1024");
+    auto q1 = db.query("SELECT 42");
+    assert(q1.statement);
     {
         assert(q1.core.refcount == 1);
         auto q2 = q1;
         assert(q1.core.refcount == 2);
-        assert(q2.core.refcount == 2);        
+        assert(q2.core.refcount == 2);
     }
     assert(q1.core.refcount == 1);
 }
@@ -591,26 +695,27 @@ unittest {
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 1024);
+    query.params.bind(":val", 42);
     query.run;
     assert(query.rows.empty);
     query = db.query("SELECT * FROM test");
     assert(!query.rows.empty);
-    assert(query.rows.front[0].as!int == 1024);
+    assert(query.rows.front[0].as!int == 42);
     query.rows.popFront();
     assert(query.rows.empty);
 }
+
 
 /++
 The bound parameters of a query.
 +/
 struct Parameters {
     private sqlite3_stmt* statement;
-    
+
     private this(sqlite3_stmt* statement) nothrow {
         this.statement = statement;
     }
-    
+
     /++
     Binds values to named parameters in the query.
     Params:
@@ -637,9 +742,10 @@ struct Parameters {
         static if (args.length >= 4)
             bind(args[2 .. $]);
     }
-    
+
     /++
-    Binds $(D_PARAM value) at the given $(D_PARAM index) or to the parameter named $(D_PARAM name).
+    Binds $(D_PARAM value) at the given $(D_PARAM index) or to the parameter
+    named $(D_PARAM name).
     Throws:
         SqliteException when parameter refers to an invalid binding or when
         the value cannot be bound.
@@ -647,11 +753,11 @@ struct Parameters {
         Does not work with Query.params due to DMD issue #5202
     +/
     void opIndexAssign(T)(T value, int index) {
-        enforce(statement, new SqliteException("no parameter in prepared statement"));
-        
+        enforce(length, new SqliteException("no parameter in prepared statement"));
+
         alias Unqual!T U;
         int result;
-        
+
         static if (isImplicitlyConvertible!(U, long))
             result = sqlite3_bind_int64(statement, index, cast(long) value);
         else static if (isImplicitlyConvertible!(U, real))
@@ -668,7 +774,7 @@ struct Parameters {
             if (value is null)
                 result = sqlite3_bind_null(statement, index);
             else {
-                bind(index, *value);
+                opIndexAssign(*value, index);
                 return;
             }
         }
@@ -689,33 +795,32 @@ struct Parameters {
 
         enforce(result == SQLITE_OK, new SqliteException(result));
     }
-    
+
     /// ditto
     void opIndexAssign(T)(T value, string name) {
-        enforce(statement, new SqliteException("no parameter in prepared statement"));
+        assert(statement);
+        enforce(length, new SqliteException("no parameter in prepared statement"));
         int index = sqlite3_bind_parameter_index(statement, cast(char*) name.toStringz);
-        enforce(index > 0, new SqliteException(format("parameter named '%s' cannot be bound", name)));            
+        enforce(index > 0, new SqliteException(format("parameter named '%s' cannot be bound", name)));
         opIndexAssign(value, index);
     }
-    
+
     /++
     Gets the number of parameters.
     +/
     int length() nothrow {
-        if (!statement)
-            return 0;
+        assert(statement);
         return sqlite3_bind_parameter_count(statement);
     }
-    
+
     /++
     Clears the bindings.
     +/
     void clear() {
-        if (statement) {
-            auto result = sqlite3_clear_bindings(statement);
-            enforce(result == SQLITE_OK, new SqliteException(result));
-        }
-    } 
+        assert(statement);
+        auto result = sqlite3_clear_bindings(statement);
+        enforce(result == SQLITE_OK, new SqliteException(result));
+    }
 }
 
 unittest {
@@ -724,21 +829,21 @@ unittest {
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 2048);
+    query.params.bind(":val", 42);
     query.run;
     query.reset;
-    query.params.bind(1, 2048);
+    query.params.bind(1, 42);
     query.run;
     query.reset;
-    query.params.bind(1, 2048);
+    query.params.bind(1, 42);
     query.run;
     query.reset;
-    query.params.bind(":val", 2048);
+    query.params.bind(":val", 42);
     query.run;
-    
+
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows) {
-        assert(row[0].as!int == 2048);
+        assert(row[0].as!int == 42);
     }
 }
 
@@ -747,19 +852,22 @@ unittest {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
     auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
-    query.params.bind(":t", "TEXT", ":i", 1024, ":f", 3.14);
+    assert(query.params.length == 3);
+    query.params.bind(":t", "TEXT", ":i", 42, ":f", 3.14);
     query.run;
     query.reset;
-    query.params.bind(3, "TEXT", 1, 1024, 2, 3.14);
+    query.params.bind(3, "TEXT", 1, 42, 2, 3.14);
     query.run;
-    
+
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows) {
-        assert(row["i"].as!int == 1024);
+        assert(row.columnCount == 3);
+        assert(row["i"].as!int == 42);
         assert(row["f"].as!double == 3.14);
         assert(row["t"].as!string == "TEXT");
     }
 }
+
 
 /++
 The results of a query that returns rows, with an InputRange interface.
@@ -778,7 +886,7 @@ struct RowSet {
             // Try to fetch first row
             sqliteResult = sqlite3_step(statement);
             enforce(sqliteResult == SQLITE_ROW || sqliteResult == SQLITE_DONE,
-                    new SqliteException(sqliteResult));                        
+                    new SqliteException(sqliteResult));
         }
         else
             sqliteResult = SQLITE_DONE; // No statement, so RowSet is empty;
@@ -849,6 +957,7 @@ struct RowSet {
     }
 }
 
+
 /++
 A SQLite row.
 +/
@@ -870,11 +979,9 @@ struct Row {
         SqliteException when the index is invalid.
     +/
     Column opIndex(int index) {
-        auto f = filter!((Column c) { return c.index == index; })(columns);
-        if (!f.empty)
-            return f.front;
-        else
-            throw new SqliteException(format("invalid column index: %d", index));
+        enforce(index >= 0 && index < columns.length,
+                new SqliteException(format("invalid column index: %d", index)));
+        return columns[index];
     }
 
     /++
@@ -891,14 +998,15 @@ struct Row {
         else
             throw new SqliteException("invalid column name: " ~ name);
     }
-    
+
     /++
-    
+    Gets the column from its name.    
     +/
     Column opDispatch(string name)() {
         return opIndex(name);
     }
 }
+
 
 /++
 A SQLite column.
@@ -907,7 +1015,7 @@ struct Column {
     int index;
     string name;
     private Variant data;
-    
+
     /++
     Gets the value of the column converted _to type T.
     If the value is NULL, it is replaced by value.
@@ -937,7 +1045,7 @@ struct Column {
         else
             return value;
     }
-    
+
     alias as!string toString;
 }
 
@@ -947,17 +1055,21 @@ unittest {
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 2048);
+    query.params.bind(":val", 42);
     query.run;
-    
+
     query = db.query("SELECT val FROM test");
     with (query.rows) {
-        assert(front[0].as!int == 2048);
-        assert(front["val"].as!int == 2048);
-        assert(front.val.as!int == 2048);
+        assert(front[0].as!int == 42);
+        assert(front["val"].as!int == 42);
+        assert(front.val.as!int == 42);
     }
 }
 
+
+/++
+Unit tests.
++/
 unittest {
     // Tests NULL values
     auto db = Database(":memory:");
@@ -968,7 +1080,7 @@ unittest {
     query.run;
 
     query = db.query("SELECT * FROM test");
-    assert(query.rows.front["val"].as!(int, -1024) == -1024);
+    assert(query.rows.front["val"].as!(int, -42) == -42);
 }
 
 unittest {
@@ -977,39 +1089,39 @@ unittest {
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    int i = 1;
-    query.params.bind(":val", &i);
+    int i = 42;
+    query.params.bind(":val", &i); // Tests indirection.
     query.run;
     query.reset;
-    query.params.bind(":val", 1L);
-    query.run;
-    assert(db.changes == 1);
-    assert(db.totalChanges == 2);
-    query.reset;
-    query.params.bind(":val", 1U);
+    query.params.bind(":val", 2);
+    query.params.clear; // Resets binding to NULL.
     query.run;
     query.reset;
-    query.params.bind(":val", 1UL);
+    query.params.bind(":val", 42L);
+    query.run;
+    query.reset;
+    query.params.bind(":val", 42U);
+    query.run;
+    query.reset;
+    query.params.bind(":val", 42UL);
     query.run;
     query.reset;
     query.params.bind(":val", true);
     query.run;
     query.reset;
-    query.params.bind(":val", '\&copy;');
+    query.params.bind(":val", '\x2A');
     query.run;
     query.reset;
-    query.params.bind(":val", '\x72');
+    query.params.bind(":val", null);
     query.run;
+    int* pi = null;
     query.reset;
-    query.params.bind(":val", '\u1032');
-    query.run;
-    query.reset;
-    query.params.bind(":val", '\U0000FF32');
+    query.params.bind(":val", pi);
     query.run;
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
-        assert(row["val"].as!long > 0);
+        assert(row["val"].as!(long, 42) == 42 || row["val"].as!long == 1);
 }
 
 unittest {
@@ -1018,18 +1130,25 @@ unittest {
     db.execute("CREATE TABLE test (val FLOAT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 1.0F);
+    query.params.bind(":val", 42.0F);
     query.run;
     query.reset;
-    query.params.bind(":val", 1.0);
+    query.params.bind(":val", 42.0);
     query.run;
     query.reset;
-    query.params.bind(":val", 1.0L);
+    query.params.bind(":val", 42.0L);
+    query.run;
+    query.reset;
+    query.params.bind(":val", null);
+    query.run;
+    double* pf = null;
+    query.reset;
+    query.params.bind(":val", pf);
     query.run;
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
-        assert(row["val"].as!real > 0);
+        assert(row["val"].as!(real, 42.0) == 42.0);
 }
 
 unittest {
@@ -1038,7 +1157,7 @@ unittest {
     db.execute("CREATE TABLE test (val TEXT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B"c);
+    query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
     query.run;
     query.reset;
     query.params.bind(":val", "\uC720\uB2C8\uCF5B"w);
@@ -1046,12 +1165,17 @@ unittest {
     query.reset;
     query.params.bind(":val", "\uC720\uB2C8\uCF5B"d);
     query.run;
+    query.reset;
+    query.params.bind(":val", null);
+    query.run;
+    string ns;
+    query.reset;
+    query.params.bind(":val", ns);
+    query.run;
 
     query = db.query("SELECT * FROM test");
-    foreach (row; query.rows) {
-        assert(row["val"].as!string ==  "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B"c);
-        assert(row["val"].as!wstring ==  "\uC720\uB2C8\uCF5B"w);
-    }
+    foreach (row; query.rows)
+        assert(row["val"].as!(string, "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B") ==  "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
 }
 
 unittest {
@@ -1078,27 +1202,26 @@ unittest {
         char character;
         real number;
         string text;
-        
+
         string toString() {
             return format("%d %s %.2f %s", integer, character, number, text);
         }
-        
+
     }
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    auto original = Data(1024, 'z', 3.14159, "foo");
+    auto original = Data(42, 'z', 3.14159, "foo");
     query.params.bind(":val", original);
     query.run;
 
     query = db.query("SELECT * FROM test");
     auto copy = query.rows.front["val"].as!Data;
-    assert(copy.toString == "1024 z 3.14 foo");
+    assert(copy.toString == "42 z 3.14 foo");
 }
 
-//-----------------------------------------------------------------------------
-// SQLite C API
-//-----------------------------------------------------------------------------
-
+/+
+SQLite C API
++/
 enum SQLITE_OK = 0;
 enum SQLITE_ERROR = 1;
 enum SQLITE_INTERNAL = 2;
@@ -1213,7 +1336,7 @@ enum SQLITE_CONFIG_PAGECACHE = 7;
 enum SQLITE_CONFIG_HEAP = 8;
 enum SQLITE_CONFIG_MEMSTATUS = 9;
 enum SQLITE_CONFIG_MUTEX = 10;
-enum SQLITE_CONFIG_GETMUTEX = 11; 
+enum SQLITE_CONFIG_GETMUTEX = 11;
 enum SQLITE_CONFIG_LOOKASIDE = 13;
 enum SQLITE_CONFIG_PCACHE = 14;
 enum SQLITE_CONFIG_GETPCACHE = 15;
@@ -1337,183 +1460,183 @@ struct sqlite3_mutex;
 struct sqlite3_backup;
 struct sqlite3_vfs;
 
-extern(C): nothrow:
+extern(C) nothrow {
+    alias int function(void*,int,char**,char**) sqlite3_callback;
 
-alias int function(void*,int,char**,char**) sqlite3_callback;
-
-void* sqlite3_aggregate_context(sqlite3_context*,int);
-int sqlite3_aggregate_count(sqlite3_context*);
-int sqlite3_bind_blob(sqlite3_stmt*,int,void*,int n,void function(void*));
-int sqlite3_bind_double(sqlite3_stmt*,int,double);
-int sqlite3_bind_int(sqlite3_stmt*,int,int);
-int sqlite3_bind_int64(sqlite3_stmt*,int,long);
-int sqlite3_bind_null(sqlite3_stmt*,int);
-int sqlite3_bind_parameter_count(sqlite3_stmt*);
-int sqlite3_bind_parameter_index(sqlite3_stmt*,char*);
-char* sqlite3_bind_parameter_name(sqlite3_stmt*,int);
-int sqlite3_bind_text(sqlite3_stmt*,int,char*,int n,void function(void*));
-int sqlite3_bind_text16(sqlite3_stmt*,int,void*,int,void function(void*));
-int sqlite3_bind_value(sqlite3_stmt*,int, sqlite3_value*);
-int sqlite3_busy_handler(sqlite3*,int function(void*,int),void*);
-int sqlite3_busy_timeout(sqlite3*,int);
-int sqlite3_changes(sqlite3*);
-int sqlite3_close(sqlite3*);
-int sqlite3_collation_needed(sqlite3*,void*,void function(void*,sqlite3*,int,char*));
-int sqlite3_collation_needed16(sqlite3*,void*,void function(void*,sqlite3*,int,void*));
-void* sqlite3_column_blob(sqlite3_stmt*,int);
-int sqlite3_column_bytes(sqlite3_stmt*,int);
-int sqlite3_column_bytes16(sqlite3_stmt*,int);
-int sqlite3_column_count(sqlite3_stmt*);
-char* sqlite3_column_database_name(sqlite3_stmt*,int);
-void* sqlite3_column_database_name16(sqlite3_stmt*,int);
-char* sqlite3_column_decltype(sqlite3_stmt*,int);
-void* sqlite3_column_decltype16(sqlite3_stmt*,int);
-double sqlite3_column_double(sqlite3_stmt*,int);
-int sqlite3_column_int(sqlite3_stmt*,int);
-long sqlite3_column_int64(sqlite3_stmt*,int);
-char* sqlite3_column_name(sqlite3_stmt*,int);
-void* sqlite3_column_name16(sqlite3_stmt*,int);
-char* sqlite3_column_origin_name(sqlite3_stmt*,int);
-void* sqlite3_column_origin_name16(sqlite3_stmt*,int);
-char* sqlite3_column_table_name(sqlite3_stmt*,int);
-void* sqlite3_column_table_name16(sqlite3_stmt*,int);
-char* sqlite3_column_text(sqlite3_stmt*,int);
-void* sqlite3_column_text16(sqlite3_stmt*,int);
-int sqlite3_column_type(sqlite3_stmt*,int);
-sqlite3_value* sqlite3_column_value(sqlite3_stmt*,int);
-void* sqlite3_commit_hook(sqlite3*,int function(void*),void*);
-int sqlite3_complete(char*);
-int sqlite3_complete16(void*);
-int sqlite3_create_collation(sqlite3*,char*,int,void*,int function(void*,int,void*,int,void*));
-int sqlite3_create_collation16(sqlite3*,void*,int,void*,int function(void*,int,void*,int,void*));
-int sqlite3_create_function(sqlite3*,char*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*));
-int sqlite3_create_function16(sqlite3*,void*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*));
-int sqlite3_create_module(sqlite3*,char*,sqlite3_module*,void*);
-int sqlite3_data_count(sqlite3_stmt*);
-sqlite3* sqlite3_db_handle(sqlite3_stmt*);
-int sqlite3_declare_vtab(sqlite3*,char*);
-int sqlite3_enable_shared_cache(int);
-int sqlite3_errcode(sqlite3*);
-char* sqlite3_errmsg(sqlite3*);
-void* sqlite3_errmsg16(sqlite3*);
-int sqlite3_exec(sqlite3*,char*,sqlite3_callback,void*,char**);
-int sqlite3_expired(sqlite3_stmt*);
-int sqlite3_finalize(sqlite3_stmt*pStmt);
-void sqlite3_free(void*);
-void sqlite3_free_table(char**result);
-int sqlite3_get_autocommit(sqlite3*);
-void* sqlite3_get_auxdata(sqlite3_context*,int);
-int sqlite3_get_table(sqlite3*,char*,char***,int*,int*,char**);
-int sqlite3_global_recover();
-void sqlite3_interruptx(sqlite3*);
-long sqlite3_last_insert_rowid(sqlite3*);
-char* sqlite3_libversion();
-int sqlite3_libversion_number();
-void* sqlite3_malloc(int);
-char* sqlite3_mprintf(char*,...);
-int sqlite3_open(char*,sqlite3**);
-int sqlite3_open16(void*,sqlite3**);
-int sqlite3_prepare(sqlite3*,char*,int,sqlite3_stmt**,char**);
-int sqlite3_prepare16(sqlite3*,void*,int,sqlite3_stmt**,void**);
-void* sqlite3_profile(sqlite3*,void function(void*,char*,ulong),void*);
-void sqlite3_progress_handler(sqlite3*,int,int function(void*),void*);
-void* sqlite3_realloc(void*,int);
-int sqlite3_reset(sqlite3_stmt*);
-void sqlite3_result_blob(sqlite3_context*,void*,int,void function(void*));
-void sqlite3_result_double(sqlite3_context*,double);
-void sqlite3_result_error(sqlite3_context*,char*,int);
-void sqlite3_result_error16(sqlite3_context*,void*,int);
-void sqlite3_result_int(sqlite3_context*,int);
-void sqlite3_result_int64(sqlite3_context*,long);
-void sqlite3_result_null(sqlite3_context*);
-void sqlite3_result_text(sqlite3_context*,char*,int,void function(void*));
-void sqlite3_result_text16(sqlite3_context*,void*,int,void function(void*));
-void sqlite3_result_text16be(sqlite3_context*,void*,int,void function(void*));
-void sqlite3_result_text16le(sqlite3_context*,void*,int,void function(void*));
-void sqlite3_result_value(sqlite3_context*,sqlite3_value*);
-void* sqlite3_rollback_hook(sqlite3*,void function(void*),void*);
-int sqlite3_set_authorizer(sqlite3*,int function(void*,int,char*,char*,char*,char*),void*);
-void sqlite3_set_auxdata(sqlite3_context*,int,void*,void function(void*));
-char* sqlite3_snprintf(int,char*,char*,...);
-int sqlite3_step(sqlite3_stmt*);
-int sqlite3_table_column_metadata(sqlite3*,char*,char*,char*,char**,char**,int*,int*,int*);
-void sqlite3_thread_cleanup();
-int sqlite3_total_changes(sqlite3*);
-void* sqlite3_trace(sqlite3*,void function(void*,char*),void*);
-int sqlite3_transfer_bindings(sqlite3_stmt*,sqlite3_stmt*);
-void* sqlite3_update_hook(sqlite3*,void function(void*,int ,char*,char*,long),void*);
-void* sqlite3_user_data(sqlite3_context*);
-void* sqlite3_value_blob(sqlite3_value*);
-int sqlite3_value_bytes(sqlite3_value*);
-int sqlite3_value_bytes16(sqlite3_value*);
-double sqlite3_value_double(sqlite3_value*);
-int sqlite3_value_int(sqlite3_value*);
-long sqlite3_value_int64(sqlite3_value*);
-int sqlite3_value_numeric_type(sqlite3_value*);
-char* sqlite3_value_text(sqlite3_value*);
-void* sqlite3_value_text16(sqlite3_value*);
-void* sqlite3_value_text16be(sqlite3_value*);
-void* sqlite3_value_text16le(sqlite3_value*);
-int sqlite3_value_type(sqlite3_value*);
-char* sqlite3_vmprintf(char*,...);
-int sqlite3_overload_function(sqlite3*, char*, int);
-int sqlite3_prepare_v2(sqlite3*,char*,int,sqlite3_stmt**,char**);
-int sqlite3_prepare16_v2(sqlite3*,void*,int,sqlite3_stmt**,void**);
-int sqlite3_clear_bindings(sqlite3_stmt*);
-int sqlite3_create_module_v2(sqlite3*,char*, sqlite3_module*,void*,void function(void*));
-int sqlite3_bind_zeroblob(sqlite3_stmt*,int,int);
-int sqlite3_blob_bytes(sqlite3_blob*);
-int sqlite3_blob_close(sqlite3_blob*);
-int sqlite3_blob_open(sqlite3*,char*,char*,char*,long,int,sqlite3_blob**);
-int sqlite3_blob_read(sqlite3_blob*,void*,int,int);
-int sqlite3_blob_write(sqlite3_blob*,void*,int,int);
-int sqlite3_create_collation_v2(sqlite3*,char*,int,void*,int function(void*,int,void*,int,void*),void function(void*));
-int sqlite3_file_control(sqlite3*,char*,int,void*);
-long sqlite3_memory_highwater(int);
-long sqlite3_memory_used();
-sqlite3_mutex* sqlite3_mutex_alloc(int);
-void sqlite3_mutex_enter(sqlite3_mutex*);
-void sqlite3_mutex_free(sqlite3_mutex*);
-void sqlite3_mutex_leave(sqlite3_mutex*);
-int sqlite3_mutex_try(sqlite3_mutex*);
-int sqlite3_open_v2(char*,sqlite3**,int,char*);
-int sqlite3_release_memory(int);
-void sqlite3_result_error_nomem(sqlite3_context*);
-void sqlite3_result_error_toobig(sqlite3_context*);
-int sqlite3_sleep(int);
-void sqlite3_soft_heap_limit(int);
-sqlite3_vfs* sqlite3_vfs_find(char*);
-int sqlite3_vfs_register(sqlite3_vfs*,int);
-int sqlite3_vfs_unregister(sqlite3_vfs*);
-int sqlite3_xthreadsafe();
-void sqlite3_result_zeroblob(sqlite3_context*,int);
-void sqlite3_result_error_code(sqlite3_context*,int);
-int sqlite3_test_control(int, ...);
-void sqlite3_randomness(int,void*);
-sqlite3* sqlite3_context_db_handle(sqlite3_context*);
-int sqlite3_extended_result_codes(sqlite3*,int);
-int sqlite3_imit(sqlite3*,int,int);
-sqlite3_stmt* sqlite3_next_stmt(sqlite3*,sqlite3_stmt*);
-char* sqlite3_sql(sqlite3_stmt*);
-int sqlite3_status(int,int*,int*,int);
-int sqlite3_backup_finish(sqlite3_backup*);
-sqlite3_backup* sqlite3_backup_init(sqlite3*,char*,sqlite3*,char*);
-int sqlite3_backup_pagecount(sqlite3_backup*);
-int sqlite3_backup_remaining(sqlite3_backup*);
-int sqlite3_backup_step(sqlite3_backup*,int);
-char* sqlite3_compileoption_get(int);
-int sqlite3_compileoption_used(char*);
-int sqlite3_create_function_v2(sqlite3*,char*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*),void function(void*));
-int sqlite3_db_config(sqlite3*,int,...);
-sqlite3_mutex* sqlite3_db_mutex(sqlite3*);
-int sqlite3_db_status(sqlite3*,int,int*,int*,int);
-int sqlite3_extended_errcode(sqlite3*);
-void sqlite3_log(int,char*,...);
-long sqlite3_soft_heap_limit64(long);
-char* sqlite3_sourceid();
-int sqlite3_stmt_status(sqlite3_stmt*,int,int);
-int sqlite3_strnicmp(char*,char*,int);
-int sqlite3_unlock_notify(sqlite3*,void function(void**,int),void*);
-int sqlite3_wal_autocheckpoint(sqlite3*,int);
-int sqlite3_wal_checkpoint(sqlite3*,char*);
-void* sqlite3_wal_hook(sqlite3*,int function(void*,sqlite3*,char*,int),void*);
+    void* sqlite3_aggregate_context(sqlite3_context*,int);
+    int sqlite3_aggregate_count(sqlite3_context*);
+    int sqlite3_bind_blob(sqlite3_stmt*,int,void*,int n,void function(void*));
+    int sqlite3_bind_double(sqlite3_stmt*,int,double);
+    int sqlite3_bind_int(sqlite3_stmt*,int,int);
+    int sqlite3_bind_int64(sqlite3_stmt*,int,long);
+    int sqlite3_bind_null(sqlite3_stmt*,int);
+    int sqlite3_bind_parameter_count(sqlite3_stmt*);
+    int sqlite3_bind_parameter_index(sqlite3_stmt*,char*);
+    char* sqlite3_bind_parameter_name(sqlite3_stmt*,int);
+    int sqlite3_bind_text(sqlite3_stmt*,int,char*,int n,void function(void*));
+    int sqlite3_bind_text16(sqlite3_stmt*,int,void*,int,void function(void*));
+    int sqlite3_bind_value(sqlite3_stmt*,int, sqlite3_value*);
+    int sqlite3_busy_handler(sqlite3*,int function(void*,int),void*);
+    int sqlite3_busy_timeout(sqlite3*,int);
+    int sqlite3_changes(sqlite3*);
+    int sqlite3_close(sqlite3*);
+    int sqlite3_collation_needed(sqlite3*,void*,void function(void*,sqlite3*,int,char*));
+    int sqlite3_collation_needed16(sqlite3*,void*,void function(void*,sqlite3*,int,void*));
+    void* sqlite3_column_blob(sqlite3_stmt*,int);
+    int sqlite3_column_bytes(sqlite3_stmt*,int);
+    int sqlite3_column_bytes16(sqlite3_stmt*,int);
+    int sqlite3_column_count(sqlite3_stmt*);
+    char* sqlite3_column_database_name(sqlite3_stmt*,int);
+    void* sqlite3_column_database_name16(sqlite3_stmt*,int);
+    char* sqlite3_column_decltype(sqlite3_stmt*,int);
+    void* sqlite3_column_decltype16(sqlite3_stmt*,int);
+    double sqlite3_column_double(sqlite3_stmt*,int);
+    int sqlite3_column_int(sqlite3_stmt*,int);
+    long sqlite3_column_int64(sqlite3_stmt*,int);
+    char* sqlite3_column_name(sqlite3_stmt*,int);
+    void* sqlite3_column_name16(sqlite3_stmt*,int);
+    char* sqlite3_column_origin_name(sqlite3_stmt*,int);
+    void* sqlite3_column_origin_name16(sqlite3_stmt*,int);
+    char* sqlite3_column_table_name(sqlite3_stmt*,int);
+    void* sqlite3_column_table_name16(sqlite3_stmt*,int);
+    char* sqlite3_column_text(sqlite3_stmt*,int);
+    void* sqlite3_column_text16(sqlite3_stmt*,int);
+    int sqlite3_column_type(sqlite3_stmt*,int);
+    sqlite3_value* sqlite3_column_value(sqlite3_stmt*,int);
+    void* sqlite3_commit_hook(sqlite3*,int function(void*),void*);
+    int sqlite3_complete(char*);
+    int sqlite3_complete16(void*);
+    int sqlite3_create_collation(sqlite3*,char*,int,void*,int function(void*,int,void*,int,void*));
+    int sqlite3_create_collation16(sqlite3*,void*,int,void*,int function(void*,int,void*,int,void*));
+    int sqlite3_create_function(sqlite3*,char*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*));
+    int sqlite3_create_function16(sqlite3*,void*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*));
+    int sqlite3_create_module(sqlite3*,char*,sqlite3_module*,void*);
+    int sqlite3_data_count(sqlite3_stmt*);
+    sqlite3* sqlite3_db_handle(sqlite3_stmt*);
+    int sqlite3_declare_vtab(sqlite3*,char*);
+    int sqlite3_enable_shared_cache(int);
+    int sqlite3_errcode(sqlite3*);
+    char* sqlite3_errmsg(sqlite3*);
+    void* sqlite3_errmsg16(sqlite3*);
+    int sqlite3_exec(sqlite3*,char*,sqlite3_callback,void*,char**);
+    int sqlite3_expired(sqlite3_stmt*);
+    int sqlite3_finalize(sqlite3_stmt*pStmt);
+    void sqlite3_free(void*);
+    void sqlite3_free_table(char**result);
+    int sqlite3_get_autocommit(sqlite3*);
+    void* sqlite3_get_auxdata(sqlite3_context*,int);
+    int sqlite3_get_table(sqlite3*,char*,char***,int*,int*,char**);
+    int sqlite3_global_recover();
+    void sqlite3_interruptx(sqlite3*);
+    long sqlite3_last_insert_rowid(sqlite3*);
+    char* sqlite3_libversion();
+    int sqlite3_libversion_number();
+    void* sqlite3_malloc(int);
+    char* sqlite3_mprintf(char*,...);
+    int sqlite3_open(char*,sqlite3**);
+    int sqlite3_open16(void*,sqlite3**);
+    int sqlite3_prepare(sqlite3*,char*,int,sqlite3_stmt**,char**);
+    int sqlite3_prepare16(sqlite3*,void*,int,sqlite3_stmt**,void**);
+    void* sqlite3_profile(sqlite3*,void function(void*,char*,ulong),void*);
+    void sqlite3_progress_handler(sqlite3*,int,int function(void*),void*);
+    void* sqlite3_realloc(void*,int);
+    int sqlite3_reset(sqlite3_stmt*);
+    void sqlite3_result_blob(sqlite3_context*,void*,int,void function(void*));
+    void sqlite3_result_double(sqlite3_context*,double);
+    void sqlite3_result_error(sqlite3_context*,char*,int);
+    void sqlite3_result_error16(sqlite3_context*,void*,int);
+    void sqlite3_result_int(sqlite3_context*,int);
+    void sqlite3_result_int64(sqlite3_context*,long);
+    void sqlite3_result_null(sqlite3_context*);
+    void sqlite3_result_text(sqlite3_context*,char*,int,void function(void*));
+    void sqlite3_result_text16(sqlite3_context*,void*,int,void function(void*));
+    void sqlite3_result_text16be(sqlite3_context*,void*,int,void function(void*));
+    void sqlite3_result_text16le(sqlite3_context*,void*,int,void function(void*));
+    void sqlite3_result_value(sqlite3_context*,sqlite3_value*);
+    void* sqlite3_rollback_hook(sqlite3*,void function(void*),void*);
+    int sqlite3_set_authorizer(sqlite3*,int function(void*,int,char*,char*,char*,char*),void*);
+    void sqlite3_set_auxdata(sqlite3_context*,int,void*,void function(void*));
+    char* sqlite3_snprintf(int,char*,char*,...);
+    int sqlite3_step(sqlite3_stmt*);
+    int sqlite3_table_column_metadata(sqlite3*,char*,char*,char*,char**,char**,int*,int*,int*);
+    void sqlite3_thread_cleanup();
+    int sqlite3_total_changes(sqlite3*);
+    void* sqlite3_trace(sqlite3*,void function(void*,char*),void*);
+    int sqlite3_transfer_bindings(sqlite3_stmt*,sqlite3_stmt*);
+    void* sqlite3_update_hook(sqlite3*,void function(void*,int ,char*,char*,long),void*);
+    void* sqlite3_user_data(sqlite3_context*);
+    void* sqlite3_value_blob(sqlite3_value*);
+    int sqlite3_value_bytes(sqlite3_value*);
+    int sqlite3_value_bytes16(sqlite3_value*);
+    double sqlite3_value_double(sqlite3_value*);
+    int sqlite3_value_int(sqlite3_value*);
+    long sqlite3_value_int64(sqlite3_value*);
+    int sqlite3_value_numeric_type(sqlite3_value*);
+    char* sqlite3_value_text(sqlite3_value*);
+    void* sqlite3_value_text16(sqlite3_value*);
+    void* sqlite3_value_text16be(sqlite3_value*);
+    void* sqlite3_value_text16le(sqlite3_value*);
+    int sqlite3_value_type(sqlite3_value*);
+    char* sqlite3_vmprintf(char*,...);
+    int sqlite3_overload_function(sqlite3*, char*, int);
+    int sqlite3_prepare_v2(sqlite3*,char*,int,sqlite3_stmt**,char**);
+    int sqlite3_prepare16_v2(sqlite3*,void*,int,sqlite3_stmt**,void**);
+    int sqlite3_clear_bindings(sqlite3_stmt*);
+    int sqlite3_create_module_v2(sqlite3*,char*, sqlite3_module*,void*,void function(void*));
+    int sqlite3_bind_zeroblob(sqlite3_stmt*,int,int);
+    int sqlite3_blob_bytes(sqlite3_blob*);
+    int sqlite3_blob_close(sqlite3_blob*);
+    int sqlite3_blob_open(sqlite3*,char*,char*,char*,long,int,sqlite3_blob**);
+    int sqlite3_blob_read(sqlite3_blob*,void*,int,int);
+    int sqlite3_blob_write(sqlite3_blob*,void*,int,int);
+    int sqlite3_create_collation_v2(sqlite3*,char*,int,void*,int function(void*,int,void*,int,void*),void function(void*));
+    int sqlite3_file_control(sqlite3*,char*,int,void*);
+    long sqlite3_memory_highwater(int);
+    long sqlite3_memory_used();
+    sqlite3_mutex* sqlite3_mutex_alloc(int);
+    void sqlite3_mutex_enter(sqlite3_mutex*);
+    void sqlite3_mutex_free(sqlite3_mutex*);
+    void sqlite3_mutex_leave(sqlite3_mutex*);
+    int sqlite3_mutex_try(sqlite3_mutex*);
+    int sqlite3_open_v2(char*,sqlite3**,int,char*);
+    int sqlite3_release_memory(int);
+    void sqlite3_result_error_nomem(sqlite3_context*);
+    void sqlite3_result_error_toobig(sqlite3_context*);
+    int sqlite3_sleep(int);
+    void sqlite3_soft_heap_limit(int);
+    sqlite3_vfs* sqlite3_vfs_find(char*);
+    int sqlite3_vfs_register(sqlite3_vfs*,int);
+    int sqlite3_vfs_unregister(sqlite3_vfs*);
+    int sqlite3_xthreadsafe();
+    void sqlite3_result_zeroblob(sqlite3_context*,int);
+    void sqlite3_result_error_code(sqlite3_context*,int);
+    int sqlite3_test_control(int, ...);
+    void sqlite3_randomness(int,void*);
+    sqlite3* sqlite3_context_db_handle(sqlite3_context*);
+    int sqlite3_extended_result_codes(sqlite3*,int);
+    int sqlite3_imit(sqlite3*,int,int);
+    sqlite3_stmt* sqlite3_next_stmt(sqlite3*,sqlite3_stmt*);
+    char* sqlite3_sql(sqlite3_stmt*);
+    int sqlite3_status(int,int*,int*,int);
+    int sqlite3_backup_finish(sqlite3_backup*);
+    sqlite3_backup* sqlite3_backup_init(sqlite3*,char*,sqlite3*,char*);
+    int sqlite3_backup_pagecount(sqlite3_backup*);
+    int sqlite3_backup_remaining(sqlite3_backup*);
+    int sqlite3_backup_step(sqlite3_backup*,int);
+    char* sqlite3_compileoption_get(int);
+    int sqlite3_compileoption_used(char*);
+    int sqlite3_create_function_v2(sqlite3*,char*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*),void function(void*));
+    int sqlite3_db_config(sqlite3*,int,...);
+    sqlite3_mutex* sqlite3_db_mutex(sqlite3*);
+    int sqlite3_db_status(sqlite3*,int,int*,int*,int);
+    int sqlite3_extended_errcode(sqlite3*);
+    void sqlite3_log(int,char*,...);
+    long sqlite3_soft_heap_limit64(long);
+    char* sqlite3_sourceid();
+    int sqlite3_stmt_status(sqlite3_stmt*,int,int);
+    int sqlite3_strnicmp(char*,char*,int);
+    int sqlite3_unlock_notify(sqlite3*,void function(void**,int),void*);
+    int sqlite3_wal_autocheckpoint(sqlite3*,int);
+    int sqlite3_wal_checkpoint(sqlite3*,char*);
+    void* sqlite3_wal_hook(sqlite3*,int function(void*,sqlite3*,char*,int),void*);
+}
