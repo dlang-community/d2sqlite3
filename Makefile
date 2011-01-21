@@ -21,9 +21,7 @@ LIB_FILENAME = $(LIB_PREFIX)$(LIB_NAME)$(LIB_EXT)
 BUILD_TARGET = $(BUILD_DIR)/$(LIB_FILENAME)
 
 # Sources
-D_SRC = sqlite3.d \
-        sql3fun.d \
-		sql3schema.d
+D_SRC = sqlite3.d
 
 C_SRC_DIR = c_source
 C_SRC = $(wildcard $(C_SRC_DIR)/*.c)
