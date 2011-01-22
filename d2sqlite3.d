@@ -165,6 +165,13 @@ import std.typetuple;
 import std.utf;
 import std.variant;
 
+version (SQLITE_ENABLE_ICU) {
+    version (Posix) {
+        pragma(lib, "icui18n");
+        pragma(lib, "icuuc");
+    }
+}
+
 debug=SQLITE;
 debug(SQLITE) import std.stdio;
 version(unittest) {
@@ -430,23 +437,23 @@ struct Database {
     ---
     +/
     void createAggregate(Aggregate, string name = Aggregate.stringof)() {
-        alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PTA;
-        enum paramcount = PTA.length;
-        alias ReturnType!(Aggregate.result) RTA;
+        alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PT;
+        enum paramcount = PT.length;
+        alias ReturnType!(Aggregate.result) RT;
         
         static assert(is(Aggregate == struct), name ~ " shoud be a struct");
         static assert(is(typeof(Aggregate.accumulate) == function), name ~ " shoud define accumulate()");
         static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
 
         /+
-        Arguments of the accumulate function.
+        Arguments of the functions.
         +/
         string block_read_values(int n)() {
             static if (n == 0)
                 return null;
             else {
                 enum index = n - 1;
-                alias Unqual!(PTA[index]) UT;
+                alias Unqual!(PT[index]) UT;
                 static if (is(UT == bool))
                     return block_read_values!(n - 1) ~ `
                         type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
@@ -458,21 +465,21 @@ struct Database {
                         type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
                         enforce(type == SQLITE_INTEGER, new SqliteException(
                             "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be of an integral type"));
-                        args[` ~ to!string(index) ~ `] = to!(PTA[` ~ to!string(index) 
+                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
                             ~ `])(sqlite3_value_int64(argv[` ~ to!string(index) ~ `]));`;
                 else static if (isFloatingPoint!UT)
                     return block_read_values!(n - 1) ~ `
                         type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
                         enforce(type == SQLITE_FLOAT, new SqliteException(
                             "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a floating point"));
-                        args[` ~ to!string(index) ~ `] = to!(PTA[` ~ to!string(index) 
+                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
                             ~ `])(sqlite3_value_double(argv[` ~ to!string(index) ~ `]));`;
                 else static if (isSomeString!UT)
                     return block_read_values!(n - 1) ~ `
                         type = sqlite3_value_type(argv[` ~ to!string(index) ~ `]);
                         enforce(type == SQLITE_TEXT, new SqliteException(
                             "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a string"));
-                        args[` ~ to!string(index) ~ `] = to!(PTA[` ~ to!string(index) 
+                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
                             ~ `])(sqlite3_value_text(argv[` ~ to!string(index) ~ `]));`;
                 else static if (isArray!UT && is(Unqual!(ElementType!UT) == ubyte))
                     return block_read_values!(n - 1) ~ `
@@ -482,13 +489,13 @@ struct Database {
                         n = sqlite3_value_bytes(argv[` ~ to!string(index) ~ `]);
                         blob.length = n;
                         memcpy(blob.ptr, sqlite3_value_blob(argv[` ~ to!string(index) ~ `]), n);
-                        args[` ~ to!string(index) ~ `] = to!(PTA[` ~ to!string(index) ~ `])(blob.dup);`;
+                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) ~ `])(blob.dup);`;
                 else
                     static assert(false, PTA[index].stringof ~ " is not a compatible argument type");
             }
         }
         
-        static if (staticIndexOf!(ubyte[], PTA) >= 0)
+        static if (staticIndexOf!(ubyte[], PT) >= 0)
             enum blob = "ubyte[] blob;\n";
         else
             enum blob = "";
@@ -501,7 +508,7 @@ struct Database {
                     return;
                 }
                 
-                PTA args;
+                PT args;
                 int type;
                 `
                 ~ blob
@@ -523,22 +530,22 @@ struct Database {
         /+
         Return type and value of the final function.
         +/
-        static if (isIntegral!RTA || is(Unqual!RTA == bool))
+        static if (isIntegral!RT || is(Unqual!RT == bool))
             enum string block_return_result = `
                 auto result = to!long(tmp);
                 sqlite3_result_int64(context, result);`;
-        else static if (isFloatingPoint!RTA)
+        else static if (isFloatingPoint!RT)
             enum string block_return_result = `
                 auto result = to!double(tmp);
                 sqlite3_result_double(context, result);`;
-        else static if (isSomeString!RTA)
+        else static if (isSomeString!RT)
             enum string block_return_result = `
                 auto result = to!string(tmp);
                 if (result)
                     sqlite3_result_text(context, cast(char*) result.toStringz, -1, null);
                 else
                     sqlite3_result_null(context);`;
-        else static if (isArray!RTA && is(Unqual!(ElementType!RT) == ubyte))
+        else static if (isArray!RT && is(Unqual!(ElementType!RT) == ubyte))
             enum string block_return_result = `
                 auto result = to!(ubyte[])(tmp);
                 if (result)
@@ -546,7 +553,7 @@ struct Database {
                 else
                     sqlite3_result_null(context);`;
         else
-            static assert(false, RTA.stringof ~ " is not a compatible return type");
+            static assert(false, RT.stringof ~ " is not a compatible return type");
         
         enum x_final = `
             extern(C) static void ` ~ name ~ `_final(sqlite3_context* context) { 

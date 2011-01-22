@@ -1,65 +1,48 @@
 # SQLite3 for D makefile
 # © 2011, Nicolas Sicard
 
+# Commands
+CC = cc
+DC = dmd
+
 # Configuration
-LIB_NAME = d2sqlite3
-LIB_PREFIX = lib
-LIB_EXT = .a
-BUILD_DIR = lib
-CFLAGS = -O2 -arch i386
-DFLAGS = -O -inline -release
-#D_OPTIMIZATION = -debug
+CFLAGS = -O2 -arch i386 $(subst \c,, $(shell icu-config --cppflags))
+LIBDIR = /opt/local/lib
 DOC_DIR = doc
-DI_DIR = import
 SQLITE_FLAGS = \
 	SQLITE_ENABLE_COLUMN_METADATA \
+	SQLITE_ENABLE_ICU \
 	SQLITE_OMIT_AUTHORIZATION \
 	SQLITE_OMIT_BUILTIN_TEST \
 	SQLITE_OMIT_DEPRECATED \
 	SQLITE_OMIT_GET_TABLE \
 	SQLITE_OMIT_PROGRESS_CALLBACK \
 	SQLITE_OMIT_TRACE \
-	SQLITE_OMIT_UTF16 \
 	SQLITE_OMIT_WAL \
 
-# Commands
-CC = cc
-DC = dmd
-
-# Build
-LIB_FILENAME = $(LIB_PREFIX)$(LIB_NAME)$(LIB_EXT)
-BUILD_TARGET = $(BUILD_DIR)/$(LIB_FILENAME)
-
-# Sources
-D_SRC = sqlite3.d
-
-C_SRC_DIR = c_source
-C_SRC = $(wildcard $(C_SRC_DIR)/*.c)
-C_OBJ = $(C_SRC:.c=.o)
 C_DEFINES = $(SQLITE_FLAGS:%=-D%)
+
+C_SRC = c_source/sqlite3.c
+C_OBJ = sqlite3.o
+D_SRC = d2sqlite3.d
 
 all: build doc unittest
 
-build: $(C_OBJ) $(D_SRC)
-	$(DC) $(DFLAGS) -lib -od$(BUILD_DIR) -of$(LIB_FILENAME) -H -Hd$(DI_DIR) $(C_OBJ) $(D_SRC)
+build: $(C_OBJ)
 
-%.o: %.c
+$(C_OBJ): $(C_SRC)
 	$(CC) $(CFLAGS) $(C_DEFINES) -c $< -o $@
 
 .PHONY: clean doc unittest
 
 unittest: $(C_OBJ) $(D_SRC)
-	dmd -debug -w -unittest -cov $(C_OBJ) -run $(D_SRC) 
+	$(DC) -debug -w -unittest -cov $(C_OBJ) -version=SQLITE_ENABLE_ICU -L-L$(LIBDIR) -run $(D_SRC) 
 
 doc: $(D_SRC)
-	dmd -o- -c -Dd$(DOC_DIR) -D $(C_OBJ) $(D_SRC)
+	$(DC) -o- -c -Dd$(DOC_DIR) -D $(C_OBJ) $(D_SRC)
 
 clean:
-	-rm -f $(C_SRC_DIR)/*.o
-	-rm -f $(BUILD_TARGET)
-	-rmdir $(BUILD_DIR)
-	-rm -f $(DI_DIR)/*.di
-	-rmdir $(DI_DIR)
+	-rm -f *.o
 	-rm -f *.lst
 	-rm -f $(DOC_DIR)/*html
 	-rmdir $(DOC_DIR)
