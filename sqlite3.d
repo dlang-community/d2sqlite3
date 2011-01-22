@@ -138,14 +138,6 @@ catch (SqliteException e)
 }
 ---
 
-Warning:
-These are not implemented:
-$(UL
-    $(LI Interface to aggregate function creation API.)
-    $(LI Interface to $(LINK2 http://www.sqlite.org/c3ref/create_collation.html, collation creation API).)
-    $(LI $(LINK2 http://www.sqlite.org/c3ref/blob_open.html, BLOB I/O).)
-)
-
 Copyright:
     Copyright Nicolas Sicard, 2011.
 
@@ -154,6 +146,10 @@ License:
 
 Author:
     Nicolas Sicard.
+    
+Macros:
+    D = <tt>$0</tt>
+    DK = <strong><tt>$0</tt></strong>
 +/
 module sqlite3;
 
@@ -165,6 +161,7 @@ import std.metastrings;
 import std.string;
 import std.range;
 import std.traits;
+import std.typetuple;
 import std.utf;
 import std.variant;
 
@@ -172,6 +169,7 @@ debug=SQLITE;
 debug(SQLITE) import std.stdio;
 version(unittest) {
     import std.file;
+    import std.math;
     void main() {}
 }
 
@@ -199,20 +197,6 @@ Metadata from the SQLite library.
 +/
 struct Sqlite3 {
     /++
-    Gets the default encoding.
-
-    This function executes a query on a temporary database to
-    obtain its result.
-    +/
-    static @property string encoding() {
-        auto db = Database(":memory:");
-        auto query = db.query("PRAGMA encoding");
-        auto rows = query.rows;
-        assert(!rows.empty);
-        return rows.front[0].as!string;
-    }
-
-    /++
     Gets the library's version string (e.g. 3.6.12).
     +/
     static @property string versionString() {
@@ -225,12 +209,11 @@ struct Sqlite3 {
     static @property int versionNumber() nothrow {
         return sqlite3_libversion_number();
     }
-}
-
-unittest {
-    assert(Sqlite3.encoding[0..4] == "UTF-");
-    assert(Sqlite3.versionString[0..2] == "3.");
-    assert(Sqlite3.versionNumber > 3003011, "incompatible SQLite version");
+    
+    unittest {
+        assert(Sqlite3.versionString[0..2] == "3.");
+        assert(Sqlite3.versionNumber > 3003011, "incompatible SQLite version");
+    }
 }
 
 
@@ -327,6 +310,10 @@ struct Database {
         auto result = sqlite3_open(cast(char*) path.toStringz, &core.handle);
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
+    unittest {
+        auto db = Database(":memory:", SharedCache.enabled);
+        assert(db.handle);
+    }
 
     nothrow this(this)  {
         _retain;
@@ -338,6 +325,20 @@ struct Database {
 
     void opAssign(Database rhs) nothrow {
         swap(core, rhs.core);
+    }
+    
+    unittest {
+        // Tests copy-construction and reference counting.
+        Database db1;
+        {
+            db1 = Database(":memory:");
+            assert(db1.core.refcount == 1);
+            auto db2 = db1;
+            assert(db1.core.refcount == 2);
+            assert(db2.core.refcount == 2);
+        }
+        assert(db1.core.refcount == 1);
+        Database db3;
     }
 
     /++
@@ -393,20 +394,323 @@ struct Database {
     void commit() {
         execute("COMMIT");
     }
-
-    /++
-    Registers a new function in the database.
     
-    The function must satisfy these criteria:
+    /++
+    Creates and registers a new aggregate function in the database.
+    
+    The type Aggregate must be a $(DK struct) that implements at least these
+    two methods: $(D accumulate) and $(D result), and that must be default-constructible.
+    
+    See also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
+    
+    Example:
+    ---
+    struct weighted_average
+    {
+        double total_value = 0.;
+        double total_weight = 0.;
+        
+        void accumulate(double value, double weight)
+        {
+            total_value += value * weight;
+            total_weight += weight;
+        }
+        
+        double result()
+        {
+            return total_value / total_weight;
+        }
+    }
+    
+    auto db = Database("my_db.db");
+    db.createAggregate!weighted_average;
+    db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
+    ... // Populate the table.
+    auto query = db.query("SELECT weighted_average(value, weight) FROM test");
+    ---
+    +/
+    void createAggregate(Aggregate, string name = Aggregate.stringof)() {
+        alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PTA;
+        enum paramcount = PTA.length;
+        alias ReturnType!(Aggregate.result) RTA;
+        
+        static assert(is(Aggregate == struct), name ~ " shoud be a struct");
+        static assert(is(typeof(Aggregate.accumulate) == function), name ~ " shoud define accumulate()");
+        static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
+
+        /+
+        Arguments of the accumulate function.
+        +/
+        string block_read_values(int n)() {
+            static if (n == 0)
+                return null;
+            else {
+                enum index = n - 1;
+                alias Unqual!(PTA[index]) UT;
+                static if (is(UT == bool))
+                    return block_read_values!(n - 1) ~ `
+                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
+                        enforce(type == SQLITE_INTEGER, new SqliteException(
+                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a boolean"));
+                        args[` ~ to!string(index) ~ `] = sqlite3_value_int64(argv[` ~ to!string(index) ~ `]) != 0;`;
+                else static if (isIntegral!UT)
+                    return block_read_values!(n - 1) ~ `
+                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
+                        enforce(type == SQLITE_INTEGER, new SqliteException(
+                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be of an integral type"));
+                        args[` ~ to!string(index) ~ `] = to!(PTA[` ~ to!string(index) 
+                            ~ `])(sqlite3_value_int64(argv[` ~ to!string(index) ~ `]));`;
+                else static if (isFloatingPoint!UT)
+                    return block_read_values!(n - 1) ~ `
+                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
+                        enforce(type == SQLITE_FLOAT, new SqliteException(
+                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a floating point"));
+                        args[` ~ to!string(index) ~ `] = to!(PTA[` ~ to!string(index) 
+                            ~ `])(sqlite3_value_double(argv[` ~ to!string(index) ~ `]));`;
+                else static if (isSomeString!UT)
+                    return block_read_values!(n - 1) ~ `
+                        type = sqlite3_value_type(argv[` ~ to!string(index) ~ `]);
+                        enforce(type == SQLITE_TEXT, new SqliteException(
+                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a string"));
+                        args[` ~ to!string(index) ~ `] = to!(PTA[` ~ to!string(index) 
+                            ~ `])(sqlite3_value_text(argv[` ~ to!string(index) ~ `]));`;
+                else static if (isArray!UT && is(Unqual!(ElementType!UT) == ubyte))
+                    return block_read_values!(n - 1) ~ `
+                        type = sqlite3_value_type(argv[` ~ to!string(index) ~ `]);
+                        enforce(type == SQLITE_BLOB, new SqliteException(
+                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be of an array of bytes (BLOB)"));
+                        n = sqlite3_value_bytes(argv[` ~ to!string(index) ~ `]);
+                        blob.length = n;
+                        memcpy(blob.ptr, sqlite3_value_blob(argv[` ~ to!string(index) ~ `]), n);
+                        args[` ~ to!string(index) ~ `] = to!(PTA[` ~ to!string(index) ~ `])(blob.dup);`;
+                else
+                    static assert(false, PTA[index].stringof ~ " is not a compatible argument type");
+            }
+        }
+        
+        static if (staticIndexOf!(ubyte[], PTA) >= 0)
+            enum blob = "ubyte[] blob;\n";
+        else
+            enum blob = "";
+            
+        enum x_step = `
+            extern(C) static void ` ~ name ~ `_step(sqlite3_context* context, int argc, sqlite3_value** argv) { 
+                Aggregate* agg = cast(Aggregate*) sqlite3_aggregate_context(context, Aggregate.sizeof);
+                if (!agg) {
+                    sqlite3_result_error_nomem(context);
+                    return;
+                }
+                
+                PTA args;
+                int type;
+                `
+                ~ blob
+                ~ block_read_values!(paramcount)
+                ~ `
+                
+                try {
+                    agg.accumulate(args);
+                }
+                catch (Exception e) {
+                    auto txt = "error in aggregate function ` ~ name ~ `(): " ~ e.msg;
+                    sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
+                }
+            }
+        `;
+        //pragma(msg, x_step);
+        mixin(x_step);
+        
+        /+
+        Return type and value of the final function.
+        +/
+        static if (isIntegral!RTA || is(Unqual!RTA == bool))
+            enum string block_return_result = `
+                auto result = to!long(tmp);
+                sqlite3_result_int64(context, result);`;
+        else static if (isFloatingPoint!RTA)
+            enum string block_return_result = `
+                auto result = to!double(tmp);
+                sqlite3_result_double(context, result);`;
+        else static if (isSomeString!RTA)
+            enum string block_return_result = `
+                auto result = to!string(tmp);
+                if (result)
+                    sqlite3_result_text(context, cast(char*) result.toStringz, -1, null);
+                else
+                    sqlite3_result_null(context);`;
+        else static if (isArray!RTA && is(Unqual!(ElementType!RT) == ubyte))
+            enum string block_return_result = `
+                auto result = to!(ubyte[])(tmp);
+                if (result)
+                    sqlite3_result_blob(context, cast(void*) result.ptr, result.length, null);
+                else
+                    sqlite3_result_null(context);`;
+        else
+            static assert(false, RTA.stringof ~ " is not a compatible return type");
+        
+        enum x_final = `
+            extern(C) static void ` ~ name ~ `_final(sqlite3_context* context) { 
+                Aggregate* agg = cast(Aggregate*) sqlite3_aggregate_context(context, Aggregate.sizeof);
+                if (!agg) {
+                    sqlite3_result_error_nomem(context);
+                    return;
+                }
+                
+                try {
+                    auto tmp = agg.result;`
+                    ~ block_return_result
+                    ~ `
+                }
+                catch (Exception e) {
+                    auto txt = "error in aggregate function ` ~ name ~ `(): " ~ e.msg;
+                    sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
+                }
+            }
+        `;
+        //pragma(msg, x_final);
+        mixin(x_final);
+        
+        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz, paramcount,
+            SQLITE_UTF8, null, null, mixin(Format!("&%s_step", name)), mixin(Format!("&%s_final", name)));
+        enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
+    }
+    unittest {
+        // Tests aggregate creation.
+        struct weighted_average {
+            double total_value = 0.0;
+            double total_weight = 0.0;
+
+            void accumulate(double value, double weight) {
+                total_value += value * weight;
+                total_weight += weight;
+            }
+
+            double result() {
+                return total_value / total_weight;
+            }
+        }
+
+        auto db = Database(":memory:");
+        db.createAggregate!(weighted_average, "w_avg");
+
+        db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
+
+        auto query = db.query("INSERT INTO test (value, weight) VALUES (:v, :w)");
+        query.params.bind(":v", 11.5, ":w", 3);
+        query.run;
+        query.reset;
+        query.params.bind(":v", 14.8, ":w", 1.6);
+        query.run;
+        query.reset;
+        query.params.bind(":v", 19, ":w", 2.4);
+        query.run;
+        query.reset;
+
+        query = db.query("SELECT w_avg(value, weight) FROM test");
+        assert(approxEqual(query.rows.front[0].as!double, (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
+    }
+    
+    /++
+    Creates and registers a collation function in the database.
+    
+    The function $(D_PARAM fun) must satisfy these criteria:
+    $(UL
+        $(LI It must two string arguments, e.g. s1 and s2.)
+        $(LI Its return value $(D ret) must satisfy these criteria (when s3 is any other string):
+            $(UL
+                $(LI If s1 is less than s2, $(D ret < 0).)
+                $(LI If s1 is equal to s2, $(D ret == 0).)
+                $(LI If s1 is greater than s2, $(D ret > 0).)
+                $(LI If s1 is equal to s2, then s2 is equal to s1.)
+                $(LI If s1 is equal to s2 and s2 is equal to s3, then s1 is equal to s3.)
+                $(LI If s1 is less than s2, then s2 is greater than s1.)
+                $(LI If s1 is less than s2 and s2 is less than s3, then s1 is less than s3.)
+            )
+        )
+    )
+    
+    The function will have the name $(D_PARAM name) in the database; this name defaults to
+    the identifier of the function fun.
+    
+    See also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
+
+    Example:
+    ---
+    static int icmp(string s1, string s2)
+    {
+        return std.string.icmp(s1, s2);
+    }
+
+    auto db = Database("my_db.db");
+    db.createCollation!icmp;
+    db.execute("CREATE TABLE test (val TEXT)");
+    ... // Populate the table.
+    auto query = db.query("SELECT val FROM test ORDER BY val COLLATE icmp");
+    ---
+    +/
+    void createCollation(alias fun, string name = __traits(identifier, fun))() {
+        static if (__traits(isStaticFunction, fun))
+            enum funpointer = &fun;
+        else
+            static assert(false, "symbol " ~ __traits(identifier, fun) ~ " of type " ~ typeof(fun).stringof ~ " is not a static function");
+        
+        enum x_compare = `extern (C) static int ` ~ name ~ `(void*, int n1, void* str1, int n2, void* str2) {
+            char[] s1, s2;
+            s1.length = n1;
+            s2.length = n2;
+            memcpy(s1.ptr, str1, n1);
+            memcpy(s2.ptr, str2, n2);
+            return funpointer(cast(immutable) s1, cast(immutable) s2);
+        }`;
+        //pragma(msg, x_compare);
+        mixin(x_compare);
+        
+        auto result = sqlite3_create_collation(core.handle, cast(char*) name.toStringz,
+            SQLITE_UTF8, null, mixin(Format!("&%s", name)));
+        enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
+    }
+    unittest {
+        static int my_collation(string s1, string s2) {
+            return std.string.icmp(s1, s2);
+        }
+        
+        auto db = Database(":memory:");
+        db.createCollation!my_collation;
+        db.execute("CREATE TABLE test (val TEXT)");
+
+        auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+        query.params.bind(":val", "A");
+        query.run;
+        query.reset;
+        query.params.bind(":val", "B");
+        query.run;
+        query.reset;
+        query.params.bind(":val", "a");
+        query.run;
+
+        query = db.query("SELECT val FROM test ORDER BY val COLLATE my_collation");
+        assert(query.rows.front[0].as!string == "A");
+        query.rows.popFront();
+        assert(query.rows.front[0].as!string == "a");
+        query.rows.popFront();
+        assert(query.rows.front[0].as!string == "B");
+    }
+    
+    /++
+    Creates and registers a simple function in the database.
+    
+    The function $(D_PARAM fun) must satisfy these criteria:
     $(UL
         $(LI It must not be a variadic.)
         $(LI Its arguments must all have a type that is compatible with SQLite types:
              boolean, integral, floating point, string, or array of bytes (BLOB types).)
         $(LI Its return value must also be of a compatible type.)
     )
-    Params:
-        fun = the identifier of the function.
-        name = the name of the function in the database (defaults to the identifier).
+    
+    The function will have the name $(D_PARAM name) in the database; this name defaults to
+    the identifier of the function fun.
+    
+    See also: $(LINK http://www.sqlite.org/lang_corefunc.html)
     
     Example:
     ---
@@ -418,22 +722,24 @@ struct Database {
     }
     
     auto db = Database("");
-    db.createFunction!(my_repeat);
+    db.createFunction!my_repeat;
     
     auto query = db.query("SELECT my_repeat('*', 8)");
     assert(query.rows.front[0].as!string = "********");
     ---
-    +/
+        +/
     void createFunction(alias fun, string name = __traits(identifier, fun))() {
         static if (__traits(isStaticFunction, fun))
             enum funpointer = &fun;
         else
             static assert(false, "symbol " ~ __traits(identifier, fun) ~ " of type " 
                           ~ typeof(fun).stringof ~ " is not a static function");
+                          
+        static assert(variadicFunctionStyle!(fun) == Variadic.NO);
 
-        alias ParameterTypeTuple!fun PT;
-        alias ReturnType!fun RT;
+        alias staticMap!(Unqual, ParameterTypeTuple!fun) PT;
         enum paramcount = PT.length;
+        alias ReturnType!fun RT;
 
         /+
         Arguments.
@@ -516,11 +822,19 @@ struct Database {
         /+
         The generated function.
         +/
-        mixin(`
+        
+        // Detect the need of a blob variable
+        static if (staticIndexOf!(ubyte[], PT) >= 0)
+            enum blob = "ubyte[] blob;\n";
+        else
+            enum blob = "";
+
+        enum x_func = `
             extern(C) static void ` ~ name ~ `(sqlite3_context* context, int argc, sqlite3_value** argv) { 
                 PT args;
                 int type, n;
-                ubyte[] blob;`
+                `
+                ~ blob
                 ~ block_read_values!(paramcount)
                 ~ `
                 try {
@@ -534,11 +848,47 @@ struct Database {
                     sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
                 }
             }
-        `);
+        `;
+        //pragma(msg, x_func);
+        mixin(x_func);
 
         auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz, paramcount,
             SQLITE_UTF8, null, mixin(Format!("&%s", name)), null, null);
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
+    }
+    unittest {
+        // Tests function creation.
+        static string test_args(bool b, int i, double d, string s, ubyte[] a) {
+            if (b && i == 42 && d == 4.2 && s == "42" && a == [0x04, 0x02])
+                return "OK";
+            else
+                return "NOT OK";
+        }
+        static bool test_bool() {
+            return true;
+        }
+        static int test_int() {
+            return 42;
+        }
+        static double test_double() {
+            return 4.2;
+        }
+        static string test_string() {
+            return "42";
+        }
+        static immutable(ubyte)[] test_ubyte() {
+            return [0x04, 0x02];
+        }
+
+        auto db = Database(":memory:");
+        db.createFunction!test_args;
+        db.createFunction!test_bool;
+        db.createFunction!test_int;
+        db.createFunction!test_double;
+        db.createFunction!test_string;
+        db.createFunction!test_ubyte;
+        auto query = db.query("SELECT test_args(test_bool(), test_int(), test_double(), test_string(), test_ubyte())");
+        assert(query.rows.front[0].as!string == "OK");
     }
 
     /++
@@ -560,6 +910,10 @@ struct Database {
         checkHandle;
         return sqlite3_errcode(core.handle);
     }
+    unittest {
+        auto db = Database(":memory:");
+        assert(db.errorCode == SQLITE_OK);
+    }
 
     /++
     Gets the SQLite error message of the last operation.
@@ -567,6 +921,10 @@ struct Database {
     @property string errorMsg() {
         checkHandle;
         return to!string(sqlite3_errmsg(core.handle));
+    }
+    unittest {
+        auto db = Database(":memory:");
+        assert(db.errorMsg == "not an error");
     }
 
     /++
@@ -585,6 +943,21 @@ struct Database {
             throw new SqliteException(msg);
         }
     }
+    unittest {
+        // Tests empty statements
+        auto db = Database(":memory:");
+        db.execute(";");
+    }
+    unittest {
+        // Tests multiple statements in query string
+        auto db = Database(":memory:");
+        int result;
+        try
+            db.execute("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
+        catch (SqliteException e)
+            assert(e.msg.canFind("test"));
+    }
+    
 
     /++
     Gets the SQLite internal _handle of the database connection.
@@ -660,99 +1033,42 @@ struct Database {
         assert(core);
         enforce(core.handle, new SqliteException("database not open"));
     }
-}
-
-unittest {
-    // Tests database creation.
-    auto db = Database(":memory:");
-    assert(db.handle);
-    assert(db.errorCode == SQLITE_OK);
-    assert(db.errorMsg == "not an error");
-}
-
-unittest {
-    // Tests copy-construction and reference counting.
-    Database db1;
-    {
-        db1 = Database(":memory:");
-        assert(db1.core.refcount == 1);
-        auto db2 = db1;
-        assert(db1.core.refcount == 2);
-        assert(db2.core.refcount == 2);
-    }
-    assert(db1.core.refcount == 1);
-    Database db3;
-}
-
-unittest {
-    // Tests miscellaneous functionalities.
-    auto db = Database(":memory:");
-    db.attach("test.db", "other_db");
-    db.detach("other_db");
-    assert(std.file.exists("test.db"));
-    std.file.remove("test.db");
-
-    db.begin;
-        db.execute("CREATE TABLE test (dummy BLOB)");
-        assert(db.changes == 0);
-        assert(db.totalChanges == 0);
-    db.rollback;
-
-    db.begin;
-        db.execute("CREATE TABLE test (val INTEGER)");
-        assert(db.changes == 0);
-        assert(db.totalChanges == 0);
-    db.savepoint("aftercreation");
-        db.execute("INSERT INTO test (val) VALUES (42)");
-        assert(db.changes == 1);
-        assert(db.totalChanges == 1);
-    db.rollback("aftercreation");
-    db.release("aftercreation");
-        db.execute("INSERT INTO test (val) VALUES (84)");
-        assert(db.changes == 1);
-        //assert(db.totalChanges == 1); // == 2 !!
-    db.commit;
-
-    db.vacuum;
-    db.analyze;
-
-    auto query = db.query("SELECT COUNT(*) FROM test");
-    assert(query.rows.front[0].as!int == 1);
-}
-
-unittest {
-    // Tests function creation.
-    static string test_args(bool b, int i, double d, string s, ubyte[] a) {
-        if (b && i == 42 && d == 4.2 && s == "42" && a == [0x04, 0x02])
-            return "OK";
-        else
-            return "NOT OK";
-    }
-    static bool test_bool() {
-        return true;
-    }
-    static int test_int() {
-        return 42;
-    }
-    static double test_double() {
-        return 4.2;
-    }
-    static string test_string() {
-        return "42";
-    }
-    static immutable(ubyte)[] test_ubyte() {
-        return [0x04, 0x02];
-    }
     
-    auto db = Database(":memory:");
-    db.createFunction!(test_args);
-    db.createFunction!(test_bool);
-    db.createFunction!(test_int);
-    db.createFunction!(test_double);
-    db.createFunction!(test_string);
-    db.createFunction!(test_ubyte);
-    auto query = db.query("SELECT test_args(test_bool(), test_int(), test_double(), test_string(), test_ubyte())");
-    assert(query.rows.front[0].as!string == "OK");
+    unittest {
+        // Tests miscellaneous functionalities.
+        auto db = Database(":memory:");
+        db.attach("test.db", "other_db");
+        db.detach("other_db");
+        assert(std.file.exists("test.db"));
+        std.file.remove("test.db");
+
+        db.begin;
+            db.execute("CREATE TABLE test (dummy BLOB)");
+            assert(db.changes == 0);
+            assert(db.totalChanges == 0);
+        db.rollback;
+
+        db.begin;
+            db.execute("CREATE TABLE test (val INTEGER)");
+            assert(db.changes == 0);
+            assert(db.totalChanges == 0);
+        db.savepoint("aftercreation");
+            db.execute("INSERT INTO test (val) VALUES (42)");
+            assert(db.changes == 1);
+            assert(db.totalChanges == 1);
+        db.rollback("aftercreation");
+        db.release("aftercreation");
+            db.execute("INSERT INTO test (val) VALUES (84)");
+            assert(db.changes == 1);
+            //assert(db.totalChanges == 1); // == 2 !!
+        db.commit;
+
+        db.vacuum;
+        db.analyze;
+
+        auto query = db.query("SELECT COUNT(*) FROM test");
+        assert(query.rows.front[0].as!int == 1);
+    }
 }
 
 
@@ -821,6 +1137,20 @@ static struct Query {
     void opAssign(Query rhs) nothrow {
         swap(core, rhs.core);
     }
+    
+    unittest {
+        // Test copy-construction and reference counting.
+        Database db = Database(":memory:");
+        auto q1 = db.query("SELECT 42");
+        assert(q1.statement);
+        {
+            assert(q1.core.refcount == 1);
+            auto q2 = q1;
+            assert(q1.core.refcount == 2);
+            assert(q2.core.refcount == 2);
+        }
+        assert(q1.core.refcount == 1);
+    }
 
     /++
     Gets the bindable parameters of the query.
@@ -860,6 +1190,29 @@ static struct Query {
         }
         return core.rows;
     }
+    unittest {
+        // Tests empty statements
+        auto db = Database(":memory:");
+        db.execute(";");
+        auto query = db.query("-- This is a comment !");
+        assert(query.rows.empty);
+    }
+    unittest {
+        // Tests Query.rows()
+        static assert(isInputRange!RowSet);
+        auto db = Database(":memory:");
+        db.execute("CREATE TABLE test (val INTEGER)");
+
+        auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+        query.params.bind(":val", 42);
+        query.run;
+        assert(query.rows.empty);
+        query = db.query("SELECT * FROM test");
+        assert(!query.rows.empty);
+        assert(query.rows.front[0].as!int == 42);
+        query.rows.popFront();
+        assert(query.rows.empty);
+    }
 
     /++
     Executes the query.
@@ -876,55 +1229,6 @@ static struct Query {
         assert(core);
         return core.statement;
     }
-}
-
-unittest {
-    // Test copy-construction and reference counting.
-    Database db = Database(":memory:");
-    auto q1 = db.query("SELECT 42");
-    assert(q1.statement);
-    {
-        assert(q1.core.refcount == 1);
-        auto q2 = q1;
-        assert(q1.core.refcount == 2);
-        assert(q2.core.refcount == 2);
-    }
-    assert(q1.core.refcount == 1);
-}
-
-unittest {
-    // Tests empty statements
-    auto db = Database(":memory:");
-    db.execute(";");
-    auto query = db.query("-- This is a comment !");
-    assert(query.rows.empty);
-}
-
-unittest {
-    // Tests multiple statements in query string
-    auto db = Database(":memory:");
-    int result;
-    try
-        db.execute("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
-    catch (SqliteException e)
-        assert(e.msg.canFind("test"));
-}
-
-unittest {
-    // Tests Query.rows()
-    static assert(isInputRange!RowSet);
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 42);
-    query.run;
-    assert(query.rows.empty);
-    query = db.query("SELECT * FROM test");
-    assert(!query.rows.empty);
-    assert(query.rows.front[0].as!int == 42);
-    query.rows.popFront();
-    assert(query.rows.empty);
 }
 
 
@@ -963,6 +1267,49 @@ struct Parameters {
         // Recursive call for the next two arguments.
         static if (args.length >= 4)
             bind(args[2 .. $]);
+    }
+    unittest {
+        // Tests simple bindings
+        auto db = Database(":memory:");
+        db.execute("CREATE TABLE test (val INTEGER)");
+
+        auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+        query.params.bind(":val", 42);
+        query.run;
+        query.reset;
+        query.params.bind(1, 42);
+        query.run;
+        query.reset;
+        query.params.bind(1, 42);
+        query.run;
+        query.reset;
+        query.params.bind(":val", 42);
+        query.run;
+
+        query = db.query("SELECT * FROM test");
+        foreach (row; query.rows) {
+            assert(row[0].as!int == 42);
+        }
+    }
+    unittest {
+        // Tests multiple bindings
+        auto db = Database(":memory:");
+        db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
+        auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
+        assert(query.params.length == 3);
+        query.params.bind(":t", "TEXT", ":i", 42, ":f", 3.14);
+        query.run;
+        query.reset;
+        query.params.bind(3, "TEXT", 1, 42, 2, 3.14);
+        query.run;
+
+        query = db.query("SELECT * FROM test");
+        foreach (row; query.rows) {
+            assert(row.columnCount == 3);
+            assert(row["i"].as!int == 42);
+            assert(row["f"].as!double == 3.14);
+            assert(row["t"].as!string == "TEXT");
+        }
     }
 
     /++
@@ -1020,6 +1367,23 @@ struct Parameters {
         enforce(index > 0, new SqliteException(format("parameter named '%s' cannot be bound", name)));
         opIndexAssign(value, index);
     }
+    version (none) {
+        // @@@ BUG5202 @@@: doesn't compile.
+        unittest {
+            // Tests simple bindings with associative array syntax
+            auto db = Database(":memory:");
+            db.execute("CREATE TABLE test (val INTEGER)");
+
+            auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+            query.params[":val"] == 42;
+            query.run;
+
+            query = db.query("SELECT * FROM test");
+            foreach (row; query.rows) {
+                assert(row[0].as!int == 42);
+            }
+        }
+    }
 
     /++
     Gets the number of parameters.
@@ -1036,51 +1400,6 @@ struct Parameters {
         assert(statement);
         auto result = sqlite3_clear_bindings(statement);
         enforce(result == SQLITE_OK, new SqliteException(result));
-    }
-}
-
-unittest {
-    // Tests Parmeters
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 42);
-    query.run;
-    query.reset;
-    query.params.bind(1, 42);
-    query.run;
-    query.reset;
-    query.params.bind(1, 42);
-    query.run;
-    query.reset;
-    query.params.bind(":val", 42);
-    query.run;
-
-    query = db.query("SELECT * FROM test");
-    foreach (row; query.rows) {
-        assert(row[0].as!int == 42);
-    }
-}
-
-unittest {
-    // Tests multiple bindings
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
-    auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
-    assert(query.params.length == 3);
-    query.params.bind(":t", "TEXT", ":i", 42, ":f", 3.14);
-    query.run;
-    query.reset;
-    query.params.bind(3, "TEXT", 1, 42, 2, 3.14);
-    query.run;
-
-    query = db.query("SELECT * FROM test");
-    foreach (row; query.rows) {
-        assert(row.columnCount == 3);
-        assert(row["i"].as!int == 42);
-        assert(row["f"].as!double == 3.14);
-        assert(row["t"].as!string == "TEXT");
     }
 }
 

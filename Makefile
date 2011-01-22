@@ -6,11 +6,21 @@ LIB_NAME = d2sqlite3
 LIB_PREFIX = lib
 LIB_EXT = .a
 BUILD_DIR = lib
-CFLAGS = -Os -arch i386
+CFLAGS = -O2 -arch i386
 DFLAGS = -O -inline -release
 #D_OPTIMIZATION = -debug
 DOC_DIR = doc
 DI_DIR = import
+SQLITE_FLAGS = \
+	SQLITE_ENABLE_COLUMN_METADATA \
+	SQLITE_OMIT_AUTHORIZATION \
+	SQLITE_OMIT_BUILTIN_TEST \
+	SQLITE_OMIT_DEPRECATED \
+	SQLITE_OMIT_GET_TABLE \
+	SQLITE_OMIT_PROGRESS_CALLBACK \
+	SQLITE_OMIT_TRACE \
+	SQLITE_OMIT_UTF16 \
+	SQLITE_OMIT_WAL \
 
 # Commands
 CC = cc
@@ -26,6 +36,7 @@ D_SRC = sqlite3.d
 C_SRC_DIR = c_source
 C_SRC = $(wildcard $(C_SRC_DIR)/*.c)
 C_OBJ = $(C_SRC:.c=.o)
+C_DEFINES = $(SQLITE_FLAGS:%=-D%)
 
 all: build doc unittest
 
@@ -33,10 +44,7 @@ build: $(C_OBJ) $(D_SRC)
 	$(DC) $(DFLAGS) -lib -od$(BUILD_DIR) -of$(LIB_FILENAME) -H -Hd$(DI_DIR) $(C_OBJ) $(D_SRC)
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-#%.di: %.d
-#	$(DC) -o- -c $(D_OPTIMIZATION) $<
+	$(CC) $(CFLAGS) $(C_DEFINES) -c $< -o $@
 
 .PHONY: clean doc unittest
 
