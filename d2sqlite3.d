@@ -151,7 +151,7 @@ Macros:
     D = <tt>$0</tt>
     DK = <strong><tt>$0</tt></strong>
 +/
-module sqlite3;
+module d2sqlite3;
 
 import std.algorithm;
 import std.array;

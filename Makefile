@@ -26,7 +26,7 @@ C_SRC = c_source/sqlite3.c
 C_OBJ = sqlite3.o
 D_SRC = d2sqlite3.d
 
-all: build doc unittest
+all: build
 
 build: $(C_OBJ)
 
