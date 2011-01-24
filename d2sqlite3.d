@@ -165,14 +165,15 @@ import std.typetuple;
 import std.utf;
 import std.variant;
 
-version (SQLITE_ENABLE_ICU) {
-    version (Posix) {
+version (Posix) {
+    pragma(lib, "dl");
+    version (SQLITE_ENABLE_ICU) {
         pragma(lib, "icui18n");
         pragma(lib, "icuuc");
     }
 }
 
-debug=SQLITE;
+//debug=SQLITE;
 debug(SQLITE) import std.stdio;
 version(unittest) {
     import std.file;

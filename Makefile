@@ -18,9 +18,7 @@ SQLITE_FLAGS = \
 	SQLITE_OMIT_GET_TABLE \
 	SQLITE_OMIT_PROGRESS_CALLBACK \
 	SQLITE_OMIT_TRACE \
-	SQLITE_OMIT_WAL \
-
-C_DEFINES = $(SQLITE_FLAGS:%=-D%)
+	SQLITE_OMIT_WAL
 
 C_SRC = c_source/sqlite3.c
 C_OBJ = sqlite3.o
@@ -31,7 +29,7 @@ all: build
 build: $(C_OBJ)
 
 $(C_OBJ): $(C_SRC)
-	$(CC) $(CFLAGS) $(C_DEFINES) -c $< -o $@
+	$(CC) $(CFLAGS) $(SQLITE_FLAGS:%=-D%) -c $< -o $@
 
 .PHONY: clean doc unittest
 
