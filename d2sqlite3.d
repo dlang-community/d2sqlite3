@@ -277,7 +277,7 @@ An interface to a SQLite database connection.
 struct Database {
     private struct _core {
         sqlite3* handle;
-        int refcount = 1;
+        uint refcount = 1;
     }
     private _core* core; // shared between copies of this Database object.
 
@@ -449,7 +449,7 @@ struct Database {
         /+
         Arguments of the functions.
         +/
-        string block_read_values(int n)() {
+        string block_read_values(size_t n)() {
             static if (n == 0)
                 return null;
             else {
@@ -752,7 +752,7 @@ struct Database {
         /+
         Arguments.
         +/
-        string block_read_values(int n)() {
+        string block_read_values(size_t n)() {
             static if (n == 0)
                 return null;
             else {
@@ -959,7 +959,6 @@ struct Database {
     unittest {
         // Tests multiple statements in query string
         auto db = Database(":memory:");
-        int result;
         try
             db.execute("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
         catch (SqliteException e)
@@ -1088,7 +1087,7 @@ static struct Query {
         Database* db;
         string sql;
         sqlite3_stmt* statement;
-        int refcount = 1;
+        uint refcount = 1;
         Parameters params = void;
         RowSet rows = void;
     }
@@ -1329,7 +1328,7 @@ struct Parameters {
     Bugs:
         Does not work with Query.params due to DMD issue #5202
     +/
-    void opIndexAssign(T)(T value, int index) {
+    void opIndexAssign(T)(T value, size_t index) {
         enforce(length, new SqliteException("no parameter in prepared statement"));
 
         alias Unqual!T U;
@@ -1371,7 +1370,7 @@ struct Parameters {
     void opIndexAssign(T)(T value, string name) {
         assert(statement);
         enforce(length, new SqliteException("no parameter in prepared statement"));
-        int index = sqlite3_bind_parameter_index(statement, cast(char*) name.toStringz);
+        auto index = sqlite3_bind_parameter_index(statement, cast(char*) name.toStringz);
         enforce(index > 0, new SqliteException(format("parameter named '%s' cannot be bound", name)));
         opIndexAssign(value, index);
     }
@@ -1456,7 +1455,7 @@ struct RowSet {
         Row row;
         auto colcount = sqlite3_column_count(query.statement);
         row.columns.reserve(colcount);
-        for (int i = 0; i < colcount; i++) {
+        foreach (i; 0 .. colcount) {
             /*
                 TODO The name obtained from sqlite3_column_name is that of the query text. We should test first for the real name with sqlite3_column_database_name or sqlite3_column_table_name.
             */
@@ -1513,7 +1512,7 @@ struct Row {
     /++
     Gets the number of columns in this row.
     +/
-    @property int columnCount() nothrow {
+    @property size_t columnCount() nothrow {
         return columns.length;
     }
 
@@ -1524,7 +1523,7 @@ struct Row {
     Throws:
         SqliteException when the index is invalid.
     +/
-    Column opIndex(int index) {
+    Column opIndex(size_t index) {
         enforce(index >= 0 && index < columns.length,
                 new SqliteException(format("invalid column index: %d", index)));
         return columns[index];
@@ -1558,7 +1557,7 @@ struct Row {
 A SQLite column.
 +/
 struct Column {
-    int index;
+    size_t index;
     string name;
     private Variant data;
 
