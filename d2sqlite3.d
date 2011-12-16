@@ -165,11 +165,11 @@ import std.typetuple;
 import std.utf;
 import std.variant;
 
-version (Posix) {
-    pragma(lib, "dl");
-    version (SQLITE_ENABLE_ICU) {
+version (SQLITE_ENABLE_ICU) {
+    version (Posix) {
+        pragma(lib, "dl");
         pragma(lib, "icui18n");
-        pragma(lib, "icuuc");
+        pragma(lib, "icuuc");        
     }
 }
 
@@ -230,13 +230,37 @@ Tests if T is a convertible to a SQLite type.
 +/
 template isValidSqlite3Type(T) {
     enum isValidSqlite3Type =
-               isIntegral!RT
-            || is(Unqual!RT == bool)
-            || isFloatingPoint!RT
-            || isSomeString!RT
-            || (isArray!RT && is(Unqual!(ElementType!RT) == ubyte));
+               isIntegral!T
+            || is(Unqual!T == bool)
+            || isFloatingPoint!T
+            || isSomeChar!T
+            || isSomeString!T
+            || (isArray!T && is(Unqual!(ElementType!T) == ubyte))
+            || is(T == void*);
 }
-
+version (unittest) {
+    static assert(isValidSqlite3Type!int);
+    static assert(isValidSqlite3Type!uint);
+    static assert(isValidSqlite3Type!long);
+    static assert(isValidSqlite3Type!ulong);
+    static assert(isValidSqlite3Type!short);
+    static assert(isValidSqlite3Type!ushort);
+    static assert(isValidSqlite3Type!byte);
+    static assert(isValidSqlite3Type!ubyte);
+    static assert(isValidSqlite3Type!(immutable(int)));
+    static assert(isValidSqlite3Type!bool);
+    static assert(isValidSqlite3Type!float);
+    static assert(isValidSqlite3Type!double);
+    static assert(isValidSqlite3Type!real);
+    static assert(isValidSqlite3Type!string);
+    static assert(isValidSqlite3Type!wstring);
+    static assert(isValidSqlite3Type!dstring);
+    static assert(isValidSqlite3Type!(char[]));
+    static assert(isValidSqlite3Type!(ubyte[]));
+    static assert(isValidSqlite3Type!(immutable(ubyte)[]));
+    static assert(isValidSqlite3Type!(immutable(ubyte)[4]));
+    static assert(isValidSqlite3Type!(typeof(null)));
+}
 
 /++
 Transaction types.
@@ -324,11 +348,11 @@ struct Database {
     }
 
     nothrow this(this)  {
-        _retain;
+        _retain();
     }
 
     ~this() {
-        _release;
+        _release();
     }
 
     void opAssign(Database rhs) nothrow {
@@ -389,7 +413,7 @@ struct Database {
     the most recently completed query.
     +/
     @property int changes() {
-        checkHandle;
+        checkHandle();
         return sqlite3_changes(core.handle);
     }
 
@@ -449,7 +473,7 @@ struct Database {
         /+
         Arguments of the functions.
         +/
-        string block_read_values(size_t n)() {
+        static @property string block_read_values(size_t n)() {
             static if (n == 0)
                 return null;
             else {
@@ -565,7 +589,7 @@ struct Database {
                 }
                 
                 try {
-                    auto tmp = agg.result;`
+                    auto tmp = agg.result();`
                     ~ block_return_result
                     ~ `
                 }
@@ -599,20 +623,20 @@ struct Database {
         }
 
         auto db = Database(":memory:");
-        db.createAggregate!(weighted_average, "w_avg");
+        db.createAggregate!(weighted_average, "w_avg")();
 
         db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
 
         auto query = db.query("INSERT INTO test (value, weight) VALUES (:v, :w)");
         query.params.bind(":v", 11.5, ":w", 3);
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
         query.params.bind(":v", 14.8, ":w", 1.6);
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
         query.params.bind(":v", 19, ":w", 2.4);
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
 
         query = db.query("SELECT w_avg(value, weight) FROM test");
         assert(approxEqual(query.rows.front[0].as!double, (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
@@ -683,18 +707,18 @@ struct Database {
         }
         
         auto db = Database(":memory:");
-        db.createCollation!my_collation;
+        db.createCollation!my_collation();
         db.execute("CREATE TABLE test (val TEXT)");
 
         auto query = db.query("INSERT INTO test (val) VALUES (:val)");
         query.params.bind(":val", "A");
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
         query.params.bind(":val", "B");
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
         query.params.bind(":val", "a");
-        query.run;
+        query.run();
 
         query = db.query("SELECT val FROM test ORDER BY val COLLATE my_collation");
         assert(query.rows.front[0].as!string == "A");
@@ -743,7 +767,7 @@ struct Database {
             static assert(false, "symbol " ~ __traits(identifier, fun) ~ " of type " 
                           ~ typeof(fun).stringof ~ " is not a static function");
                           
-        static assert(variadicFunctionStyle!(fun) == Variadic.NO);
+        static assert(variadicFunctionStyle!(fun) == Variadic.no);
 
         alias staticMap!(Unqual, ParameterTypeTuple!fun) PT;
         enum paramcount = PT.length;
@@ -752,7 +776,7 @@ struct Database {
         /+
         Arguments.
         +/
-        string block_read_values(size_t n)() {
+        static @property string block_read_values(size_t n)() {
             static if (n == 0)
                 return null;
             else {
@@ -820,8 +844,10 @@ struct Database {
         else static if (isArray!RT && is(Unqual!(ElementType!RT) == ubyte))
             enum string block_return_result = `
                 auto result = to!(ubyte[])(tmp);
-                if (result)
-                    sqlite3_result_blob(context, cast(void*) result.ptr, result.length, null);
+                if (result) {
+                    enforce(result.length <= int.max, new SqliteException("array too long"));
+                    sqlite3_result_blob(context, cast(void*) result.ptr, cast(int) result.length, null);
+                }
                 else
                     sqlite3_result_null(context);`;
         else
@@ -889,12 +915,12 @@ struct Database {
         }
 
         auto db = Database(":memory:");
-        db.createFunction!test_args;
-        db.createFunction!test_bool;
-        db.createFunction!test_int;
-        db.createFunction!test_double;
-        db.createFunction!test_string;
-        db.createFunction!test_ubyte;
+        db.createFunction!test_args();
+        db.createFunction!test_bool();
+        db.createFunction!test_int();
+        db.createFunction!test_double();
+        db.createFunction!test_string();
+        db.createFunction!test_ubyte();
         auto query = db.query("SELECT test_args(test_bool(), test_int(), test_double(), test_string(), test_ubyte())");
         assert(query.rows.front[0].as!string == "OK");
     }
@@ -915,7 +941,7 @@ struct Database {
     Gets the SQLite error code of the last operation.
     +/
     @property int errorCode() {
-        checkHandle;
+        checkHandle();
         return sqlite3_errcode(core.handle);
     }
     unittest {
@@ -927,7 +953,7 @@ struct Database {
     Gets the SQLite error message of the last operation.
     +/
     @property string errorMsg() {
-        checkHandle;
+        checkHandle();
         return to!string(sqlite3_errmsg(core.handle));
     }
     unittest {
@@ -942,7 +968,7 @@ struct Database {
         SqliteException in one of the SQL statements cannot be executed.
     +/
     void execute(string sql) {
-        checkHandle;
+        checkHandle();
         char* errmsg;
         sqlite3_exec(core.handle, cast(char*) sql.toStringz, null, null, &errmsg);
         if (errmsg !is null) {
@@ -970,7 +996,7 @@ struct Database {
     Gets the SQLite internal _handle of the database connection.
     +/
     @property sqlite3* handle() {
-        checkHandle;
+        checkHandle();
         return core.handle;
     }
 
@@ -980,7 +1006,7 @@ struct Database {
         sql = the SQL code of the _query.
     +/
     Query query(string sql) {
-        checkHandle;
+        checkHandle();
         return Query(&this, sql);
     }
 
@@ -1023,7 +1049,7 @@ struct Database {
     since the database was opened.
     +/
     @property int totalChanges() {
-        checkHandle;
+        checkHandle();
         return sqlite3_total_changes(core.handle);
     }
 
@@ -1049,13 +1075,13 @@ struct Database {
         assert(std.file.exists("test.db"));
         std.file.remove("test.db");
 
-        db.begin;
+        db.begin();
             db.execute("CREATE TABLE test (dummy BLOB)");
             assert(db.changes == 0);
             assert(db.totalChanges == 0);
-        db.rollback;
+        db.rollback();
 
-        db.begin;
+        db.begin();
             db.execute("CREATE TABLE test (val INTEGER)");
             assert(db.changes == 0);
             assert(db.totalChanges == 0);
@@ -1068,10 +1094,10 @@ struct Database {
             db.execute("INSERT INTO test (val) VALUES (84)");
             assert(db.changes == 1);
             //assert(db.totalChanges == 1); // == 2 !!
-        db.commit;
+        db.commit();
 
-        db.vacuum;
-        db.analyze;
+        db.vacuum();
+        db.analyze();
 
         auto query = db.query("SELECT COUNT(*) FROM test");
         assert(query.rows.front[0].as!int == 1);
@@ -1109,7 +1135,7 @@ static struct Query {
                     enforce(result == SQLITE_OK, new SqliteException(result));
                 }
                 if (core.db)
-                    core.db._release;
+                    core.db._release();
                 core = null;
             }
         }
@@ -1118,14 +1144,15 @@ static struct Query {
     private this(Database* db, string sql) {
         assert(db);
         assert(db.core.handle);
-        db._retain;
+        enforce(sql.length <= int.max, new SqliteException("string too long"));
+        db._retain();
         core = new _core;
         core.db = db;
         core.sql = sql;
         auto result = sqlite3_prepare_v2(
             db.core.handle,
             cast(char*) core.sql.toStringz,
-            core.sql.length,
+            cast(int) core.sql.length,
             &core.statement,
             null
         );
@@ -1134,11 +1161,11 @@ static struct Query {
     }
 
     nothrow this(this) {
-        _retain;
+        _retain();
     }
 
     ~this() {
-        _release;
+        _release();
     }
 
     void opAssign(Query rhs) nothrow {
@@ -1193,7 +1220,7 @@ static struct Query {
         assert(core);
         if (!core.rows.isInitialized) {
             core.rows = RowSet(&this);
-            core.rows.initialize;
+            core.rows.initialize();
         }
         return core.rows;
     }
@@ -1212,7 +1239,7 @@ static struct Query {
 
         auto query = db.query("INSERT INTO test (val) VALUES (:val)");
         query.params.bind(":val", 42);
-        query.run;
+        query.run();
         assert(query.rows.empty);
         query = db.query("SELECT * FROM test");
         assert(!query.rows.empty);
@@ -1282,16 +1309,16 @@ struct Parameters {
 
         auto query = db.query("INSERT INTO test (val) VALUES (:val)");
         query.params.bind(":val", 42);
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
         query.params.bind(1, 42);
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
         query.params.bind(1, 42);
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
         query.params.bind(":val", 42);
-        query.run;
+        query.run();
 
         query = db.query("SELECT * FROM test");
         foreach (row; query.rows) {
@@ -1305,10 +1332,10 @@ struct Parameters {
         auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
         assert(query.params.length == 3);
         query.params.bind(":t", "TEXT", ":i", 42, ":f", 3.14);
-        query.run;
-        query.reset;
+        query.run();
+        query.reset();
         query.params.bind(3, "TEXT", 1, 42, 2, 3.14);
-        query.run;
+        query.run();
 
         query = db.query("SELECT * FROM test");
         foreach (row; query.rows) {
@@ -1328,37 +1355,33 @@ struct Parameters {
     Bugs:
         Does not work with Query.params due to DMD issue #5202
     +/
-    void opIndexAssign(T)(T value, size_t index) {
+    void opIndexAssign(T)(T value, size_t i) {
+        static assert(isValidSqlite3Type!T, T.stringof ~ " is not a valid value type");
+        
+        enforce(i <= int.max, new SqliteException("index too long"));
         enforce(length, new SqliteException("no parameter in prepared statement"));
-
+        
         alias Unqual!T U;
+        auto index = cast(int) i;
         int result;
 
-        static if (isImplicitlyConvertible!(U, long))
+        static if (is(U == typeof(null)))
+            result = sqlite3_bind_null(statement, index);
+        else static if (isImplicitlyConvertible!(U, long))
             result = sqlite3_bind_int64(statement, index, cast(long) value);
         else static if (isImplicitlyConvertible!(U, double))
             result = sqlite3_bind_double(statement, index, value);
         else static if (isSomeString!U) {
-            if (value is null)
-                result = sqlite3_bind_null(statement, index);
-            else {
-                string utf8 = value.toUTF8;
-                result = sqlite3_bind_text(statement, index, cast(char*) utf8.toStringz, utf8.length, null);
-            }
-        }
-        else static if (isPointer!U && !is(U == void*)) {
-            if (value is null)
-                result = sqlite3_bind_null(statement, index);
-            else {
-                opIndexAssign(*value, index);
-                return;
-            }
+            string utf8 = value.toUTF8;
+            enforce(utf8.length <= int.max, new SqliteException("string too long"));
+            result = sqlite3_bind_text(statement, index, cast(char*) utf8.toStringz, cast(int) utf8.length, null);
         }
         else static if (is(U == void*))
             result = sqlite3_bind_null(statement, index);
         else static if (isArray!U && is(Unqual!(ElementType!U) == ubyte)) {
             ubyte[] buffer = cast(ubyte[]) value;
-            result = sqlite3_bind_blob(statement, index, cast(void*) buffer.ptr, buffer.length, null);
+            enforce(buffer.length <= int.max, new SqliteException("array too long"));
+            result = sqlite3_bind_blob(statement, index, cast(void*) buffer.ptr, cast(int) buffer.length, null);
         }
         else
             static assert(false, "cannot bind a value of type " ~ U.stringof);
@@ -1374,7 +1397,7 @@ struct Parameters {
         enforce(index > 0, new SqliteException(format("parameter named '%s' cannot be bound", name)));
         opIndexAssign(value, index);
     }
-    version (none) {
+    version (all) {
         // @@@ BUG5202 @@@: doesn't compile.
         unittest {
             // Tests simple bindings with associative array syntax
@@ -1382,8 +1405,9 @@ struct Parameters {
             db.execute("CREATE TABLE test (val INTEGER)");
 
             auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-            query.params[":val"] == 42;
-            query.run;
+            //query.params[":val"] == 42;
+            query.params.opIndexAssign(42, ":val"); // this works !
+            query.run();
 
             query = db.query("SELECT * FROM test");
             foreach (row; query.rows) {
@@ -1395,7 +1419,7 @@ struct Parameters {
     /++
     Gets the number of parameters.
     +/
-    int length() nothrow {
+    @property int length() nothrow {
         assert(statement);
         return sqlite3_bind_parameter_count(statement);
     }
@@ -1429,7 +1453,7 @@ struct RowSet {
             // Try to fetch first row
             sqliteResult = sqlite3_step(query.statement);
             if (sqliteResult != SQLITE_ROW && sqliteResult != SQLITE_DONE) {
-                query.reset; // necessary to retrieve the error message.
+                query.reset(); // necessary to retrieve the error message.
                 throw new SqliteException(query.core.db.errorMsg, sqliteResult);
             }
         }
@@ -1547,7 +1571,7 @@ struct Row {
     /++
     Gets the column from its name.    
     +/
-    Column opDispatch(string name)() {
+    @property Column opDispatch(string name)() {
         return opIndex(name);
     }
 }
@@ -1565,7 +1589,7 @@ struct Column {
     Gets the value of the column converted _to type T.
     If the value is NULL, it is replaced by value.
     +/
-    T as(T, T value = T.init)() {
+    @property T as(T, T value = T.init)() {
         alias Unqual!T U;
         if (data.hasValue) {
             static if (is(U == bool))
@@ -1595,7 +1619,7 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", 42);
-    query.run;
+    query.run();
 
     query = db.query("SELECT val FROM test");
     with (query.rows) {
@@ -1616,7 +1640,7 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", null);
-    query.run;
+    query.run();
 
     query = db.query("SELECT * FROM test");
     assert(query.rows.front["val"].as!(int, -42) == -42);
@@ -1628,35 +1652,27 @@ unittest {
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    int i = 42;
-    query.params.bind(":val", &i); // Tests indirection.
-    query.run;
-    query.reset;
     query.params.bind(":val", 2);
-    query.params.clear; // Resets binding to NULL.
-    query.run;
-    query.reset;
+    query.params.clear(); // Resets binding to NULL.
+    query.run();
+    query.reset();
     query.params.bind(":val", 42L);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", 42U);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", 42UL);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", true);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", '\x2A');
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", null);
-    query.run;
-    int* pi = null;
-    query.reset;
-    query.params.bind(":val", pi);
-    query.run;
+    query.run();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
@@ -1670,20 +1686,16 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", 42.0F);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", 42.0);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", 42.0L);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", null);
-    query.run;
-    double* pf = null;
-    query.reset;
-    query.params.bind(":val", pf);
-    query.run;
+    query.run();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
@@ -1691,26 +1703,42 @@ unittest {
 }
 
 unittest {
-    // Tests TEXT values
+    // Tetsts plain TEXT values
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val TEXT)");
+
+    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+    query.params.bind(":val", "I am a text.");
+    query.run(); 
+    
+    query = db.query("SELECT * FROM test");
+    assert(query.rows.front["val"].as!string == "I am a text.");
+}
+
+version(SQLITE_ENABLE_ICU) unittest {
+    // Tests TEXT values with ICU
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
+    query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
+    query.run();
+    query.reset();
     query.params.bind(":val", "\uC720\uB2C8\uCF5B"w);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", "\uC720\uB2C8\uCF5B"d);
-    query.run;
-    query.reset;
+    query.run();
+    query.reset();
     query.params.bind(":val", null);
-    query.run;
+    query.run();
     string ns;
-    query.reset;
+    query.reset();
     query.params.bind(":val", ns);
-    query.run;
+    query.run();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
@@ -1725,7 +1753,7 @@ unittest {
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     ubyte[] array = [1, 2, 3, 4];
     query.params.bind(":val", array);
-    query.run;
+    query.run();
 
     query = db.query("SELECT * FROM test");
     assert(query.rows.front["val"].as!(ubyte[]) == [1, 2, 3, 4]);
