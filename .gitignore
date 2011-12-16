@@ -8,3 +8,4 @@
 /d2sqlite3.lst
 /c_source/sqlite3.c
 /c_source/sqlite3.h
+Makefile
