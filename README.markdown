@@ -26,7 +26,7 @@ to:
 
 ## Issues
 
-1. Not thouroughly tested! (But in use as the database backend for one of my web applications).
+1. Alpha stage! Not thouroughly tested! (But in use as the database backend for one of my web applications).
 2. BLOB handling is very basic (not taking advantage of BLOB I/O functions).
 
 ## Examples
@@ -68,42 +68,37 @@ Examples taken from the DDoc comments.
     // Populate the table.
     try
     {
-        with (db.query("INSERT INTO person
-                        (last_name, first_name, score, photo)
-                        VALUES (:last_name, :first_name, :score, :photo)"))
-        {
-            // Explicit transaction so that either all insertions succeed or none.
-            db.begin;
-            scope(failure) db.rollback;
-            scope(success) db.commit;
+        auto query = db.query(
+            "INSERT INTO person (last_name, first_name, score, photo)
+             VALUES (:last_name, :first_name, :score, :photo)")
+        );
 
-            // Bind everything in one call to params.bind().
-            params.bind(":last_name", "Smith",
-                        ":first_name", "Robert",
-                        ":score", 77.5);
-            ubyte[] photo = ... // Store the photo as raw array of data.
-            bind(":photo", photo);
-            run;
+        // Explicit transaction so that either all insertions succeed or none.
+        db.begin;
+        scope(failure) db.rollback;
+        scope(success) db.commit;
 
-            reset; // Need to reset the query after execution.
-            params.bind(":last_name", "Doe",
-                        ":first_name", "John",
-                        3, null, // Use of index instead of name.
-                        ":photo", null);
-            run;
-        }
+        // Bind everything in one call to params.bind().
+        query.params.bind(":last_name", "Smith",
+                          ":first_name", "Robert",
+                          ":score", 77.5);
+        ubyte[] photo = ... // Store the photo as raw array of data.
+        query.bind(":photo", photo);
+        query.run;
+
+        query.reset; // Need to reset the query after execution.
+        query.params.bind(":last_name", "Doe",
+                          ":first_name", "John",
+                          3, null, // Use of index instead of name.
+                          ":photo", null);
+        query.run;
 
         // Alternate use.
-        with (db.query("INSERT INTO person
-                        (last_name, first_name, score, photo)
-                        VALUES (:last_name, :first_name, :score, :photo)"))
-        {
-            params.bind(":last_name", "Amy");
-            params.bind(":first_name", "Knight");
-            params.bind(3, 89.1);
-            params.bind(":photo", ...);
-            run;
-        }
+        query.params.bind(":last_name", "Amy");
+        query.params.bind(":first_name", "Knight");
+        query.params.bind(3, 89.1);
+        query.params.bind(":photo", ...);
+        query.run;
     }
     catch (SqliteException e)
     {

@@ -67,42 +67,37 @@ catch (SqliteException e)
 // Populate the table.
 try
 {
-    with (db.query("INSERT INTO person
-                    (last_name, first_name, score, photo)
-                    VALUES (:last_name, :first_name, :score, :photo)"))
-    {
-        // Explicit transaction so that either all insertions succeed or none.
-        db.begin;
-        scope(failure) db.rollback;
-        scope(success) db.commit;
+    auto query = db.query(
+        "INSERT INTO person (last_name, first_name, score, photo)
+         VALUES (:last_name, :first_name, :score, :photo)")
+    );
+    
+    // Explicit transaction so that either all insertions succeed or none.
+    db.begin;
+    scope(failure) db.rollback;
+    scope(success) db.commit;
 
-        // Bind everything in one call to params.bind().
-        params.bind(":last_name", "Smith",
-                    ":first_name", "Robert",
-                    ":score", 77.5);
-        ubyte[] photo = ... // Store the photo as raw array of data.
-        bind(":photo", photo);
-        run;
+    // Bind everything in one call to params.bind().
+    query.params.bind(":last_name", "Smith",
+                      ":first_name", "Robert",
+                      ":score", 77.5);
+    ubyte[] photo = ... // Store the photo as raw array of data.
+    query.bind(":photo", photo);
+    query.run;
 
-        reset; // Need to reset the query after execution.
-        params.bind(":last_name", "Doe",
-                    ":first_name", "John",
-                    3, null, // Use of index instead of name.
-                    ":photo", null);
-        run;
-    }
+    query.reset; // Need to reset the query after execution.
+    query.params.bind(":last_name", "Doe",
+                      ":first_name", "John",
+                      3, null, // Use of index instead of name.
+                      ":photo", null);
+    query.run;
 
     // Alternate use.
-    with (db.query("INSERT INTO person
-                    (last_name, first_name, score, photo)
-                    VALUES (:last_name, :first_name, :score, :photo)"))
-    {
-        params.bind(":last_name", "Amy");
-        params.bind(":first_name", "Knight");
-        params.bind(3, 89.1);
-        params.bind(":photo", ...);
-        run;
-    }
+    query.params.bind(":last_name", "Amy");
+    query.params.bind(":first_name", "Knight");
+    query.params.bind(3, 89.1);
+    query.params.bind(":photo", ...);
+    query.run;
 }
 catch (SqliteException e)
 {
@@ -165,9 +160,11 @@ import std.typetuple;
 import std.utf;
 import std.variant;
 
-version (SQLITE_ENABLE_ICU) {
-    version (Posix) {
-        pragma(lib, "dl");
+
+version (Posix) {
+    pragma(lib, "dl");
+    pragma(lib, "sqlite3");
+    version (SQLITE_ENABLE_ICU) {
         pragma(lib, "icui18n");
         pragma(lib, "icuuc");        
     }
@@ -343,7 +340,7 @@ struct Database {
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
     unittest {
-        auto db = Database(":memory:", SharedCache.enabled);
+        auto db = Database(":memory:");
         assert(db.handle);
     }
 
@@ -1481,7 +1478,9 @@ struct RowSet {
         row.columns.reserve(colcount);
         foreach (i; 0 .. colcount) {
             /*
-                TODO The name obtained from sqlite3_column_name is that of the query text. We should test first for the real name with sqlite3_column_database_name or sqlite3_column_table_name.
+                TODO The name obtained from sqlite3_column_name is that of
+                the query text. We should test first for the real name with
+                sqlite3_column_database_name or sqlite3_column_table_name.
             */
             auto name = to!string(sqlite3_column_name(query.statement, i));
             auto type = sqlite3_column_type(query.statement, i);
