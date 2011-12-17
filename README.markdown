@@ -74,9 +74,9 @@ Examples taken from the DDoc comments.
         );
 
         // Explicit transaction so that either all insertions succeed or none.
-        db.begin;
-        scope(failure) db.rollback;
-        scope(success) db.commit;
+        db.begin();
+        scope(failure) db.rollback();
+        scope(success) db.commit();
 
         // Bind everything in one call to params.bind().
         query.params.bind(":last_name", "Smith",
@@ -84,21 +84,21 @@ Examples taken from the DDoc comments.
                           ":score", 77.5);
         ubyte[] photo = ... // Store the photo as raw array of data.
         query.bind(":photo", photo);
-        query.run;
+        query.execute();
 
-        query.reset; // Need to reset the query after execution.
+        query.reset(); // Need to reset the query after execution.
         query.params.bind(":last_name", "Doe",
                           ":first_name", "John",
                           3, null, // Use of index instead of name.
                           ":photo", null);
-        query.run;
+        query.execute();
 
         // Alternate use.
         query.params.bind(":last_name", "Amy");
         query.params.bind(":first_name", "Knight");
         query.params.bind(3, 89.1);
         query.params.bind(":photo", ...);
-        query.run;
+        query.execute();
     }
     catch (SqliteException e)
     {
@@ -143,7 +143,7 @@ Examples taken from the DDoc comments.
     }
 
     auto db = Database("");
-    db.createFunction!my_repeat;
+    db.createFunction!my_repeat();
 
     auto query = db.query("SELECT my_repeat('*', 8)");
     assert(query.rows.front[0].as!string = "********");
@@ -169,7 +169,7 @@ Examples taken from the DDoc comments.
     }
 
     auto db = Database("my_db.db");
-    db.createAggregate!weighted_average;
+    db.createAggregate!weighted_average();
     db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
     ... // Populate the table.
     auto query = db.query("SELECT weighted_average(value, weight) FROM test");

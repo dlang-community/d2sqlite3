@@ -1,11 +1,10 @@
 *.d.deps
+*.dylib
+*.o
+*.lst
 /import/
 /lib/
-/c_source/sqlite3.o
 /doc/
-/sqlite3.lst
-/sqlite3.o
-/d2sqlite3.lst
 /c_source/sqlite3.c
 /c_source/sqlite3.h
 Makefile

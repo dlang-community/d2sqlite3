@@ -18,13 +18,13 @@ $(OL
     $(LI Execute SQL code according to your need:
     $(UL
         $(LI If you don't need parameter binding, create a Query object with a
-        single SQL statement and either use Query.run() if you don't expect
+        single SQL statement and either use Query.execute() if you don't expect
         the query to return rows, or use Query.rows() directly in the other
         case.)
         $(LI If you need parameter binding, create a Query object with a
         single SQL statement that includes binding names, and use Parameter methods
         as many times as necessary to bind all values. Then either use
-        Query.run() if you don't expect the query to return rows, or use
+        Query.execute() if you don't expect the query to return rows, or use
         Query.rows() directly in the other case.)
         $(LI If you don't need parameter bindings and if you can ignore the
         rows that the query could return, you can use the facility function
@@ -73,9 +73,9 @@ try
     );
     
     // Explicit transaction so that either all insertions succeed or none.
-    db.begin;
-    scope(failure) db.rollback;
-    scope(success) db.commit;
+    db.begin();
+    scope(failure) db.rollback();
+    scope(success) db.commit();
 
     // Bind everything in one call to params.bind().
     query.params.bind(":last_name", "Smith",
@@ -83,21 +83,21 @@ try
                       ":score", 77.5);
     ubyte[] photo = ... // Store the photo as raw array of data.
     query.bind(":photo", photo);
-    query.run;
+    query.execute();
 
-    query.reset; // Need to reset the query after execution.
+    query.reset(); // Need to reset the query after execution.
     query.params.bind(":last_name", "Doe",
                       ":first_name", "John",
                       3, null, // Use of index instead of name.
                       ":photo", null);
-    query.run;
+    query.execute();
 
     // Alternate use.
     query.params.bind(":last_name", "Amy");
     query.params.bind(":first_name", "Knight");
     query.params.bind(3, 89.1);
     query.params.bind(":photo", ...);
-    query.run;
+    query.execute();
 }
 catch (SqliteException e)
 {
@@ -303,9 +303,8 @@ struct Database {
     private _core* core; // shared between copies of this Database object.
 
     private void _retain() nothrow {
-        if (core) {
+        if (core)
             core.refcount++;
-        }
     }
 
     private void _release() {
@@ -626,13 +625,13 @@ struct Database {
 
         auto query = db.query("INSERT INTO test (value, weight) VALUES (:v, :w)");
         query.params.bind(":v", 11.5, ":w", 3);
-        query.run();
+        query.execute();
         query.reset();
         query.params.bind(":v", 14.8, ":w", 1.6);
-        query.run();
+        query.execute();
         query.reset();
         query.params.bind(":v", 19, ":w", 2.4);
-        query.run();
+        query.execute();
         query.reset();
 
         query = db.query("SELECT w_avg(value, weight) FROM test");
@@ -709,13 +708,13 @@ struct Database {
 
         auto query = db.query("INSERT INTO test (val) VALUES (:val)");
         query.params.bind(":val", "A");
-        query.run();
+        query.execute();
         query.reset();
         query.params.bind(":val", "B");
-        query.run();
+        query.execute();
         query.reset();
         query.params.bind(":val", "a");
-        query.run();
+        query.execute();
 
         query = db.query("SELECT val FROM test ORDER BY val COLLATE my_collation");
         assert(query.rows.front[0].as!string == "A");
@@ -1236,7 +1235,7 @@ static struct Query {
 
         auto query = db.query("INSERT INTO test (val) VALUES (:val)");
         query.params.bind(":val", 42);
-        query.run();
+        query.execute();
         assert(query.rows.empty);
         query = db.query("SELECT * FROM test");
         assert(!query.rows.empty);
@@ -1249,7 +1248,7 @@ static struct Query {
     Executes the query.
     Use rows() directly if the query is expected to return rows.
     +/
-    void run() {
+    void execute() {
         rows();
     }
 
@@ -1306,16 +1305,16 @@ struct Parameters {
 
         auto query = db.query("INSERT INTO test (val) VALUES (:val)");
         query.params.bind(":val", 42);
-        query.run();
+        query.execute();
         query.reset();
         query.params.bind(1, 42);
-        query.run();
+        query.execute();
         query.reset();
         query.params.bind(1, 42);
-        query.run();
+        query.execute();
         query.reset();
         query.params.bind(":val", 42);
-        query.run();
+        query.execute();
 
         query = db.query("SELECT * FROM test");
         foreach (row; query.rows) {
@@ -1329,10 +1328,10 @@ struct Parameters {
         auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
         assert(query.params.length == 3);
         query.params.bind(":t", "TEXT", ":i", 42, ":f", 3.14);
-        query.run();
+        query.execute();
         query.reset();
         query.params.bind(3, "TEXT", 1, 42, 2, 3.14);
-        query.run();
+        query.execute();
 
         query = db.query("SELECT * FROM test");
         foreach (row; query.rows) {
@@ -1404,7 +1403,7 @@ struct Parameters {
             auto query = db.query("INSERT INTO test (val) VALUES (:val)");
             //query.params[":val"] == 42;
             query.params.opIndexAssign(42, ":val"); // this works !
-            query.run();
+            query.execute();
 
             query = db.query("SELECT * FROM test");
             foreach (row; query.rows) {
@@ -1592,13 +1591,13 @@ struct Column {
         alias Unqual!T U;
         if (data.hasValue) {
             static if (is(U == bool))
-                return cast(T) data.coerce!long != 0;
+                return cast(T) data.coerce!long() != 0;
             else static if (isIntegral!U)
-                return cast(T) std.conv.to!U(data.coerce!long);
+                return cast(T) std.conv.to!U(data.coerce!long());
             else static if (isFloatingPoint!U)
-                return cast(T) std.conv.to!U(data.coerce!double);
+                return cast(T) std.conv.to!U(data.coerce!double());
             else static if (isSomeString!U)
-                return cast(T) std.conv.to!U(data.coerce!string);
+                return cast(T) std.conv.to!U(data.coerce!string());
             else static if (isArray!U && is(Unqual!(ElementType!U) == ubyte))
                 return cast(T) data.get!(ubyte[]);
             else
@@ -1618,7 +1617,7 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", 42);
-    query.run();
+    query.execute();
 
     query = db.query("SELECT val FROM test");
     with (query.rows) {
@@ -1639,7 +1638,7 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", null);
-    query.run();
+    query.execute();
 
     query = db.query("SELECT * FROM test");
     assert(query.rows.front["val"].as!(int, -42) == -42);
@@ -1653,25 +1652,25 @@ unittest {
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", 2);
     query.params.clear(); // Resets binding to NULL.
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", 42L);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", 42U);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", 42UL);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", true);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", '\x2A');
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", null);
-    query.run();
+    query.execute();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
@@ -1685,16 +1684,16 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", 42.0F);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", 42.0);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", 42.0L);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", null);
-    query.run();
+    query.execute();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
@@ -1708,7 +1707,7 @@ unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", "I am a text.");
-    query.run(); 
+    query.execute(); 
     
     query = db.query("SELECT * FROM test");
     assert(query.rows.front["val"].as!string == "I am a text.");
@@ -1721,23 +1720,23 @@ version(SQLITE_ENABLE_ICU) unittest {
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", "\uC720\uB2C8\uCF5B"w);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", "\uC720\uB2C8\uCF5B"d);
-    query.run();
+    query.execute();
     query.reset();
     query.params.bind(":val", null);
-    query.run();
+    query.execute();
     string ns;
     query.reset();
     query.params.bind(":val", ns);
-    query.run();
+    query.execute();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
@@ -1752,7 +1751,7 @@ unittest {
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     ubyte[] array = [1, 2, 3, 4];
     query.params.bind(":val", array);
-    query.run();
+    query.execute();
 
     query = db.query("SELECT * FROM test");
     assert(query.rows.front["val"].as!(ubyte[]) == [1, 2, 3, 4]);
@@ -1990,15 +1989,15 @@ enum SQLITE_STMTSTATUS_FULLSCAN_STEP = 1;
 enum SQLITE_STMTSTATUS_SORT = 2;
 enum SQLITE_STMTSTATUS_AUTOINDEX = 3;
 
-struct sqlite3 {}
-struct sqlite3_stmt {}
-struct sqlite3_context {}
-struct sqlite3_value {}
-struct sqlite3_blob {}
-struct sqlite3_module {}
-struct sqlite3_mutex {}
-struct sqlite3_backup {}
-struct sqlite3_vfs {}
+struct sqlite3;
+struct sqlite3_stmt;
+struct sqlite3_context;
+struct sqlite3_value;
+struct sqlite3_blob;
+struct sqlite3_module;
+struct sqlite3_mutex;
+struct sqlite3_backup;
+struct sqlite3_vfs;
 
 extern(C) nothrow {
     alias int function(void*,int,char**,char**) sqlite3_callback;
