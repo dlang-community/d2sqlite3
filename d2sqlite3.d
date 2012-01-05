@@ -718,9 +718,9 @@ struct Database
         static assert(__traits(isStaticFunction, fun), "symbol " ~ __traits(identifier, fun) ~ " of type " ~ typeof(fun).stringof ~ " is not a static function");
         
         alias ParameterTypeTuple!fun PT;
-        static assert(isSomeString!(PT[0]), "the first argument of the function must be a string");
-        static assert(isSomeString!(PT[1]), "the second argument of the function must be a string");
-        static assert(isImplicitlyConvertible!(ReturnType!fun, int), "the function must return a value convertible to an integer");
+        static assert(isSomeString!(PT[0]), "the first argument of function " ~ name ~ " should be a string");
+        static assert(isSomeString!(PT[1]), "the second argument of function " ~ name ~ " should be a string");
+        static assert(isImplicitlyConvertible!(ReturnType!fun, int), "function " ~ name ~ " should return a value convertible to an integer");
         
         enum funpointer = &fun;
         enum x_compare = `extern (C) static int ` ~ name ~ `(void*, int n1, void* str1, int n2, void* str2)
