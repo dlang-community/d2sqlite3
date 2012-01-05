@@ -44,7 +44,6 @@ try
 catch (SqliteException e)
 {
     // Error opening the database.
-    return;
 }
 
 // Create a table.

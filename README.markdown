@@ -34,8 +34,6 @@ to:
 Examples taken from the DDoc comments.
 
 ### Simple use
-    import d2sqlite3;
-    
     // Open a database in memory.
     Database db;
     try
@@ -45,7 +43,6 @@ Examples taken from the DDoc comments.
     catch (SqliteException e)
     {
         // Error opening the database.
-        return;
     }
 
     // Create a table.
@@ -72,7 +69,7 @@ Examples taken from the DDoc comments.
             "INSERT INTO person (last_name, first_name, score, photo)
              VALUES (:last_name, :first_name, :score, :photo)")
         );
-
+    
         // Explicit transaction so that either all insertions succeed or none.
         db.begin();
         scope(failure) db.rollback();
@@ -176,4 +173,4 @@ Examples taken from the DDoc comments.
 
 
 ---
-Copyright 2011, Nicolas Sicard
+Copyright 2011-12 by Nicolas Sicard
