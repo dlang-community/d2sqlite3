@@ -8,3 +8,7 @@
 /c_source/sqlite3.c
 /c_source/sqlite3.h
 Makefile
+
+d2sqlite3.asm
+
+d2sqlite3.json
