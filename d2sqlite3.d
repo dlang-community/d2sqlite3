@@ -160,14 +160,11 @@ import std.typetuple;
 import std.utf;
 import std.variant;
 
-version (Posix)
+pragma(lib, "sqlite3");
+version (SQLITE_ENABLE_ICU)
 {
-    pragma(lib, "sqlite3");
-    version (SQLITE_ENABLE_ICU)
-    {
-        pragma(lib, "icui18n");
-        pragma(lib, "icuuc");        
-    }
+    pragma(lib, "icui18n");
+    pragma(lib, "icuuc");        
 }
 
 //debug=SQLITE;
