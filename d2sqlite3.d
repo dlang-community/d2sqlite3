@@ -172,6 +172,10 @@ version(unittest)
 {
     import std.file;
     import std.math;
+}
+
+version(Standalone)
+{
     void main() {}
 }
 
@@ -485,14 +489,14 @@ struct Database
     +/
     void createAggregate(Aggregate, string name = Aggregate.stringof)()
     {
-        alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PT;
-        enum paramcount = PT.length;
-        alias ReturnType!(Aggregate.result) RT;
-        
         static assert(is(Aggregate == struct), name ~ " shoud be a struct");
         static assert(is(typeof(Aggregate.accumulate) == function), name ~ " shoud define accumulate()");
         static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
 
+        alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PT;
+        enum paramcount = PT.length;
+        alias ReturnType!(Aggregate.result) RT;
+        
         /+
         Arguments of the functions.
         +/
@@ -1790,9 +1794,15 @@ struct Column
             else static if (isFloatingPoint!U)
                 return cast(T) std.conv.to!U(data.coerce!double());
             else static if (isSomeString!U)
-                return cast(T) std.conv.to!U(data.coerce!string());
+            {
+                auto result = cast(T) std.conv.to!U(data.coerce!string());
+                return result ? result : value;
+            }
             else static if (isArray!U && is(Unqual!(ElementType!U) == ubyte))
-                return cast(T) data.get!(ubyte[]);
+            {
+                auto result = cast(T) data.get!(ubyte[])();
+                return result ? result : value;              
+            }
             else
                 static assert(false, "value cannot be converted to type " ~ T.stringof);
         }
@@ -1949,12 +1959,16 @@ unittest
     db.execute("CREATE TABLE test (val BLOB)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    ubyte[] array = [1, 2, 3, 4];
+    ubyte[] array = [1, 2, 3];
     query.params.bind(":val", array);
+    query.execute();
+    query.reset();
+    query.params.bind(":val", cast(ubyte[]) []);
     query.execute();
 
     query = db.query("SELECT * FROM test");
-    assert(query.rows.front["val"].as!(ubyte[]) == [1, 2, 3, 4]);
+    foreach (row; query.rows)
+        assert(row["val"].as!(ubyte[], [1, 2, 3]) ==  [1, 2, 3]);
 }
 
 
