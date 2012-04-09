@@ -159,6 +159,8 @@ import std.typetuple;
 import std.utf;
 import std.variant;
 
+import sformat; // static template rendering for string mixins
+
 pragma(lib, "sqlite3");
 version (SQLITE_ENABLE_ICU)
 {
@@ -172,11 +174,6 @@ version(unittest)
 {
     import std.file;
     import std.math;
-}
-
-version(Standalone)
-{
-    void main() {}
 }
 
 /++
@@ -453,6 +450,108 @@ struct Database
         execute("COMMIT");
     }
     
+    /+
+    Helper function to translate the arguments values of a D function
+    into Sqlite values.
+    +/
+    private static @property string block_read_values(size_t n, string name, PT...)()
+    {
+        static if (n == 0)
+            return null;
+        else
+        {
+            enum index = n - 1;
+            alias Unqual!(PT[index]) UT;
+            static if (is(UT == bool))
+                enum templ = q{
+                    @{previous_block}
+                    type = sqlite3_value_numeric_type(argv[@{index}]);
+                    enforce(type == SQLITE_INTEGER, new SqliteException(
+                        "argument @{n} of function @{name}() should be a boolean"));
+                    args[@{index}] = sqlite3_value_int64(argv[@{index}]) != 0;
+                };
+            else static if (isIntegral!UT)
+                enum templ = q{
+                    @{previous_block}
+                    type = sqlite3_value_numeric_type(argv[@{index}]);
+                    enforce(type == SQLITE_INTEGER, new SqliteException(
+                        "argument @{n} of function @{name}() should be of an integral type"));
+                    args[@{index}] = to!(PT[@{index}])(sqlite3_value_int64(argv[@{index}]));
+                };
+            else static if (isFloatingPoint!UT)
+                enum templ = q{
+                    @{previous_block}
+                    type = sqlite3_value_numeric_type(argv[@{index}]);
+                    enforce(type == SQLITE_FLOAT, new SqliteException(
+                        "argument @{n} of function @{name}() should be a floating point"));
+                    args[@{index}] = to!(PT[@{index}])(sqlite3_value_double(argv[@{index}]));
+                };
+            else static if (isSomeString!UT)
+                enum templ = q{
+                    @{previous_block}
+                    type = sqlite3_value_type(argv[@{index}]);
+                    enforce(type == SQLITE_TEXT, new SqliteException(
+                        "argument @{n} of function @{name}() should be a string"));
+                    args[@{index}] = to!(PT[@{index}])(sqlite3_value_text(argv[@{index}]));
+                };
+            else static if (isArray!UT && is(Unqual!(ElementType!UT) == ubyte))
+                enum templ = q{
+                    @{previous_block}
+                    type = sqlite3_value_type(argv[@{index}]);
+                    enforce(type == SQLITE_BLOB, new SqliteException(
+                        "argument @{n} of function @{name}() should be of an array of bytes (BLOB)"));
+                    n = sqlite3_value_bytes(argv[@{index}]);
+                    blob.length = n;
+                    memcpy(blob.ptr, sqlite3_value_blob(argv[@{index}]), n);
+                    args[@{index}] = to!(PT[@{index}])(blob.dup);
+                };
+            else
+                static assert(false, PTA[index].stringof ~ " is not a compatible argument type");
+            
+            return render(templ, [
+                "previous_block": block_read_values!(n - 1, name, PT),
+                "index":  to!string(index),
+                "n": to!string(n),
+                "name": name
+            ]);
+        }
+    }
+    
+    /+
+    Helper function to translate the return of a function into a Sqlite value.
+    +/
+    private static @property string block_return_result(RT...)()
+    {
+        static if (isIntegral!RT || is(Unqual!RT == bool))
+            return q{
+                auto result = to!long(tmp);
+                sqlite3_result_int64(context, result);
+            };
+        else static if (isFloatingPoint!RT)
+            return q{
+                auto result = to!double(tmp);
+                sqlite3_result_double(context, result);
+            };
+        else static if (isSomeString!RT)
+            return q{
+                auto result = to!string(tmp);
+                if (result)
+                    sqlite3_result_text(context, cast(char*) result.toStringz, -1, null);
+                else
+                    sqlite3_result_null(context);
+            };
+        else static if (isArray!RT && is(Unqual!(ElementType!RT) == ubyte))
+            return q{
+                auto result = to!(ubyte[])(tmp);
+                if (result)
+                    sqlite3_result_blob(context, cast(void*) result.ptr, cast(int) result.length, null);
+                else
+                    sqlite3_result_null(context);
+            };
+        else
+            static assert(false, RT.stringof ~ " is not a compatible return type");            
+    }
+    
     /++
     Creates and registers a new aggregate function in the database.
     
@@ -494,68 +593,10 @@ struct Database
         static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
 
         alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PT;
-        enum paramcount = PT.length;
         alias ReturnType!(Aggregate.result) RT;
-        
-        /+
-        Arguments of the functions.
-        +/
-        static @property string block_read_values(size_t n)()
-        {
-            static if (n == 0)
-                return null;
-            else
-            {
-                enum index = n - 1;
-                alias Unqual!(PT[index]) UT;
-                static if (is(UT == bool))
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_INTEGER, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a boolean"));
-                        args[` ~ to!string(index) ~ `] = sqlite3_value_int64(argv[` ~ to!string(index) ~ `]) != 0;`;
-                else static if (isIntegral!UT)
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_INTEGER, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be of an integral type"));
-                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
-                            ~ `])(sqlite3_value_int64(argv[` ~ to!string(index) ~ `]));`;
-                else static if (isFloatingPoint!UT)
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_FLOAT, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a floating point"));
-                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
-                            ~ `])(sqlite3_value_double(argv[` ~ to!string(index) ~ `]));`;
-                else static if (isSomeString!UT)
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_TEXT, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a string"));
-                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
-                            ~ `])(sqlite3_value_text(argv[` ~ to!string(index) ~ `]));`;
-                else static if (isArray!UT && is(Unqual!(ElementType!UT) == ubyte))
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_BLOB, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be of an array of bytes (BLOB)"));
-                        n = sqlite3_value_bytes(argv[` ~ to!string(index) ~ `]);
-                        blob.length = n;
-                        memcpy(blob.ptr, sqlite3_value_blob(argv[` ~ to!string(index) ~ `]), n);
-                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) ~ `])(blob.dup);`;
-                else
-                    static assert(false, PTA[index].stringof ~ " is not a compatible argument type");
-            }
-        }
-        
-        static if (staticIndexOf!(ubyte[], PT) >= 0)
-            enum blob = "ubyte[] blob;\n";
-        else
-            enum blob = "";
             
-        enum x_step = `
-            extern(C) static void ` ~ name ~ `_step(sqlite3_context* context, int argc, sqlite3_value** argv)
+        enum x_step = q{
+            extern(C) static void @{name}_step(sqlite3_context* context, int argc, sqlite3_value** argv)
             { 
                 Aggregate* agg = cast(Aggregate*) sqlite3_aggregate_context(context, Aggregate.sizeof);
                 if (!agg)
@@ -566,10 +607,9 @@ struct Database
                 
                 PT args;
                 int type;
-                `
-                ~ blob
-                ~ block_read_values!(paramcount)
-                ~ `
+                @{blob}
+                
+                @{block_read_values}
                 
                 try
                 {
@@ -577,43 +617,21 @@ struct Database
                 }
                 catch (Exception e)
                 {
-                    auto txt = "error in aggregate function ` ~ name ~ `(): " ~ e.msg;
+                    auto txt = "error in aggregate function @{name}(): " ~ e.msg;
                     sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
                 }
-            }`;
-        //pragma(msg, x_step);
-        mixin(x_step);
+            }
+        };
+        enum x_step_mix = render(x_step, [
+            "name": name,
+            "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
+            "block_read_values": block_read_values!(PT.length, name, PT)
+        ]);
+        //pragma(msg, x_step_mix);
+        mixin(x_step_mix);
         
-        /+
-        Return type and value of the final function.
-        +/
-        static if (isIntegral!RT || is(Unqual!RT == bool))
-            enum string block_return_result = `
-                auto result = to!long(tmp);
-                sqlite3_result_int64(context, result);`;
-        else static if (isFloatingPoint!RT)
-            enum string block_return_result = `
-                auto result = to!double(tmp);
-                sqlite3_result_double(context, result);`;
-        else static if (isSomeString!RT)
-            enum string block_return_result = `
-                auto result = to!string(tmp);
-                if (result)
-                    sqlite3_result_text(context, cast(char*) result.toStringz, -1, null);
-                else
-                    sqlite3_result_null(context);`;
-        else static if (isArray!RT && is(Unqual!(ElementType!RT) == ubyte))
-            enum string block_return_result = `
-                auto result = to!(ubyte[])(tmp);
-                if (result)
-                    sqlite3_result_blob(context, cast(void*) result.ptr, result.length, null);
-                else
-                    sqlite3_result_null(context);`;
-        else
-            static assert(false, RT.stringof ~ " is not a compatible return type");
-        
-        enum x_final = `
-            extern(C) static void ` ~ name ~ `_final(sqlite3_context* context)
+        enum x_final = q{
+            extern(C) static void @{name}_final(sqlite3_context* context)
             { 
                 Aggregate* agg = cast(Aggregate*) sqlite3_aggregate_context(context, Aggregate.sizeof);
                 if (!agg)
@@ -624,20 +642,23 @@ struct Database
                 
                 try
                 {
-                    auto tmp = agg.result();`
-                    ~ block_return_result
-                    ~ `
+                    auto tmp = agg.result();
+                    mixin(block_return_result!RT);
                 }
                 catch (Exception e)
                 {
-                    auto txt = "error in aggregate function ` ~ name ~ `(): " ~ e.msg;
+                    auto txt = "error in aggregate function @{name}(): " ~ e.msg;
                     sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
                 }
-            }`;
-        //pragma(msg, x_final);
-        mixin(x_final);
+            }
+        };
+        enum x_final_mix = render(x_final, [
+            "name": name
+        ]);
+        //pragma(msg, x_final_mix);
+        mixin(x_final_mix);
         
-        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz, paramcount,
+        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz, PT.length,
             SQLITE_UTF8, null, null, mixin(Format!("&%s_step", name)), mixin(Format!("&%s_final", name)));
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
@@ -726,17 +747,18 @@ struct Database
         static assert(isImplicitlyConvertible!(ReturnType!fun, int), "function " ~ name ~ " should return a value convertible to an integer");
         
         enum funpointer = &fun;
-        enum x_compare = `extern (C) static int ` ~ name ~ `(void*, int n1, void* str1, int n2, void* str2)
-        {
-            char[] s1, s2;
-            s1.length = n1;
-            s2.length = n2;
-            memcpy(s1.ptr, str1, n1);
-            memcpy(s2.ptr, str2, n2);
-            return funpointer(cast(immutable) s1, cast(immutable) s2);
-        }`;
-        //pragma(msg, x_compare);
-        mixin(x_compare);
+        enum x_compare = q{
+            extern (C) static int @{name}(void*, int n1, void* str1, int n2, void* str2)
+            {
+                char[] s1, s2;
+                s1.length = n1;
+                s2.length = n2;
+                memcpy(s1.ptr, str1, n1);
+                memcpy(s2.ptr, str2, n2);
+                return funpointer(cast(immutable) s1, cast(immutable) s2);
+            }
+        };
+        mixin(render(x_compare, ["name": name]));
         
         auto result = sqlite3_create_collation(core.handle, cast(char*) name.toStringz, SQLITE_UTF8, null, mixin(Format!("&%s", name)));
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
@@ -813,129 +835,38 @@ struct Database
         static assert(variadicFunctionStyle!(fun) == Variadic.no);
 
         alias staticMap!(Unqual, ParameterTypeTuple!fun) PT;
-        enum paramcount = PT.length;
         alias ReturnType!fun RT;
 
-        /+
-        Arguments.
-        +/
-        static @property string block_read_values(size_t n)()
-        {
-            static if (n == 0)
-                return null;
-            else
-            {
-                enum index = n - 1;
-                alias Unqual!(PT[index]) UT;
-                static if (is(UT == bool))
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_INTEGER, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a boolean"));
-                        args[` ~ to!string(index) ~ `] = sqlite3_value_int64(argv[` ~ to!string(index) ~ `]) != 0;`;
-                else static if (isIntegral!UT)
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_INTEGER, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be of an integral type"));
-                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
-                            ~ `])(sqlite3_value_int64(argv[` ~ to!string(index) ~ `]));`;
-                else static if (isFloatingPoint!UT)
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_numeric_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_FLOAT, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a floating point"));
-                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
-                            ~ `])(sqlite3_value_double(argv[` ~ to!string(index) ~ `]));`;
-                else static if (isSomeString!UT)
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_TEXT, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be a string"));
-                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) 
-                            ~ `])(sqlite3_value_text(argv[` ~ to!string(index) ~ `]));`;
-                else static if (isArray!UT && is(Unqual!(ElementType!UT) == ubyte))
-                    return block_read_values!(n - 1) ~ `
-                        type = sqlite3_value_type(argv[` ~ to!string(index) ~ `]);
-                        enforce(type == SQLITE_BLOB, new SqliteException(
-                            "argument ` ~ to!string(n) ~ ` of function ` ~ name ~ `() should be of an array of bytes (BLOB)"));
-                        n = sqlite3_value_bytes(argv[` ~ to!string(index) ~ `]);
-                        blob.length = n;
-                        memcpy(blob.ptr, sqlite3_value_blob(argv[` ~ to!string(index) ~ `]), n);
-                        args[` ~ to!string(index) ~ `] = to!(PT[` ~ to!string(index) ~ `])(blob.dup);`;
-                else
-                    static assert(false, PT[index].stringof ~ " is not a compatible argument type");
-            }
-        }
-
-        /+
-        Return type and value.
-        +/
-        static if (isIntegral!RT || is(Unqual!RT == bool))
-            enum string block_return_result = `
-                auto result = to!long(tmp);
-                sqlite3_result_int64(context, result);`;
-        else static if (isFloatingPoint!RT)
-            enum string block_return_result = `
-                auto result = to!double(tmp);
-                sqlite3_result_double(context, result);`;
-        else static if (isSomeString!RT)
-            enum string block_return_result = `
-                auto result = to!string(tmp);
-                if (result)
-                    sqlite3_result_text(context, cast(char*) result.toStringz, -1, null);
-                else
-                    sqlite3_result_null(context);`;
-        else static if (isArray!RT && is(Unqual!(ElementType!RT) == ubyte))
-            enum string block_return_result = `
-                auto result = to!(ubyte[])(tmp);
-                if (result)
-                {
-                    enforce(result.length <= int.max, new SqliteException("array too long"));
-                    sqlite3_result_blob(context, cast(void*) result.ptr, cast(int) result.length, null);
-                }
-                else
-                    sqlite3_result_null(context);`;
-        else
-            static assert(false, RT.stringof ~ " is not a compatible return type");
-
-        /+
-        The generated function.
-        +/
-        
-        // Detect the need of a blob variable
-        static if (staticIndexOf!(ubyte[], PT) >= 0)
-            enum blob = "ubyte[] blob;\n";
-        else
-            enum blob = "";
-
-        enum x_func = `
-            extern(C) static void ` ~ name ~ `(sqlite3_context* context, int argc, sqlite3_value** argv)
+        enum x_func = q{
+            extern(C) static void @{name}(sqlite3_context* context, int argc, sqlite3_value** argv)
             { 
                 PT args;
                 int type, n;
-                `
-                ~ blob
-                ~ block_read_values!(paramcount)
-                ~ `
+                @{blob}
+                
+                @{block_read_values}
+                
                 try
                 {
                     auto tmp = funpointer(args);
-                `
-                ~ block_return_result
-                ~ `
+                    mixin(block_return_result!RT);
                 }
                 catch (Exception e)
                 {
-                    auto txt = "error in function ` ~ name ~ `(): " ~ e.msg;
+                    auto txt = "error in function @{name}(): " ~ e.msg;
                     sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
                 }
             }
-        `;
-        //pragma(msg, x_func);
-        mixin(x_func);
+        };
+        enum x_func_mix = render(x_func, [
+            "name": name,
+            "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
+            "block_read_values": block_read_values!(PT.length, name, PT)
+        ]);
+        //pragma(msg, x_step_mix);
+        mixin(x_func_mix);
 
-        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz, paramcount,
+        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz, PT.length,
             SQLITE_UTF8, null, mixin(Format!("&%s", name)), null, null);
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
