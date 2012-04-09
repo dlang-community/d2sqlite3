@@ -35,6 +35,7 @@ Examples taken from the DDoc comments.
 
 ### Simple use
 
+```d
     // Open a database in memory.
     Database db;
     try
@@ -128,9 +129,11 @@ Examples taken from the DDoc comments.
         // Error reading the database.
         assert(false, "Error: " ~ e.msg);
     }
+```
 
 ### Creating a function
 
+```d
     import std.string;
 
     static string my_repeat(string s, int i)
@@ -143,10 +146,11 @@ Examples taken from the DDoc comments.
 
     auto query = db.query("SELECT my_repeat('*', 8)");
     assert(query.rows.front[0].as!string = "********");
-    
+```
 
 ### Creating an aggregate
 
+```d
     struct weighted_average
     {
         double total_value = 0.;
@@ -169,7 +173,7 @@ Examples taken from the DDoc comments.
     db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
     ... // Populate the table.
     auto query = db.query("SELECT weighted_average(value, weight) FROM test");
-
+```
 
 ---
 Copyright 2011-12 by Nicolas Sicard
