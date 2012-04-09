@@ -43,7 +43,8 @@ try
 }
 catch (SqliteException e)
 {
-    // Error opening the database.
+    // Error creating the database
+    assert(false, "Error: " ~ e.msg);
 }
 
 // Create a table.
@@ -61,6 +62,7 @@ try
 catch (SqliteException e)
 {
     // Error creating the table.
+    assert(false, "Error: " ~ e.msg);
 }
 
 // Populate the table.
@@ -68,9 +70,9 @@ try
 {
     auto query = db.query(
         "INSERT INTO person (last_name, first_name, score, photo)
-         VALUES (:last_name, :first_name, :score, :photo)")
+         VALUES (:last_name, :first_name, :score, :photo)"
     );
-    
+
     // Explicit transaction so that either all insertions succeed or none.
     db.begin();
     scope(failure) db.rollback();
@@ -78,10 +80,10 @@ try
 
     // Bind everything in one call to params.bind().
     query.params.bind(":last_name", "Smith",
-                      ":first_name", "Robert",
+                      ":first_name", "John",
                       ":score", 77.5);
-    ubyte[] photo = ... // Store the photo as raw array of data.
-    query.bind(":photo", photo);
+    ubyte[] photo = cast(ubyte[]) "..."; // Store the photo as raw array of data.
+    query.params.bind(":photo", photo);
     query.execute();
 
     query.reset(); // Need to reset the query after execution.
@@ -90,26 +92,20 @@ try
                       3, null, // Use of index instead of name.
                       ":photo", null);
     query.execute();
-
-    // Alternate use.
-    query.params.bind(":last_name", "Amy");
-    query.params.bind(":first_name", "Knight");
-    query.params.bind(3, 89.1);
-    query.params.bind(":photo", ...);
-    query.execute();
 }
 catch (SqliteException e)
 {
     // Error executing the query.
+    assert(false, "Error: " ~ e.msg);
 }
-assert(db.totalChanges == 3); // Three 'persons' were inserted.
+assert(db.totalChanges == 2); // Two 'persons' were inserted.
 
 // Reading the table
 try
 {
-    // Count the persons in the table (there should be two of them).
-    auto query = db.query("SELECT count(*) FROM person");
-    assert(query.rows.front[0].to!int == 2);
+    // Count the Johns in the table.
+    auto query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
+    assert(query.rows.front[0].as!int == 2);
 
     // Fetch the data from the table.
     query = db.query("SELECT * FROM person");
@@ -123,12 +119,14 @@ try
         auto score = row["score"].as!(real, 0.0);
         // Use of opDispatch with column name:
         auto photo = row.photo.as!(ubyte[]);
-        ...
+        
+        // ... and use all these data!
     }
 }
 catch (SqliteException e)
 {
     // Error reading the database.
+    assert(false, "Error: " ~ e.msg);
 }
 ---
 
@@ -1899,6 +1897,104 @@ unittest
         assert(row["val"].as!(ubyte[], [1, 2, 3]) ==  [1, 2, 3]);
 }
 
+unittest
+{
+    // Example from the documentation's introduction
+    
+    // Open a database in memory.
+    Database db;
+    try
+    {
+        db = Database(":memory:");
+    }
+    catch (SqliteException e)
+    {
+        // Error creating the database
+        assert(false, "Error: " ~ e.msg);
+    }
+
+    // Create a table.
+    try
+    {
+        db.execute(
+            "CREATE TABLE person (
+                id INTEGER PRIMARY KEY,
+                last_name TEXT NOT NULL,
+                first_name TEXT,
+                score REAL,
+                photo BLOB)"
+        );
+    }
+    catch (SqliteException e)
+    {
+        // Error creating the table.
+        assert(false, "Error: " ~ e.msg);
+    }
+
+    // Populate the table.
+    try
+    {
+        auto query = db.query(
+            "INSERT INTO person (last_name, first_name, score, photo)
+             VALUES (:last_name, :first_name, :score, :photo)"
+        );
+
+        // Explicit transaction so that either all insertions succeed or none.
+        db.begin();
+        scope(failure) db.rollback();
+        scope(success) db.commit();
+
+        // Bind everything in one call to params.bind().
+        query.params.bind(":last_name", "Smith",
+                          ":first_name", "John",
+                          ":score", 77.5);
+        ubyte[] photo = cast(ubyte[]) "..."; // Store the photo as raw array of data.
+        query.params.bind(":photo", photo);
+        query.execute();
+
+        query.reset(); // Need to reset the query after execution.
+        query.params.bind(":last_name", "Doe",
+                          ":first_name", "John",
+                          3, null, // Use of index instead of name.
+                          ":photo", null);
+        query.execute();
+    }
+    catch (SqliteException e)
+    {
+        // Error executing the query.
+        assert(false, "Error: " ~ e.msg);
+    }
+    assert(db.totalChanges == 2); // Two 'persons' were inserted.
+
+    // Reading the table
+    try
+    {
+        // Count the Johns in the table.
+        auto query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
+        assert(query.rows.front[0].as!int == 2);
+
+        // Fetch the data from the table.
+        query = db.query("SELECT * FROM person");
+        foreach (row; query.rows)
+        {
+            // "id" should be the column at index 0:
+            auto id = row[0].as!int;
+            // Some conversions are possible with the method as():
+            auto name = format("%s, %s", row["last_name"].as!string, row["first_name"].as!(char[]));
+            // The score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs:
+            auto score = row["score"].as!(real, 0.0);
+            // Use of opDispatch with column name:
+            auto photo = row.photo.as!(ubyte[]);
+            
+            // ... and use all these data!
+        }
+    }
+    catch (SqliteException e)
+    {
+        // Error reading the database.
+        assert(false, "Error: " ~ e.msg);
+    }
+}
 
 /+
 SQLite C API
