@@ -300,28 +300,23 @@ struct Database
     private _core* core; // shared between copies of this Database object.
 
     private nothrow void _retain()
-    in
     {
-        assert(core);
-    }
-    body
-    {
-        core.refcount++;
+        if (core)
+            core.refcount++;
     }
 
     private void _release()
-    in
-    {
-        assert(core);
-    }
     body
     {
-        core.refcount--;
-        if (core.refcount == 0)
+        if (core)
         {
-            auto result = sqlite3_close(core.handle);
-            enforce(result == SQLITE_OK, new SqliteException(result));
-            core = null;        
+            core.refcount--;
+            if (core.refcount == 0)
+            {
+                auto result = sqlite3_close(core.handle);
+                enforce(result == SQLITE_OK, new SqliteException(result));
+                core = null;        
+            }            
         }
     }
 
@@ -354,10 +349,12 @@ struct Database
     }
     unittest
     {
-        auto db = Database(":memory:");
+        Database db1;
+        auto db2 = db1;
+        db1 = Database(":memory:");
+        db2 = Database(":memory:");
+        auto db3 = Database(":memory:");
     }
-    
-    @disable this();
 
     nothrow this(this)
     {
