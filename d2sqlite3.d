@@ -340,7 +340,7 @@ struct Database
             auto result = sqlite3_enable_shared_cache(1);
             enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
         }
-        auto result = sqlite3_open(cast(char*) path.toStringz, &core.handle);
+        auto result = sqlite3_open(cast(char*) path.toStringz(), &core.handle);
         enforce(result == SQLITE_OK && core.handle, new SqliteException(errorMsg, result));
     }
     unittest
@@ -529,7 +529,7 @@ struct Database
             return q{
                 auto result = to!string(tmp);
                 if (result)
-                    sqlite3_result_text(context, cast(char*) result.toStringz, -1, null);
+                    sqlite3_result_text(context, cast(char*) result.toStringz(), -1, null);
                 else
                     sqlite3_result_null(context);
             };
@@ -611,7 +611,7 @@ struct Database
                 catch (Exception e)
                 {
                     auto txt = "error in aggregate function @{name}(): " ~ e.msg;
-                    sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
+                    sqlite3_result_error(context, cast(char*) txt.toStringz(), -1);
                 }
             }
         };
@@ -641,7 +641,7 @@ struct Database
                 catch (Exception e)
                 {
                     auto txt = "error in aggregate function @{name}(): " ~ e.msg;
-                    sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
+                    sqlite3_result_error(context, cast(char*) txt.toStringz(), -1);
                 }
             }
         };
@@ -651,8 +651,16 @@ struct Database
         //pragma(msg, x_final_mix);
         mixin(x_final_mix);
         
-        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz, PT.length,
-            SQLITE_UTF8, null, null, mixin(Format!("&%s_step", name)), mixin(Format!("&%s_final", name)));
+        auto result = sqlite3_create_function(
+            core.handle,
+            cast(char*) name.toStringz(),
+            PT.length,
+            SQLITE_UTF8,
+            null,
+            null,
+            mixin(Format!("&%s_step", name)),
+            mixin(Format!("&%s_final", name))
+        );
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
     unittest
@@ -753,7 +761,7 @@ struct Database
         };
         mixin(render(x_compare, ["name": name]));
         
-        auto result = sqlite3_create_collation(core.handle, cast(char*) name.toStringz, SQLITE_UTF8, null, mixin(Format!("&%s", name)));
+        auto result = sqlite3_create_collation(core.handle, cast(char*) name.toStringz(), SQLITE_UTF8, null, mixin(Format!("&%s", name)));
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
     unittest
@@ -847,7 +855,7 @@ struct Database
                 catch (Exception e)
                 {
                     auto txt = "error in function @{name}(): " ~ e.msg;
-                    sqlite3_result_error(context, cast(char*) txt.toStringz, -1);
+                    sqlite3_result_error(context, cast(char*) txt.toStringz(), -1);
                 }
             }
         };
@@ -859,7 +867,7 @@ struct Database
         //pragma(msg, x_step_mix);
         mixin(x_func_mix);
 
-        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz, PT.length,
+        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz(), PT.length,
             SQLITE_UTF8, null, mixin(Format!("&%s", name)), null, null);
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
@@ -968,7 +976,7 @@ struct Database
     body
     {
         char* errmsg;
-        sqlite3_exec(core.handle, cast(char*) sql.toStringz, null, null, &errmsg);
+        sqlite3_exec(core.handle, cast(char*) sql.toStringz(), null, null, &errmsg);
         if (errmsg !is null)
         {
             auto msg = to!string(errmsg);
@@ -1162,7 +1170,7 @@ static struct Query
         sqlite3_stmt* statement;       
         auto result = sqlite3_prepare_v2(
             db.core.handle,
-            cast(char*) sql.toStringz,
+            cast(char*) sql.toStringz(),
             cast(int) sql.length,
             &statement,
             null
@@ -1447,9 +1455,9 @@ struct Parameters
             result = sqlite3_bind_double(statement, index, value);
         else static if (isSomeString!U)
         {
-            string utf8 = value.toUTF8;
+            string utf8 = value.toUTF8();
             enforce(utf8.length <= int.max, new SqliteException("string too long"));
-            result = sqlite3_bind_text(statement, index, cast(char*) utf8.toStringz, cast(int) utf8.length, null);
+            result = sqlite3_bind_text(statement, index, cast(char*) utf8.toStringz(), cast(int) utf8.length, null);
         }
         else static if (is(U == void*))
             result = sqlite3_bind_null(statement, index);
@@ -1469,7 +1477,7 @@ struct Parameters
     void opIndexAssign(T)(T value, string name)
     {
         enforce(length > 0, new SqliteException("no parameter in prepared statement"));
-        auto index = sqlite3_bind_parameter_index(statement, cast(char*) name.toStringz);
+        auto index = sqlite3_bind_parameter_index(statement, cast(char*) name.toStringz());
         enforce(index > 0, new SqliteException(format("parameter named '%s' cannot be bound", name)));
         opIndexAssign(value, index);
     }
