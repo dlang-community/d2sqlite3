@@ -170,6 +170,11 @@ version(unittest)
 {
     import std.file;
     import std.math;
+    
+    version(D2SQLITE_MAIN)
+    {
+        void main() {}
+    }
 }
 
 /++
