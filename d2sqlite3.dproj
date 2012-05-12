@@ -17,12 +17,14 @@
     <ObjectsDirectory>obj/Debug</ObjectsDirectory>
     <OutputName>d2sqlite3</OutputName>
     <Target>Executable</Target>
+    <Externalconsole>true</Externalconsole>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <OutputPath>bin\Release</OutputPath>
     <ObjectsDirectory>obj/Release</ObjectsDirectory>
     <OutputName>d2sqlite3</OutputName>
     <Target>Executable</Target>
+    <Externalconsole>true</Externalconsole>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Unittest|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -31,6 +33,7 @@
     <ObjectsDirectory>obj/Unittest</ObjectsDirectory>
     <Target>Executable</Target>
     <OutputName>d2sqlite3</OutputName>
+    <Externalconsole>true</Externalconsole>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="d2sqlite3.d" />

@@ -157,6 +157,8 @@ import std.typetuple;
 import std.utf;
 import std.variant;
 
+public import etc.c.sqlite3;
+
 pragma(lib, "sqlite3");
 version (SQLITE_ENABLE_ICU)
 {
@@ -214,7 +216,7 @@ struct Sqlite3
     /++
     Gets the library's version number (e.g. 3006012).
     +/
-    static nothrow @property int versionNumber()
+    static @property int versionNumber()
     {
         return sqlite3_libversion_number();
     }
@@ -427,7 +429,7 @@ struct Database
     Gets the number of database rows that were changed, inserted or deleted by
     the most recently completed query.
     +/
-    nothrow @property int changes()
+    @property int changes()
     in
     {
         assert(core && core.handle);
@@ -488,7 +490,7 @@ struct Database
                 enum templ = q{
                     @{previous_block}
                     type = sqlite3_value_type(argv[@{index}]);
-                    enforce(type == SQLITE_TEXT, new SqliteException(
+                    enforce(type == SQLITE3_TEXT, new SqliteException(
                         "argument @{n} of function @{name}() should be a string"));
                     args[@{index}] = to!(PT[@{index}])(sqlite3_value_text(argv[@{index}]));
                 };
@@ -658,7 +660,7 @@ struct Database
         
         auto result = sqlite3_create_function(
             core.handle,
-            cast(char*) name.toStringz(),
+            name.toStringz(),
             PT.length,
             SQLITE_UTF8,
             null,
@@ -754,7 +756,7 @@ struct Database
         
         enum funpointer = &fun;
         enum x_compare = q{
-            extern (C) static int @{name}(void*, int n1, void* str1, int n2, void* str2)
+            extern (C) static int @{name}(void*, int n1, const(void*) str1, int n2, const(void* )str2)
             {
                 char[] s1, s2;
                 s1.length = n1;
@@ -766,7 +768,13 @@ struct Database
         };
         mixin(render(x_compare, ["name": name]));
         
-        auto result = sqlite3_create_collation(core.handle, cast(char*) name.toStringz(), SQLITE_UTF8, null, mixin(Format!("&%s", name)));
+        auto result = sqlite3_create_collation(
+			core.handle,
+			name.toStringz(),
+			SQLITE_UTF8,
+			null,
+			mixin(Format!("&%s", name))
+		);
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
     unittest
@@ -872,8 +880,16 @@ struct Database
         //pragma(msg, x_step_mix);
         mixin(x_func_mix);
 
-        auto result = sqlite3_create_function(core.handle, cast(char*) name.toStringz(), PT.length,
-            SQLITE_UTF8, null, mixin(Format!("&%s", name)), null, null);
+        auto result = sqlite3_create_function(
+            core.handle,
+            name.toStringz(),
+            PT.length,
+            SQLITE_UTF8,
+            null,
+            mixin(Format!("&%s", name)),
+            null,
+            null
+        );
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
     unittest
@@ -934,7 +950,7 @@ struct Database
     /++
     Gets the SQLite error code of the last operation.
     +/
-    nothrow @property int errorCode()
+    @property int errorCode()
     in
     {
         assert(core && core.handle);
@@ -1069,7 +1085,7 @@ struct Database
     Gets the number of database rows that were changed, inserted or deleted
     since the database was opened.
     +/
-    nothrow @property int totalChanges()
+    @property int totalChanges()
     in
     {
         assert(core && core.handle);
@@ -1509,7 +1525,7 @@ struct Parameters
     /++
     Gets the number of parameters.
     +/
-    nothrow @property int length()
+    @property int length()
     {
         if (statement)
             return sqlite3_bind_parameter_count(statement);
@@ -1615,7 +1631,7 @@ struct RowSet
                     row.columns ~= Column(i, name, Variant(sqlite3_column_double(query.statement, i)));
                     break;
 
-                case SQLITE_TEXT:
+                case SQLITE3_TEXT:
                     auto str = to!string(sqlite3_column_text(query.statement, i));
                     row.columns ~= Column(i, name, Variant(str));
                     break;
@@ -2011,13 +2027,13 @@ unittest
 private string render(string templ, string[string] args)
 {
     string markupStart = "@{";
-    string markuEnd = "}";
+    string markupEnd = "}";
     
     string result;
     auto str = templ;
     while (true)
     {
-        auto p_start = str.indexOf(markupStart);
+        auto p_start = std.string.indexOf(str, markupStart);
         if (p_start < 0)
         {
             result ~= str;
@@ -2028,7 +2044,7 @@ private string render(string templ, string[string] args)
             result ~= str[0 .. p_start];
             str = str[p_start + markupStart.length .. $];
             
-            auto p_end = str.indexOf(markuEnd);
+            auto p_end = std.string.indexOf(str, markupEnd);
             if (p_end < 0)
                 assert(false, "Tag misses ending }");
             auto key = strip(str[0 .. p_end]);
@@ -2038,7 +2054,7 @@ private string render(string templ, string[string] args)
                 assert(false, "Key '" ~ key ~ "' has no associated value");
             result ~= *value;
             
-            str = str[p_end + markuEnd.length .. $];
+            str = str[p_end + markupEnd.length .. $];
         }
     }
     
@@ -2054,428 +2070,4 @@ unittest
     };
     mixin(render(tpl, ["function_name": "hello_world"]));
     static assert(hello_world() == "Hello world!");
-}
-
-
-/+
-SQLite C API
-+/
-enum SQLITE_OK = 0;
-enum SQLITE_ERROR = 1;
-enum SQLITE_INTERNAL = 2;
-enum SQLITE_PERM = 3;
-enum SQLITE_ABORT = 4;
-enum SQLITE_BUSY = 5;
-enum SQLITE_LOCKED = 6;
-enum SQLITE_NOMEM = 7;
-enum SQLITE_READONLY = 8;
-enum SQLITE_INTERRUPT = 9;
-enum SQLITE_IOERR = 10;
-enum SQLITE_CORRUPT = 11;
-enum SQLITE_NOTFOUND = 12;
-enum SQLITE_FULL = 13;
-enum SQLITE_CANTOPEN = 14;
-enum SQLITE_PROTOCOL = 15;
-enum SQLITE_EMPTY = 16;
-enum SQLITE_SCHEMA = 17;
-enum SQLITE_TOOBIG = 18;
-enum SQLITE_CONSTRAINT = 19;
-enum SQLITE_MISMATCH = 20;
-enum SQLITE_MISUSE = 21;
-enum SQLITE_NOLFS = 22;
-enum SQLITE_AUTH = 23;
-enum SQLITE_FORMAT = 24;
-enum SQLITE_RANGE = 25;
-enum SQLITE_NOTADB = 26;
-enum SQLITE_ROW = 100;
-enum SQLITE_DONE = 101;
-enum SQLITE_IOERR_READ = (SQLITE_IOERR | (1<<8));
-enum SQLITE_IOERR_SHORT_READ = (SQLITE_IOERR | (2<<8));
-enum SQLITE_IOERR_WRITE = (SQLITE_IOERR | (3<<8));
-enum SQLITE_IOERR_FSYNC = (SQLITE_IOERR | (4<<8));
-enum SQLITE_IOERR_DIR_FSYNC = (SQLITE_IOERR | (5<<8));
-enum SQLITE_IOERR_TRUNCATE = (SQLITE_IOERR | (6<<8));
-enum SQLITE_IOERR_FSTAT = (SQLITE_IOERR | (7<<8));
-enum SQLITE_IOERR_UNLOCK = (SQLITE_IOERR | (8<<8));
-enum SQLITE_IOERR_RDLOCK = (SQLITE_IOERR | (9<<8));
-enum SQLITE_IOERR_DELETE = (SQLITE_IOERR | (10<<8));
-enum SQLITE_IOERR_BLOCKED = (SQLITE_IOERR | (11<<8));
-enum SQLITE_IOERR_NOMEM = (SQLITE_IOERR | (12<<8));
-enum SQLITE_IOERR_ACCESS = (SQLITE_IOERR | (13<<8));
-enum SQLITE_IOERR_CHECKRESERVEDLOCK = (SQLITE_IOERR | (14<<8));
-enum SQLITE_IOERR_LOCK = (SQLITE_IOERR | (15<<8));
-enum SQLITE_IOERR_CLOSE = (SQLITE_IOERR | (16<<8));
-enum SQLITE_IOERR_DIR_CLOSE = (SQLITE_IOERR | (17<<8));
-enum SQLITE_IOERR_SHMOPEN = (SQLITE_IOERR | (18<<8));
-enum SQLITE_IOERR_SHMSIZE = (SQLITE_IOERR | (19<<8));
-enum SQLITE_IOERR_SHMLOCK = (SQLITE_IOERR | (20<<8));
-enum SQLITE_LOCKED_SHAREDCACHE = (SQLITE_LOCKED |  (1<<8));
-enum SQLITE_BUSY_RECOVERY = (SQLITE_BUSY   |  (1<<8));
-enum SQLITE_CANTOPEN_NOTEMPDIR = (SQLITE_CANTOPEN | (1<<8));
-enum SQLITE_OPEN_READONLY = 0x00000001;
-enum SQLITE_OPEN_READWRITE = 0x00000002;
-enum SQLITE_OPEN_CREATE = 0x00000004;
-enum SQLITE_OPEN_DELETEONCLOSE = 0x00000008;
-enum SQLITE_OPEN_EXCLUSIVE = 0x00000010;
-enum SQLITE_OPEN_AUTOPROXY = 0x00000020;
-enum SQLITE_OPEN_MAIN_DB = 0x00000100;
-enum SQLITE_OPEN_TEMP_DB = 0x00000200;
-enum SQLITE_OPEN_TRANSIENT_DB = 0x00000400;
-enum SQLITE_OPEN_MAIN_JOURNAL = 0x00000800;
-enum SQLITE_OPEN_TEMP_JOURNAL = 0x00001000;
-enum SQLITE_OPEN_SUBJOURNAL = 0x00002000;
-enum SQLITE_OPEN_MASTER_JOURNAL = 0x00004000;
-enum SQLITE_OPEN_NOMUTEX = 0x00008000;
-enum SQLITE_OPEN_FULLMUTEX = 0x00010000;
-enum SQLITE_OPEN_SHAREDCACHE = 0x00020000;
-enum SQLITE_OPEN_PRIVATECACHE = 0x00040000;
-enum SQLITE_OPEN_WAL = 0x00080000;
-enum SQLITE_IOCAP_ATOMIC = 0x00000001;
-enum SQLITE_IOCAP_ATOMIC512 = 0x00000002;
-enum SQLITE_IOCAP_ATOMIC1K = 0x00000004;
-enum SQLITE_IOCAP_ATOMIC2K = 0x00000008;
-enum SQLITE_IOCAP_ATOMIC4K = 0x00000010;
-enum SQLITE_IOCAP_ATOMIC8K = 0x00000020;
-enum SQLITE_IOCAP_ATOMIC16K = 0x00000040;
-enum SQLITE_IOCAP_ATOMIC32K = 0x00000080;
-enum SQLITE_IOCAP_ATOMIC64K = 0x00000100;
-enum SQLITE_IOCAP_SAFE_APPEND = 0x00000200;
-enum SQLITE_IOCAP_SEQUENTIAL = 0x00000400;
-enum SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN = 0x00000800;
-enum SQLITE_LOCK_NONE = 0;
-enum SQLITE_LOCK_SHARED = 1;
-enum SQLITE_LOCK_RESERVED = 2;
-enum SQLITE_LOCK_PENDING = 3;
-enum SQLITE_LOCK_EXCLUSIVE = 4;
-enum SQLITE_SYNC_NORMAL = 0x00002;
-enum SQLITE_SYNC_FULL = 0x00003;
-enum SQLITE_SYNC_DATAONLY = 0x00010;
-enum SQLITE_FCNTL_LOCKSTATE = 1;
-enum SQLITE_GET_LOCKPROXYFILE = 2;
-enum SQLITE_SET_LOCKPROXYFILE = 3;
-enum SQLITE_LAST_ERRNO = 4;
-enum SQLITE_FCNTL_SIZE_HINT = 5;
-enum SQLITE_FCNTL_CHUNK_SIZE = 6;
-enum SQLITE_ACCESS_EXISTS = 0;
-enum SQLITE_ACCESS_READWRITE = 1;
-enum SQLITE_ACCESS_READ = 2;
-enum SQLITE_SHM_UNLOCK = 1;
-enum SQLITE_SHM_LOCK = 2;
-enum SQLITE_SHM_SHARED = 4;
-enum SQLITE_SHM_EXCLUSIVE = 8;
-enum SQLITE_SHM_NLOCK = 8;
-enum SQLITE_CONFIG_SINGLETHREAD = 1;
-enum SQLITE_CONFIG_MULTITHREAD = 2;
-enum SQLITE_CONFIG_SERIALIZED = 3;
-enum SQLITE_CONFIG_MALLOC = 4;
-enum SQLITE_CONFIG_GETMALLOC = 5;
-enum SQLITE_CONFIG_SCRATCH = 6;
-enum SQLITE_CONFIG_PAGECACHE = 7;
-enum SQLITE_CONFIG_HEAP = 8;
-enum SQLITE_CONFIG_MEMSTATUS = 9;
-enum SQLITE_CONFIG_MUTEX = 10;
-enum SQLITE_CONFIG_GETMUTEX = 11;
-enum SQLITE_CONFIG_LOOKASIDE = 13;
-enum SQLITE_CONFIG_PCACHE = 14;
-enum SQLITE_CONFIG_GETPCACHE = 15;
-enum SQLITE_CONFIG_LOG = 16;
-enum SQLITE_DBCONFIG_LOOKASIDE = 1001;
-enum SQLITE_DENY = 1;
-enum SQLITE_IGNORE = 2;
-enum SQLITE_CREATE_INDEX = 1;
-enum SQLITE_CREATE_TABLE = 2;
-enum SQLITE_CREATE_TEMP_INDEX = 3;
-enum SQLITE_CREATE_TEMP_TABLE = 4;
-enum SQLITE_CREATE_TEMP_TRIGGER = 5;
-enum SQLITE_CREATE_TEMP_VIEW = 6;
-enum SQLITE_CREATE_TRIGGER = 7;
-enum SQLITE_CREATE_VIEW = 8;
-enum SQLITE_DELETE = 9;
-enum SQLITE_DROP_INDEX = 10;
-enum SQLITE_DROP_TABLE = 11;
-enum SQLITE_DROP_TEMP_INDEX = 12;
-enum SQLITE_DROP_TEMP_TABLE = 13;
-enum SQLITE_DROP_TEMP_TRIGGER = 14;
-enum SQLITE_DROP_TEMP_VIEW = 15;
-enum SQLITE_DROP_TRIGGER = 16;
-enum SQLITE_DROP_VIEW = 17;
-enum SQLITE_INSERT = 18;
-enum SQLITE_PRAGMA = 19;
-enum SQLITE_READ = 20;
-enum SQLITE_SELECT = 21;
-enum SQLITE_TRANSACTION = 22;
-enum SQLITE_UPDATE = 23;
-enum SQLITE_ATTACH = 24;
-enum SQLITE_DETACH = 25;
-enum SQLITE_ALTER_TABLE = 26;
-enum SQLITE_REINDEX = 27;
-enum SQLITE_ANALYZE = 28;
-enum SQLITE_CREATE_VTABLE = 29;
-enum SQLITE_DROP_VTABLE = 30;
-enum SQLITE_FUNCTION = 31;
-enum SQLITE_SAVEPOINT = 32;
-enum SQLITE_COPY = 0;
-enum SQLITE_LIMIT_LENGTH = 0;
-enum SQLITE_LIMIT_SQL_LENGTH = 1;
-enum SQLITE_LIMIT_COLUMN = 2;
-enum SQLITE_LIMIT_EXPR_DEPTH = 3;
-enum SQLITE_LIMIT_COMPOUND_SELECT = 4;
-enum SQLITE_LIMIT_VDBE_OP = 5;
-enum SQLITE_LIMIT_FUNCTION_ARG = 6;
-enum SQLITE_LIMIT_ATTACHED = 7;
-enum SQLITE_LIMIT_LIKE_PATTERN_LENGTH = 8;
-enum SQLITE_LIMIT_VARIABLE_NUMBER = 9;
-enum SQLITE_LIMIT_TRIGGER_DEPTH = 10;
-enum SQLITE_INTEGER = 1;
-enum SQLITE_FLOAT = 2;
-enum SQLITE_BLOB = 4;
-enum SQLITE_NULL = 5;
-enum SQLITE_TEXT = 3;
-enum SQLITE3_TEXT = 3;
-enum SQLITE_UTF8 = 1;
-enum SQLITE_UTF16LE = 2;
-enum SQLITE_UTF16BE = 3;
-enum SQLITE_UTF16 = 4;
-enum SQLITE_ANY = 5;
-enum SQLITE_UTF16_ALIGNED = 8;
-enum SQLITE_INDEX_CONSTRAINT_EQ = 2;
-enum SQLITE_INDEX_CONSTRAINT_GT = 4;
-enum SQLITE_INDEX_CONSTRAINT_LE = 8;
-enum SQLITE_INDEX_CONSTRAINT_LT = 16;
-enum SQLITE_INDEX_CONSTRAINT_GE = 32;
-enum SQLITE_INDEX_CONSTRAINT_MATCH = 64;
-enum SQLITE_MUTEX_FAST = 0;
-enum SQLITE_MUTEX_RECURSIVE = 1;
-enum SQLITE_MUTEX_STATIC_MASTER = 2;
-enum SQLITE_MUTEX_STATIC_MEM = 3;
-enum SQLITE_MUTEX_STATIC_MEM2 = 4;
-enum SQLITE_MUTEX_STATIC_OPEN = 4;
-enum SQLITE_MUTEX_STATIC_PRNG = 5;
-enum SQLITE_MUTEX_STATIC_LRU = 6;
-enum SQLITE_MUTEX_STATIC_LRU2 = 7;
-enum SQLITE_TESTCTRL_FIRST = 5;
-enum SQLITE_TESTCTRL_PRNG_SAVE = 5;
-enum SQLITE_TESTCTRL_PRNG_RESTORE = 6;
-enum SQLITE_TESTCTRL_PRNG_RESET = 7;
-enum SQLITE_TESTCTRL_BITVEC_TEST = 8;
-enum SQLITE_TESTCTRL_FAULT_INSTALL = 9;
-enum SQLITE_TESTCTRL_BENIGN_MALLOC_HOOKS = 10;
-enum SQLITE_TESTCTRL_PENDING_BYTE = 11;
-enum SQLITE_TESTCTRL_ASSERT = 12;
-enum SQLITE_TESTCTRL_ALWAYS = 13;
-enum SQLITE_TESTCTRL_RESERVE = 14;
-enum SQLITE_TESTCTRL_OPTIMIZATIONS = 15;
-enum SQLITE_TESTCTRL_ISKEYWORD = 16;
-enum SQLITE_TESTCTRL_PGHDRSZ = 17;
-enum SQLITE_TESTCTRL_SCRATCHMALLOC = 18;
-enum SQLITE_TESTCTRL_LAST = 18;
-enum SQLITE_STATUS_MEMORY_USED = 0;
-enum SQLITE_STATUS_PAGECACHE_USED = 1;
-enum SQLITE_STATUS_PAGECACHE_OVERFLOW = 2;
-enum SQLITE_STATUS_SCRATCH_USED = 3;
-enum SQLITE_STATUS_SCRATCH_OVERFLOW = 4;
-enum SQLITE_STATUS_MALLOC_SIZE = 5;
-enum SQLITE_STATUS_PARSER_STACK = 6;
-enum SQLITE_STATUS_PAGECACHE_SIZE = 7;
-enum SQLITE_STATUS_SCRATCH_SIZE = 8;
-enum SQLITE_STATUS_MALLOC_COUNT = 9;
-enum SQLITE_DBSTATUS_LOOKASIDE_USED = 0;
-enum SQLITE_DBSTATUS_CACHE_USED = 1;
-enum SQLITE_DBSTATUS_SCHEMA_USED = 2;
-enum SQLITE_DBSTATUS_STMT_USED = 3;
-enum SQLITE_DBSTATUS_MAX = 3;
-enum SQLITE_STMTSTATUS_FULLSCAN_STEP = 1;
-enum SQLITE_STMTSTATUS_SORT = 2;
-enum SQLITE_STMTSTATUS_AUTOINDEX = 3;
-
-struct sqlite3;
-struct sqlite3_stmt;
-struct sqlite3_context;
-struct sqlite3_value;
-struct sqlite3_blob;
-struct sqlite3_module;
-struct sqlite3_mutex;
-struct sqlite3_backup;
-struct sqlite3_vfs;
-
-extern(C) nothrow
-{
-    alias int function(void*,int,char**,char**) sqlite3_callback;
-
-    void* sqlite3_aggregate_context(sqlite3_context*,int);
-    int sqlite3_aggregate_count(sqlite3_context*);
-    int sqlite3_bind_blob(sqlite3_stmt*,int,void*,int n,void function(void*));
-    int sqlite3_bind_double(sqlite3_stmt*,int,double);
-    int sqlite3_bind_int(sqlite3_stmt*,int,int);
-    int sqlite3_bind_int64(sqlite3_stmt*,int,long);
-    int sqlite3_bind_null(sqlite3_stmt*,int);
-    int sqlite3_bind_parameter_count(sqlite3_stmt*);
-    int sqlite3_bind_parameter_index(sqlite3_stmt*,char*);
-    char* sqlite3_bind_parameter_name(sqlite3_stmt*,int);
-    int sqlite3_bind_text(sqlite3_stmt*,int,char*,int n,void function(void*));
-    int sqlite3_bind_text16(sqlite3_stmt*,int,void*,int,void function(void*));
-    int sqlite3_bind_value(sqlite3_stmt*,int, sqlite3_value*);
-    int sqlite3_busy_handler(sqlite3*,int function(void*,int),void*);
-    int sqlite3_busy_timeout(sqlite3*,int);
-    int sqlite3_changes(sqlite3*);
-    int sqlite3_close(sqlite3*);
-    int sqlite3_collation_needed(sqlite3*,void*,void function(void*,sqlite3*,int,char*));
-    int sqlite3_collation_needed16(sqlite3*,void*,void function(void*,sqlite3*,int,void*));
-    void* sqlite3_column_blob(sqlite3_stmt*,int);
-    int sqlite3_column_bytes(sqlite3_stmt*,int);
-    int sqlite3_column_bytes16(sqlite3_stmt*,int);
-    int sqlite3_column_count(sqlite3_stmt*);
-    char* sqlite3_column_database_name(sqlite3_stmt*,int);
-    void* sqlite3_column_database_name16(sqlite3_stmt*,int);
-    char* sqlite3_column_decltype(sqlite3_stmt*,int);
-    void* sqlite3_column_decltype16(sqlite3_stmt*,int);
-    double sqlite3_column_double(sqlite3_stmt*,int);
-    int sqlite3_column_int(sqlite3_stmt*,int);
-    long sqlite3_column_int64(sqlite3_stmt*,int);
-    char* sqlite3_column_name(sqlite3_stmt*,int);
-    void* sqlite3_column_name16(sqlite3_stmt*,int);
-    char* sqlite3_column_origin_name(sqlite3_stmt*,int);
-    void* sqlite3_column_origin_name16(sqlite3_stmt*,int);
-    char* sqlite3_column_table_name(sqlite3_stmt*,int);
-    void* sqlite3_column_table_name16(sqlite3_stmt*,int);
-    char* sqlite3_column_text(sqlite3_stmt*,int);
-    void* sqlite3_column_text16(sqlite3_stmt*,int);
-    int sqlite3_column_type(sqlite3_stmt*,int);
-    sqlite3_value* sqlite3_column_value(sqlite3_stmt*,int);
-    void* sqlite3_commit_hook(sqlite3*,int function(void*),void*);
-    int sqlite3_complete(char*);
-    int sqlite3_complete16(void*);
-    int sqlite3_create_collation(sqlite3*,char*,int,void*,int function(void*,int,void*,int,void*));
-    int sqlite3_create_collation16(sqlite3*,void*,int,void*,int function(void*,int,void*,int,void*));
-    int sqlite3_create_function(sqlite3*,char*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*));
-    int sqlite3_create_function16(sqlite3*,void*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*));
-    int sqlite3_create_module(sqlite3*,char*,sqlite3_module*,void*);
-    int sqlite3_data_count(sqlite3_stmt*);
-    sqlite3* sqlite3_db_handle(sqlite3_stmt*);
-    int sqlite3_declare_vtab(sqlite3*,char*);
-    int sqlite3_enable_shared_cache(int);
-    int sqlite3_errcode(sqlite3*);
-    char* sqlite3_errmsg(sqlite3*);
-    void* sqlite3_errmsg16(sqlite3*);
-    int sqlite3_exec(sqlite3*,char*,sqlite3_callback,void*,char**);
-    int sqlite3_expired(sqlite3_stmt*);
-    int sqlite3_finalize(sqlite3_stmt*pStmt);
-    void sqlite3_free(void*);
-    void sqlite3_free_table(char**result);
-    int sqlite3_get_autocommit(sqlite3*);
-    void* sqlite3_get_auxdata(sqlite3_context*,int);
-    int sqlite3_get_table(sqlite3*,char*,char***,int*,int*,char**);
-    int sqlite3_global_recover();
-    void sqlite3_interruptx(sqlite3*);
-    long sqlite3_last_insert_rowid(sqlite3*);
-    char* sqlite3_libversion();
-    int sqlite3_libversion_number();
-    void* sqlite3_malloc(int);
-    char* sqlite3_mprintf(char*,...);
-    int sqlite3_open(char*,sqlite3**);
-    int sqlite3_open16(void*,sqlite3**);
-    int sqlite3_prepare(sqlite3*,char*,int,sqlite3_stmt**,char**);
-    int sqlite3_prepare16(sqlite3*,void*,int,sqlite3_stmt**,void**);
-    void* sqlite3_profile(sqlite3*,void function(void*,char*,ulong),void*);
-    void sqlite3_progress_handler(sqlite3*,int,int function(void*),void*);
-    void* sqlite3_realloc(void*,int);
-    int sqlite3_reset(sqlite3_stmt*);
-    void sqlite3_result_blob(sqlite3_context*,void*,int,void function(void*));
-    void sqlite3_result_double(sqlite3_context*,double);
-    void sqlite3_result_error(sqlite3_context*,char*,int);
-    void sqlite3_result_error16(sqlite3_context*,void*,int);
-    void sqlite3_result_int(sqlite3_context*,int);
-    void sqlite3_result_int64(sqlite3_context*,long);
-    void sqlite3_result_null(sqlite3_context*);
-    void sqlite3_result_text(sqlite3_context*,char*,int,void function(void*));
-    void sqlite3_result_text16(sqlite3_context*,void*,int,void function(void*));
-    void sqlite3_result_text16be(sqlite3_context*,void*,int,void function(void*));
-    void sqlite3_result_text16le(sqlite3_context*,void*,int,void function(void*));
-    void sqlite3_result_value(sqlite3_context*,sqlite3_value*);
-    void* sqlite3_rollback_hook(sqlite3*,void function(void*),void*);
-    int sqlite3_set_authorizer(sqlite3*,int function(void*,int,char*,char*,char*,char*),void*);
-    void sqlite3_set_auxdata(sqlite3_context*,int,void*,void function(void*));
-    char* sqlite3_snprintf(int,char*,char*,...);
-    int sqlite3_step(sqlite3_stmt*);
-    int sqlite3_table_column_metadata(sqlite3*,char*,char*,char*,char**,char**,int*,int*,int*);
-    void sqlite3_thread_cleanup();
-    int sqlite3_total_changes(sqlite3*);
-    void* sqlite3_trace(sqlite3*,void function(void*,char*),void*);
-    int sqlite3_transfer_bindings(sqlite3_stmt*,sqlite3_stmt*);
-    void* sqlite3_update_hook(sqlite3*,void function(void*,int ,char*,char*,long),void*);
-    void* sqlite3_user_data(sqlite3_context*);
-    void* sqlite3_value_blob(sqlite3_value*);
-    int sqlite3_value_bytes(sqlite3_value*);
-    int sqlite3_value_bytes16(sqlite3_value*);
-    double sqlite3_value_double(sqlite3_value*);
-    int sqlite3_value_int(sqlite3_value*);
-    long sqlite3_value_int64(sqlite3_value*);
-    int sqlite3_value_numeric_type(sqlite3_value*);
-    char* sqlite3_value_text(sqlite3_value*);
-    void* sqlite3_value_text16(sqlite3_value*);
-    void* sqlite3_value_text16be(sqlite3_value*);
-    void* sqlite3_value_text16le(sqlite3_value*);
-    int sqlite3_value_type(sqlite3_value*);
-    char* sqlite3_vmprintf(char*,...);
-    int sqlite3_overload_function(sqlite3*, char*, int);
-    int sqlite3_prepare_v2(sqlite3*,char*,int,sqlite3_stmt**,char**);
-    int sqlite3_prepare16_v2(sqlite3*,void*,int,sqlite3_stmt**,void**);
-    int sqlite3_clear_bindings(sqlite3_stmt*);
-    int sqlite3_create_module_v2(sqlite3*,char*, sqlite3_module*,void*,void function(void*));
-    int sqlite3_bind_zeroblob(sqlite3_stmt*,int,int);
-    int sqlite3_blob_bytes(sqlite3_blob*);
-    int sqlite3_blob_close(sqlite3_blob*);
-    int sqlite3_blob_open(sqlite3*,char*,char*,char*,long,int,sqlite3_blob**);
-    int sqlite3_blob_read(sqlite3_blob*,void*,int,int);
-    int sqlite3_blob_write(sqlite3_blob*,void*,int,int);
-    int sqlite3_create_collation_v2(sqlite3*,char*,int,void*,int function(void*,int,void*,int,void*),void function(void*));
-    int sqlite3_file_control(sqlite3*,char*,int,void*);
-    long sqlite3_memory_highwater(int);
-    long sqlite3_memory_used();
-    sqlite3_mutex* sqlite3_mutex_alloc(int);
-    void sqlite3_mutex_enter(sqlite3_mutex*);
-    void sqlite3_mutex_free(sqlite3_mutex*);
-    void sqlite3_mutex_leave(sqlite3_mutex*);
-    int sqlite3_mutex_try(sqlite3_mutex*);
-    int sqlite3_open_v2(char*,sqlite3**,int,char*);
-    int sqlite3_release_memory(int);
-    void sqlite3_result_error_nomem(sqlite3_context*);
-    void sqlite3_result_error_toobig(sqlite3_context*);
-    int sqlite3_sleep(int);
-    void sqlite3_soft_heap_limit(int);
-    sqlite3_vfs* sqlite3_vfs_find(char*);
-    int sqlite3_vfs_register(sqlite3_vfs*,int);
-    int sqlite3_vfs_unregister(sqlite3_vfs*);
-    int sqlite3_xthreadsafe();
-    void sqlite3_result_zeroblob(sqlite3_context*,int);
-    void sqlite3_result_error_code(sqlite3_context*,int);
-    int sqlite3_test_control(int, ...);
-    void sqlite3_randomness(int,void*);
-    sqlite3* sqlite3_context_db_handle(sqlite3_context*);
-    int sqlite3_extended_result_codes(sqlite3*,int);
-    int sqlite3_imit(sqlite3*,int,int);
-    sqlite3_stmt* sqlite3_next_stmt(sqlite3*,sqlite3_stmt*);
-    char* sqlite3_sql(sqlite3_stmt*);
-    int sqlite3_status(int,int*,int*,int);
-    int sqlite3_backup_finish(sqlite3_backup*);
-    sqlite3_backup* sqlite3_backup_init(sqlite3*,char*,sqlite3*,char*);
-    int sqlite3_backup_pagecount(sqlite3_backup*);
-    int sqlite3_backup_remaining(sqlite3_backup*);
-    int sqlite3_backup_step(sqlite3_backup*,int);
-    char* sqlite3_compileoption_get(int);
-    int sqlite3_compileoption_used(char*);
-    int sqlite3_create_function_v2(sqlite3*,char*,int,int,void*,void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*,int,sqlite3_value**),void function(sqlite3_context*),void function(void*));
-    int sqlite3_db_config(sqlite3*,int,...);
-    sqlite3_mutex* sqlite3_db_mutex(sqlite3*);
-    int sqlite3_db_status(sqlite3*,int,int*,int*,int);
-    int sqlite3_extended_errcode(sqlite3*);
-    void sqlite3_log(int,char*,...);
-    long sqlite3_soft_heap_limit64(long);
-    char* sqlite3_sourceid();
-    int sqlite3_stmt_status(sqlite3_stmt*,int,int);
-    int sqlite3_strnicmp(char*,char*,int);
-    int sqlite3_unlock_notify(sqlite3*,void function(void**,int),void*);
-    int sqlite3_wal_autocheckpoint(sqlite3*,int);
-    int sqlite3_wal_checkpoint(sqlite3*,char*);
-    void* sqlite3_wal_hook(sqlite3*,int function(void*,sqlite3*,char*,int),void*);
 }
