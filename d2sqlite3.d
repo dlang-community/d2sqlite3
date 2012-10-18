@@ -240,7 +240,7 @@ template isValidSqlite3Type(T)
             || isSomeChar!T
             || isSomeString!T
             || (isArray!T && is(Unqual!(ElementType!T) == ubyte))
-            || is(T == void*);
+            || is(T == typeof(null));
 }
 version (unittest)
 {
