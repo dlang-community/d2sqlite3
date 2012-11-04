@@ -79,19 +79,19 @@ Examples taken from the DDoc comments.
         scope(failure) db.rollback();
         scope(success) db.commit();
 
-        // Bind everything in one call to params.bind().
-        query.params.bind(":last_name", "Smith",
-                          ":first_name", "John",
-                          ":score", 77.5);
+        // Bind everything with chained calls to params.bind().
+        query.params.bind(":last_name", "Smith")
+                    .bind(":first_name", "John")
+                    .bind(":score", 77.5);
         ubyte[] photo = cast(ubyte[]) "..."; // Store the photo as raw array of data.
         query.params.bind(":photo", photo);
         query.execute();
 
         query.reset(); // Need to reset the query after execution.
-        query.params.bind(":last_name", "Doe",
-                          ":first_name", "John",
-                          3, null, // Use of index instead of name.
-                          ":photo", null);
+        query.params.bind(":last_name", "Doe")
+                    .bind(":first_name", "John")
+                    .bind(3, null) // Use of index instead of name.
+                    .bind(":photo", null);
         query.execute();
     }
     catch (SqliteException e)
@@ -106,21 +106,21 @@ Examples taken from the DDoc comments.
     {
         // Count the Johns in the table.
         auto query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
-        assert(query.rows.front[0].as!int == 2);
+        assert(query.rows.front[0].get!int() == 2);
 
         // Fetch the data from the table.
         query = db.query("SELECT * FROM person");
         foreach (row; query.rows)
         {
             // "id" should be the column at index 0:
-            auto id = row[0].as!int;
+            auto id = row[0].get!int();
             // Some conversions are possible with the method as():
-            auto name = format("%s, %s", row["last_name"].as!string, row["first_name"].as!(char[]));
+            auto name = format("%s, %s", row["last_name"].get!string(), row["first_name"].get!(char[]));
             // The score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs:
-            auto score = row["score"].as!(real, 0.0);
+            auto score = row["score"].get!(real, 0.0);
             // Use of opDispatch with column name:
-            auto photo = row.photo.as!(ubyte[]);
-        
+            auto photo = row.photo.get!(ubyte[]);
+            
             // ... and use all these data!
         }
     }
@@ -145,7 +145,7 @@ Examples taken from the DDoc comments.
     db.createFunction!my_repeat();
 
     auto query = db.query("SELECT my_repeat('*', 8)");
-    assert(query.rows.front[0].as!string = "********");
+    assert(query.rows.front[0].get!string() = "********");
 ```
 
 ### Creating an aggregate
