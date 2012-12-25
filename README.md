@@ -20,7 +20,7 @@ exist. Possibility to enable a shared cache.
 to:
     - bind parameters: `params.bind`
     - iterate on result rows with an InputRange interface: `rows`
-    - convert column to D type: `as`
+    - convert column to D type: `get`
     
 4. Optionnaly binds with ICU for more relevant collations.
 
