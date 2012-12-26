@@ -116,9 +116,9 @@ try
         // Some conversions are possible with the method as():
         auto name = format("%s, %s", row["last_name"].get!string(), row["first_name"].get!(char[]));
         // The score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs:
-        auto score = row["score"].get!(real, 0.0);
+        auto score = row["score"].get!real(0);
         // Use of opDispatch with column name:
-        auto photo = row.photo.get!(ubyte[]);
+        auto photo = row.photo.get!(ubyte[])();
 
         // ... and use all these data!
     }
@@ -1466,7 +1466,7 @@ struct Parameters
     }
     unittest
     {
-        // Tests multiple bindings
+        mixin(VerboseTest!"Parameters.bind() multiple");
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
         auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, :f, :t)");
@@ -1704,7 +1704,7 @@ struct Column
     Gets the value of the column converted _to type T.
     If the value is NULL, it is replaced by value.
     +/
-    T get(T, T value = T.init)()
+    T get(T)(T defaultValue = T.init)
     {
         alias Unqual!T U;
         if (data.hasValue)
@@ -1766,7 +1766,7 @@ unittest
     query.execute();
 
     query = db.query("SELECT * FROM test");
-    assert(query.rows.front["val"].get!(int, -42) == -42);
+    assert(query.rows.front["val"].get!int(-42) == -42);
 }
 
 unittest
@@ -1800,7 +1800,7 @@ unittest
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
-        assert(row["val"].get!(long, 42) == 42 || row["val"].get!long() == 1);
+        assert(row["val"].get!long(42) == 42 || row["val"].get!long() == 1);
 }
 
 unittest
@@ -1824,7 +1824,7 @@ unittest
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
-        assert(row["val"].get!(real, 42.0) == 42.0);
+        assert(row["val"].get!real(42.0) == 42.0);
 }
 
 unittest
@@ -1888,7 +1888,7 @@ unittest
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
-        assert(row["val"].get!(ubyte[], [1, 2, 3]) ==  [1, 2, 3]);
+        assert(row["val"].get!(ubyte[])([1, 2, 3]) ==  [1, 2, 3]);
 }
 
 unittest
@@ -1974,11 +1974,11 @@ unittest
             // "id" should be the column at index 0:
             auto id = row[0].get!int();
             // Some conversions are possible with the method as():
-            auto name = format("%s, %s", row["last_name"].get!string(), row["first_name"].get!(char[]));
+            auto name = format("%s, %s", row["last_name"].get!string(), row["first_name"].get!(char[])());
             // The score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs:
-            auto score = row["score"].get!(real, 0.0);
+            auto score = row["score"].get!real(0.0);
             // Use of opDispatch with column name:
-            auto photo = row.photo.get!(ubyte[]);
+            auto photo = row.photo.get!(ubyte[])();
 
             // ... and use all these data!
         }
