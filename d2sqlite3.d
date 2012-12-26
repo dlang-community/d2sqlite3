@@ -723,7 +723,8 @@ struct Database
         query.reset();
 
         query = db.query("SELECT w_avg(value, weight) FROM test");
-        assert(approxEqual(query.rows.front[0].get!double(), (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
+		Column col = query.rows.front[0]; 
+        assert(approxEqual(col.get!double(), (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
     }
 
     /++
@@ -1191,8 +1192,6 @@ struct Query
     }
     private _core* core;
 
-    @disable this();
-
     private this(Database* db, string sql)
     in
     {
@@ -1390,12 +1389,10 @@ struct Parameters
 {
     private sqlite3_stmt* statement;
 
-    private nothrow this(sqlite3_stmt* statement)
+    private this(sqlite3_stmt* statement) nothrow
     {
         this.statement = statement;
     }
-
-    @disable this();
 
     /++
     Binds values to named parameters in the query.
@@ -1556,8 +1553,6 @@ struct RowSet
     {
         this.query = query;
     }
-
-    @disable this();
 
     private void initialize()
     in
@@ -1741,18 +1736,18 @@ struct Column
             else static if (isSomeString!U)
             {
                 auto result = cast(T) std.conv.to!U(data.coerce!string());
-                return result ? result : value;
+                return result ? result : defaultValue;
             }
             else static if (isArray!U && is(Unqual!(ElementType!U) == ubyte))
             {
                 auto result = cast(T) data.get!(ubyte[])();
-                return result ? result : value;
+                return result ? result : defaultValue;
             }
             else
                 static assert(false, "value cannot be converted to type " ~ T.stringof);
         }
         else
-            return value;
+            return defaultValue;
     }
 }
 
