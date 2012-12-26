@@ -172,6 +172,22 @@ version(unittest)
 {
     import std.file;
     import std.math;
+	
+	template VerboseTest(string info)
+	{
+		version(VerboseUnittests)
+		{
+			enum VerboseTest = `
+				import std.stdio;
+				scope(success) writeln("Test ` ~ info ~ `:  PASSED");
+				scope(failure) writeln("Test ` ~ info ~ `:  ERROR");
+			`;
+		}
+		else
+		{
+			enum VerboseTest = "";
+		}
+	}
 
     version(D2SQLITE_MAIN)
     {
@@ -222,7 +238,8 @@ struct Sqlite3
     }
 
     unittest
-    {
+	{
+		mixin(VerboseTest!"Sqlite3 properties");
         assert(Sqlite3.versionString[0..2] == "3.");
         assert(Sqlite3.versionNumber > 3003011, "incompatible SQLite version");
     }
@@ -352,6 +369,7 @@ struct Database
     }
     unittest
     {
+		mixin(VerboseTest!"Database construction");
         Database db1;
         auto db2 = db1;
         db1 = Database(":memory:");
@@ -376,7 +394,7 @@ struct Database
 
     unittest
     {
-        // Tests copy-construction and reference counting.
+		mixin(VerboseTest!"Database reference counting");
         Database db1 = Database(":memory:");
         assert(db1.core.refcount == 1);
         {   // new scope
@@ -672,7 +690,8 @@ struct Database
     }
     unittest
     {
-        // Tests aggregate creation.
+		mixin(VerboseTest!"Aggregate creation");
+
         struct weighted_average {
             double total_value = 0.0;
             double total_weight = 0.0;
@@ -779,6 +798,8 @@ struct Database
     }
     unittest
     {
+		mixin(VerboseTest!"Collation cration");
+		
         static int my_collation(string s1, string s2)
         {
             return std.string.icmp(s1, s2);
@@ -894,7 +915,8 @@ struct Database
     }
     unittest
     {
-        // Tests function creation.
+		mixin(VerboseTest!"Function creation");
+		
         static string test_args(bool b, int i, double d, string s, ubyte[] a)
         {
             if (b && i == 42 && d == 4.2 && s == "42" && a == [0x04, 0x02])
@@ -1007,13 +1029,13 @@ struct Database
     }
     unittest
     {
-        // Tests empty statements
+        mixin(VerboseTest!"Empty statement");
         auto db = Database(":memory:");
         db.execute(";");
     }
     unittest
     {
-        // Tests multiple statements in query string
+        mixin(VerboseTest!"Multiple query");
         auto db = Database(":memory:");
         try
             db.execute("CREATE TABLE test (val INTEGER);CREATE TABLE test (val INTEGER)");
@@ -1107,7 +1129,7 @@ struct Database
 
     unittest
     {
-        // Tests miscellaneous functionalities.
+        mixin(VerboseTest!"Miscelaneous functionalities");
         auto db = Database(":memory:");
         db.attach("test.db", "other_db");
         db.detach("other_db");
@@ -1239,7 +1261,7 @@ struct Query
 
     unittest
     {
-        // Test copy-construction and reference counting.
+        mixin(VerboseTest!"Query copy construction");
         Database db = Database(":memory:");
         auto q1 = db.query("SELECT 42");
         assert(q1.statement);
@@ -1309,7 +1331,7 @@ struct Query
     }
     unittest
     {
-        // Tests empty statements
+        mixin(VerboseTest!"Query empty statement");
         auto db = Database(":memory:");
         db.execute(";");
         auto query = db.query("-- This is a comment !");
@@ -1322,7 +1344,7 @@ struct Query
     }
     unittest
     {
-        // Tests Query.rows()
+        mixin(VerboseTest!"Query.rows()");
         static assert(isInputRange!RowSet);
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
@@ -1443,7 +1465,8 @@ struct Parameters
 
     unittest
     {
-        // Tests simple bindings
+        mixin(VerboseTest!"Parameters.bind() simple");
+		
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
 
@@ -1735,7 +1758,7 @@ struct Column
 
 unittest
 {
-    // Tests Column
+    mixin(VerboseTest!"Column");
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
 
@@ -1757,7 +1780,7 @@ Unit tests.
 +/
 unittest
 {
-    // Tests NULL values
+    mixin(VerboseTest!"NULL values");
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
 
@@ -1771,7 +1794,7 @@ unittest
 
 unittest
 {
-    // Tests INTEGER values
+    mixin(VerboseTest!"INTEGER values");
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
 
@@ -1805,7 +1828,7 @@ unittest
 
 unittest
 {
-    // Tests FLOAT values
+    mixin(VerboseTest!"FLOAT values");
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val FLOAT)");
 
@@ -1829,7 +1852,7 @@ unittest
 
 unittest
 {
-    // Tetsts plain TEXT values
+    mixin(VerboseTest!"TEXT values (no ICU)");
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
@@ -1843,7 +1866,7 @@ unittest
 
 version(SQLITE_ENABLE_ICU) unittest
 {
-    // Tests TEXT values with ICU
+    mixin(VerboseTest!"TEXT values (ICU)");
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
@@ -1874,7 +1897,7 @@ version(SQLITE_ENABLE_ICU) unittest
 
 unittest
 {
-    // Tests BLOB values with arrays
+    mixin(VerboseTest!"BLOB values");
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val BLOB)");
 
@@ -1894,6 +1917,7 @@ unittest
 unittest
 {
     // Example from the documentation's introduction
+	mixin(VerboseTest!"Documentation's introduction");
 
     // Open a database in memory.
     Database db;
@@ -2030,6 +2054,7 @@ private string render(string templ, string[string] args)
 
 unittest
 {
+	mixin(VerboseTest!"render");
     enum tpl = q{
         string @{function_name}() {
             return "Hello world!";
