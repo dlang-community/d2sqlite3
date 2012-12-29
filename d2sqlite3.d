@@ -387,7 +387,7 @@ struct Database
         _release();
     }
 
-    nothrow void opAssign(Database rhs)
+    void opAssign(Database rhs)
     {
         swap(core, rhs.core);
     }
@@ -1253,7 +1253,7 @@ struct Query
         }
     }
 
-    nothrow void opAssign(Query rhs)
+    void opAssign(Query rhs)
     {
         swap(core, rhs.core);
     }
