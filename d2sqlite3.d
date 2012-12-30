@@ -131,7 +131,7 @@ catch (SqliteException e)
 ---
 
 Copyright:
-    Copyright Nicolas Sicard, 2011.
+    Copyright Nicolas Sicard, 2011-2012.
 
 License:
     No license yet.
@@ -160,7 +160,7 @@ import std.variant;
 public import etc.c.sqlite3;
 
 pragma(lib, "sqlite3");
-version (SQLITE_ENABLE_ICU)
+version (SqliteEnableICU)
 {
     pragma(lib, "icui18n");
     pragma(lib, "icuuc");
@@ -172,26 +172,18 @@ version(unittest)
 {
     import std.file;
     import std.math;
-	
-	template VerboseTest(string info)
-	{
-		version(VerboseUnittests)
-		{
-			enum VerboseTest = `
-				import std.stdio;
-				scope(success) writeln("Test ` ~ info ~ `:  PASSED");
-				scope(failure) writeln("Test ` ~ info ~ `:  ERROR");
-			`;
-		}
-		else
-		{
-			enum VerboseTest = "";
-		}
-	}
 
-    version(D2SQLITE_MAIN)
+    template VerboseTest(string info)
     {
-        void main() {}
+        version(VerboseUnittests)
+        {
+            enum VerboseTest = `
+                import std.stdio;
+                scope(success) writeln("Test ` ~ info ~ `:  PASSED");
+            `;
+        }
+        else
+            enum VerboseTest = "";
     }
 }
 
@@ -238,8 +230,8 @@ struct Sqlite3
     }
 
     unittest
-	{
-		mixin(VerboseTest!"Sqlite3 properties");
+    {
+        mixin(VerboseTest!"Sqlite3 properties");
         assert(Sqlite3.versionString[0..2] == "3.");
         assert(Sqlite3.versionNumber > 3003011, "incompatible SQLite version");
     }
@@ -319,7 +311,7 @@ struct Database
     }
     private _core* core; // shared between copies of this Database object.
 
-    private nothrow void _retain()
+    private void _retain()
     {
         if (core)
             core.refcount++;
@@ -369,7 +361,7 @@ struct Database
     }
     unittest
     {
-		mixin(VerboseTest!"Database construction");
+        mixin(VerboseTest!"Database construction");
         Database db1;
         auto db2 = db1;
         db1 = Database(":memory:");
@@ -377,7 +369,7 @@ struct Database
         auto db3 = Database(":memory:");
     }
 
-    nothrow this(this)
+    this(this)
     {
         _retain();
     }
@@ -394,7 +386,7 @@ struct Database
 
     unittest
     {
-		mixin(VerboseTest!"Database reference counting");
+        mixin(VerboseTest!"Database reference counting");
         Database db1 = Database(":memory:");
         assert(db1.core.refcount == 1);
         {   // new scope
@@ -690,7 +682,7 @@ struct Database
     }
     unittest
     {
-		mixin(VerboseTest!"Aggregate creation");
+        mixin(VerboseTest!"Aggregate creation");
 
         struct weighted_average {
             double total_value = 0.0;
@@ -723,8 +715,7 @@ struct Database
         query.reset();
 
         query = db.query("SELECT w_avg(value, weight) FROM test");
-		Column col = query.rows.front[0]; 
-        assert(approxEqual(col.get!double(), (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
+        assert(approxEqual(query.rows.front[0].get!double(), (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
     }
 
     /++
@@ -799,8 +790,8 @@ struct Database
     }
     unittest
     {
-		mixin(VerboseTest!"Collation cration");
-		
+        mixin(VerboseTest!"Collation cration");
+
         static int my_collation(string s1, string s2)
         {
             return std.string.icmp(s1, s2);
@@ -916,8 +907,8 @@ struct Database
     }
     unittest
     {
-		mixin(VerboseTest!"Function creation");
-		
+        mixin(VerboseTest!"Function creation");
+
         static string test_args(bool b, int i, double d, string s, ubyte[] a)
         {
             if (b && i == 42 && d == 4.2 && s == "42" && a == [0x04, 0x02])
@@ -1047,7 +1038,7 @@ struct Database
     /++
     Gets the SQLite internal _handle of the database connection.
     +/
-    nothrow @property sqlite3* handle()
+    @property sqlite3* handle()
     in
     {
         assert(core && core.handle);
@@ -1221,7 +1212,7 @@ struct Query
         core = new _core(db, sql, statement, Parameters(statement), RowSet(&this));
     }
 
-    nothrow this(this)
+    this(this)
     {
         _retain();
     }
@@ -1231,7 +1222,7 @@ struct Query
         _release();
     }
 
-    private nothrow void _retain()
+    private void _retain()
     {
         core.refcount++;
     }
@@ -1278,7 +1269,7 @@ struct Query
     Returns:
         A Parameters object. Becomes invalid when the Query goes out of scope.
     +/
-    nothrow @property ref Parameters params()
+    @property ref Parameters params()
     in
     {
         assert(core);
@@ -1335,8 +1326,6 @@ struct Query
         db.execute(";");
         auto query = db.query("-- This is a comment !");
         assert(query.rows.empty);
-
-        // TODO: Move these next to their definition:
         assert(query.params.length == 0);
         query.params.clear();
         query.reset();
@@ -1365,13 +1354,17 @@ struct Query
     +/
     void execute()
     {
-        rows();
+        if (!core.rows.isInitialized)
+        {
+            core.rows = RowSet(&this);
+            core.rows.initialize();
+        }
     }
 
     /++
     Gets the SQLite internal handle of the query statement.
     +/
-    nothrow @property sqlite3_stmt* statement()
+    @property sqlite3_stmt* statement()
     in
     {
         assert(core);
@@ -1389,7 +1382,7 @@ struct Parameters
 {
     private sqlite3_stmt* statement;
 
-    private this(sqlite3_stmt* statement) nothrow
+    private this(sqlite3_stmt* statement)
     {
         this.statement = statement;
     }
@@ -1463,7 +1456,7 @@ struct Parameters
     unittest
     {
         mixin(VerboseTest!"Parameters.bind() simple");
-		
+
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
 
@@ -1579,7 +1572,7 @@ struct RowSet
     /++
     Tests whether no more rows are available.
     +/
-    nothrow @property bool empty()
+    @property bool empty()
     in
     {
         assert(query);
@@ -1665,7 +1658,7 @@ struct Row
     /++
     Gets the number of columns in this row.
     +/
-    nothrow @property size_t columnCount()
+    @property size_t columnCount()
     {
         return columns.length;
     }
@@ -1854,40 +1847,37 @@ unittest
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", "I am a text.");
     query.execute();
+	query.reset();
+    query.params.bind(":val", null);
+    query.execute();
+	string str;
+	query.reset();
+    query.params.bind(":val", str);
+    query.execute();
 
     query = db.query("SELECT * FROM test");
-    assert(query.rows.front["val"].get!string() == "I am a text.");
+    assert(query.rows.front["val"].get!string("I am a text") == "I am a text.");
 }
 
-version(SQLITE_ENABLE_ICU) unittest
+version(SqliteEnableICU) unittest
 {
     mixin(VerboseTest!"TEXT values (ICU)");
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
+    query.params.bind(":val", "유니콛");
     query.execute();
     query.reset();
-    query.params.bind(":val", "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
+    query.params.bind(":val", "유니콛"w);
     query.execute();
     query.reset();
-    query.params.bind(":val", "\uC720\uB2C8\uCF5B"w);
-    query.execute();
-    query.reset();
-    query.params.bind(":val", "\uC720\uB2C8\uCF5B"d);
-    query.execute();
-    query.reset();
-    query.params.bind(":val", null);
-    query.execute();
-    string ns;
-    query.reset();
-    query.params.bind(":val", ns);
+    query.params.bind(":val", "유니콛"d);
     query.execute();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query.rows)
-        assert(row["val"].get!(string, "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B") ==  "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
+        assert(row["val"].get!string() ==  "\xEC\x9C\xA0\xEB\x8B\x88\xEC\xBD\x9B");
 }
 
 unittest
@@ -1912,7 +1902,7 @@ unittest
 unittest
 {
     // Example from the documentation's introduction
-	mixin(VerboseTest!"Documentation's introduction");
+    mixin(VerboseTest!"Documentation's introduction");
 
     // Open a database in memory.
     Database db;
@@ -2049,7 +2039,7 @@ private string render(string templ, string[string] args)
 
 unittest
 {
-	mixin(VerboseTest!"render");
+    mixin(VerboseTest!"render");
     enum tpl = q{
         string @{function_name}() {
             return "Hello world!";
