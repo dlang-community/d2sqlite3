@@ -453,7 +453,6 @@ struct Database
     Commits all transactions.
 
     See $(LINK http://www.sqlite.org/lang_transaction.html)
-    )
     +/
     void commit()
     {
@@ -1763,9 +1762,6 @@ unittest
     }
 }
 
-/++
-Unit tests.
-+/
 unittest
 {
     mixin(VerboseTest!"NULL values");
