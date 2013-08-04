@@ -134,10 +134,10 @@ Copyright:
     Copyright Nicolas Sicard, 2011-2012.
 
 License:
-    No license yet.
+	$(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
 
-Author:
-    Nicolas Sicard.
+Authors:
+	Nicolas Sicard (dransic@gmail.com).
 
 Macros:
     D = <tt>$0</tt>
