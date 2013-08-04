@@ -149,7 +149,6 @@ import std.algorithm;
 import std.array;
 import std.conv;
 import std.exception;
-import std.metastrings;
 import std.string;
 import std.range;
 import std.traits;
@@ -674,8 +673,8 @@ struct Database
             SQLITE_UTF8,
             null,
             null,
-            mixin(Format!("&%s_step", name)),
-            mixin(Format!("&%s_final", name))
+            mixin(format("&%s_step", name)),
+            mixin(format("&%s_final", name))
         );
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
@@ -783,7 +782,7 @@ struct Database
             name.toStringz(),
             SQLITE_UTF8,
             null,
-            mixin(Format!("&%s", name))
+            mixin(format("&%s", name))
         );
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
@@ -898,7 +897,7 @@ struct Database
             PT.length,
             SQLITE_UTF8,
             null,
-            mixin(Format!("&%s", name)),
+            mixin(format("&%s", name)),
             null,
             null
         );
@@ -1192,7 +1191,7 @@ struct Query
     out
     {
         assert(core);
-        // core.statement can be null is sql contains an empty statement
+        // core.statement can be null if sql contains an empty statement
         assert(core.refcount == 1);
     }
     body
