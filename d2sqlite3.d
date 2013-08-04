@@ -194,16 +194,16 @@ class SqliteException : Exception
 {
     int code;
 
-    this(int code)
+    this(int code, string file = __FILE__, size_t line = __LINE__)
     {
         this.code = code;
-        super(format("error %d", code));
+        super(format("error %d", code), file, line);
     }
 
-    this(string msg, int code = -1)
+	this(string msg, int code = -1, string file = __FILE__, size_t line = __LINE__)
     {
         this.code = code;
-        super(msg);
+        super(msg, file, line);
     }
 }
 
