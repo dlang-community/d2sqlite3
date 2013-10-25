@@ -219,36 +219,12 @@ template isValidSqlite3Type(T)
 {
     enum isValidSqlite3Type =
                isIntegral!T
-            || is(Unqual!T == bool)
+            || isBoolean!T
             || isFloatingPoint!T
             || isSomeChar!T
             || isSomeString!T
             || (isArray!T && is(Unqual!(ElementType!T) == ubyte))
             || is(T == typeof(null));
-}
-unittest
-{
-    static assert(isValidSqlite3Type!int);
-    static assert(isValidSqlite3Type!uint);
-    static assert(isValidSqlite3Type!long);
-    static assert(isValidSqlite3Type!ulong);
-    static assert(isValidSqlite3Type!short);
-    static assert(isValidSqlite3Type!ushort);
-    static assert(isValidSqlite3Type!byte);
-    static assert(isValidSqlite3Type!ubyte);
-    static assert(isValidSqlite3Type!(immutable(int)));
-    static assert(isValidSqlite3Type!bool);
-    static assert(isValidSqlite3Type!float);
-    static assert(isValidSqlite3Type!double);
-    static assert(isValidSqlite3Type!real);
-    static assert(isValidSqlite3Type!string);
-    static assert(isValidSqlite3Type!wstring);
-    static assert(isValidSqlite3Type!dstring);
-    static assert(isValidSqlite3Type!(char[]));
-    static assert(isValidSqlite3Type!(ubyte[]));
-    static assert(isValidSqlite3Type!(immutable(ubyte)[]));
-    static assert(isValidSqlite3Type!(immutable(ubyte)[4]));
-    static assert(isValidSqlite3Type!(typeof(null)));
 }
 
 /++
