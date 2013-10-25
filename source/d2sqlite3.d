@@ -134,10 +134,10 @@ Copyright:
     Copyright Nicolas Sicard, 2011-2013.
 
 License:
-	$(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
+    $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
 
 Authors:
-	Nicolas Sicard (dransic@gmail.com).
+    Nicolas Sicard (dransic@gmail.com).
 
 Macros:
     D = <tt>$0</tt>
@@ -160,7 +160,7 @@ import etc.c.sqlite3;
 
 version (D2Sqlite3Tests)
 {
-	void main() {}
+    void main() {}
 }
 
 /++
@@ -176,7 +176,7 @@ class SqliteException : Exception
         super(format("error %d", code), file, line);
     }
 
-	this(string msg, int code = -1, string file = __FILE__, size_t line = __LINE__)
+    this(string msg, int code = -1, string file = __FILE__, size_t line = __LINE__)
     {
         this.code = code;
         super(msg, file, line);
@@ -192,7 +192,7 @@ struct Sqlite3
     /++
     Gets the library's version string (e.g. 3.6.12).
     +/
-	static @property string versionString()
+    static @property string versionString()
     {
         return to!string(sqlite3_libversion());
     }
@@ -208,8 +208,8 @@ struct Sqlite3
 
 static this()
 {
-	auto ver = Sqlite3.versionNumber;
-	enforce(ver > 3003011, "Incompatible SQLite version: " ~ Sqlite3.versionString);
+    auto ver = Sqlite3.versionNumber;
+    enforce(ver > 3003011, "Incompatible SQLite version: " ~ Sqlite3.versionString);
 }
 
 /++
@@ -283,20 +283,20 @@ struct Database
     {
         sqlite3* handle;
 
-		this(sqlite3* handle)
-		{
-			this.handle = handle;
-		}
+        this(sqlite3* handle)
+        {
+            this.handle = handle;
+        }
 
-		~this()
-		{
-			auto result = sqlite3_close(handle);
-			enforce(result == SQLITE_OK, new SqliteException(result));
-		}
-	}
+        ~this()
+        {
+            auto result = sqlite3_close(handle);
+            enforce(result == SQLITE_OK, new SqliteException(result));
+        }
+    }
 
-	private alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
-	private Core core;
+    private alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
+    private Core core;
 
     /++
     Opens a database connection.
@@ -314,23 +314,23 @@ struct Database
             auto result = sqlite3_enable_shared_cache(1);
             enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
         }
-		sqlite3* hdl;
+        sqlite3* hdl;
         auto result = sqlite3_open(cast(char*) path.toStringz(), &hdl);
-		core = Core(hdl);
+        core = Core(hdl);
         enforce(result == SQLITE_OK && core.handle, new SqliteException(errorMsg, result));
     }
     unittest
     {
-		// Database construction
+        // Database construction
         Database db1;
         auto db2 = db1;
         db1 = Database(":memory:");
         db2 = Database(":memory:");
         auto db3 = Database(":memory:");
-		db1 = db2;
-		assert(db2.core.refCountedStore.refCount == 2);
-		assert(db1.core.refCountedStore.refCount == 2);
-	}
+        db1 = db2;
+        assert(db2.core.refCountedStore.refCount == 2);
+        assert(db1.core.refCountedStore.refCount == 2);
+    }
 
     /++
     Compiles internal statistics to optimize indexing.
@@ -612,7 +612,7 @@ struct Database
     unittest
     {
         // Aggregate creation
-		import std.math: approxEqual;
+        import std.math: approxEqual;
 
         struct weighted_average {
             double total_value = 0.0;
@@ -689,7 +689,7 @@ struct Database
     void createCollation(alias fun, string name = __traits(identifier, fun))()
     {
         static assert(__traits(isStaticFunction, fun), "symbol " ~ __traits(identifier, fun)
-		              ~ " of type " ~ typeof(fun).stringof ~ " is not a static function");
+                      ~ " of type " ~ typeof(fun).stringof ~ " is not a static function");
 
         alias ParameterTypeTuple!fun PT;
         static assert(isSomeString!(PT[0]), "the first argument of function " ~ name ~ " should be a string");
@@ -1084,14 +1084,14 @@ struct Query
             this.rows = rows;
         }
 
-		~this()
-		{
-			auto result = sqlite3_finalize(statement);
-			enforce(result == SQLITE_OK, new SqliteException(result));
-		}
-	}
-	private alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
-	private Core core;
+        ~this()
+        {
+            auto result = sqlite3_finalize(statement);
+            enforce(result == SQLITE_OK, new SqliteException(result));
+        }
+    }
+    private alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
+    private Core core;
 
     private this(Database db, string sql)
     {
@@ -1118,12 +1118,12 @@ struct Query
         {
             auto q2 = q1;
             assert(q1.core.refCountedStore.refCount == 2);
-			assert(q2.core.refCountedStore.refCount == 2);
-		}
-		assert(q1.core.refCountedStore.refCount == 1);
-	}
-	
-	/++
+            assert(q2.core.refCountedStore.refCount == 2);
+        }
+        assert(q1.core.refCountedStore.refCount == 1);
+    }
+    
+    /++
     Gets the bindable parameters of the query.
     Returns:
         A Parameters object. Becomes invalid when the Query goes out of scope.
@@ -1688,11 +1688,11 @@ unittest
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.params.bind(":val", "I am a text.");
     query.execute();
-	query.reset();
+    query.reset();
     query.params.bind(":val", null);
     query.execute();
-	string str;
-	query.reset();
+    string str;
+    query.reset();
     query.params.bind(":val", str);
     query.execute();
 
@@ -1724,7 +1724,7 @@ version(SqliteEnableICU) unittest
 
 unittest
 {
-   	// BLOB values
+    // BLOB values
 
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val BLOB)");
@@ -1745,7 +1745,7 @@ unittest
 unittest
 {
     // Example from the documentation's introduction
-	
+    
     // Open a database in memory.
     Database db;
     try
