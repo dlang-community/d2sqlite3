@@ -1,0 +1,32 @@
+{
+	"name": "d2sqlite3",
+	"description": "A thin wrapper around SQLite3",
+	"homepage": "https://github.com/biozic/d2sqlite3",
+	"authors": ["Nicolas Sicard"],
+	"copyright": "Copyright © 2011-13, Nicolas Sicard",
+	"license": "BSL-1.0",
+	"libs": ["sqlite3"],
+	"configurations": [
+        {
+            "name": "library",
+            "targetType": "library"
+        },
+        {
+            "name": "library-icu",
+            "targetType": "library",
+            "versions": ["SqliteEnableICU"],
+            "libs": ["icui18n", "icuuc"]
+        },
+        {
+            "name": "tests",
+            "targetType": "executable",
+            "versions": ["D2Sqlite3Tests"]
+        },
+        {
+            "name": "tests-icu",
+            "targetType": "executable",
+            "versions": ["D2Sqlite3Tests", "SqliteEnableICU"],
+            "libs": ["icui18n", "icuuc"]
+        }
+    ]
+}
