@@ -377,7 +377,7 @@ struct Database
         {
             enum index = n - 1;
             alias Unqual!(PT[index]) UT;
-            static if (is(UT == bool))
+            static if (isBoolean!UT)
                 enum templ = q{
                     @{previous_block}
                     type = sqlite3_value_numeric_type(argv[@{index}]);
@@ -437,7 +437,7 @@ struct Database
     +/
     private static @property string block_return_result(RT...)()
     {
-        static if (isIntegral!RT || is(Unqual!RT == bool))
+        static if (isIntegral!RT || isBoolean!RT)
             return q{
                 auto result = to!long(tmp);
                 sqlite3_result_int64(context, result);
