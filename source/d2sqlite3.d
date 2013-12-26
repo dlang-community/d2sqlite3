@@ -3,7 +3,7 @@
 Simple SQLite interface.
 
 This module provides a simple "object-oriented" interface to the SQLite
-database engine. The complete C API is also available.
+database engine.
 
 Objects in this interface (Database and Query) automatically create the SQLite
 objects they need. They are reference-counted, so that when their last
@@ -32,7 +32,7 @@ $(OL
         in one call, as long as they are separated by semi-colons.)
     ))
 )
-See documentation for Database below.
+See example in the documentation for the Database struct below.
 
 Copyright:
     Copyright Nicolas Sicard, 2011-2013.

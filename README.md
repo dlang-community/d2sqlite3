@@ -1,8 +1,8 @@
-# D2-SQLite3
+# D2sqlite3
 
 This is a small binding for SQLite (version 3) for the D programming language (D2).
 It provides a simple "object-oriented" interface to the SQLite database
-engine. The complete C API is also available.
+engine.
 
 ## Features
 
@@ -10,19 +10,13 @@ engine. The complete C API is also available.
 at the time of its creation and it is automatically closed when no more references
 exist. Possibility to enable a shared cache.
 
-2. `Database` has facility functions to:
-    - manage transactions and save points: `begin`, `commit`, `rollback`, `savepoint`, etc.
-    - create new functions, aggregates or collations: `createFunction`, `createAggregate`, `createCollation`
-    - directly execute SQL statements: `execute`
-    - manage the database: `analyze`, `vaccum`, etc.
+2. `Database` has facility functions create new functions, aggregates or collations.
 
 3. `Query` is a wrapper around prepared statements and their results, with functionality
 to:
     - bind parameters: `params.bind`
     - iterate on result rows with an InputRange interface: `rows`
     - convert column to D type: `get`
-    
-4. Optionnaly binds with ICU for more relevant collations.
 
 ## Issues
 
