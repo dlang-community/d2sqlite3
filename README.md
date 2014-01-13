@@ -1,6 +1,6 @@
-# D2sqlite3
+# d2sqlite3
 
-This is a small binding for SQLite (version 3) for the D programming language (D2).
+This is a small wrapper around for SQLite (version 3) for the D programming language.
 It provides a simple "object-oriented" interface to the SQLite database
 engine.
 
@@ -24,4 +24,6 @@ to:
 2. BLOB handling is very basic (not taking advantage of BLOB I/O functions).
 
 ---
-Copyright 2011-13 by Nicolas Sicard
+License: BSL 1.0
+
+Copyright 2011-14, Nicolas Sicard
