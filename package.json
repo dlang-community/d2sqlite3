@@ -5,10 +5,6 @@
 	"authors": ["Nicolas Sicard"],
 	"copyright": "Copyright © 2011-13, Nicolas Sicard",
 	"license": "BSL-1.0",
-	"libs": ["sqlite3"],
-	"targetType": "library",
-    "mainSourceFile": "source/d2sqlite3.d",
-    "dependencies" : {
-        "tested": "~master"
-    }
+    "targetType": "library",
+	"libs": ["sqlite3"]
 }
