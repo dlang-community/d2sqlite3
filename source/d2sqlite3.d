@@ -686,7 +686,8 @@ unittest // Documentation example
                 last_name TEXT NOT NULL,
                 first_name TEXT,
                 score REAL,
-                photo BLOB)"
+                photo BLOB
+             )"
         );
     }
     catch (SqliteException e)
@@ -705,17 +706,17 @@ unittest // Documentation example
         
         // Bind everything with chained calls to params.bind().
         query.params.bind(":last_name", "Smith")
-            .bind(":first_name", "John")
-                .bind(":score", 77.5);
+                    .bind(":first_name", "John")
+                    .bind(":score", 77.5);
         ubyte[] photo = cast(ubyte[]) "..."; // Store the photo as raw array of data.
         query.params.bind(":photo", photo);
         query.execute();
         
         query.reset(); // Need to reset the query after execution.
         query.params.bind(":last_name", "Doe")
-            .bind(":first_name", "John")
-                .bind(3, null) // Use of index instead of name.
-                .bind(":photo", null);
+                    .bind(":first_name", "John")
+                    .bind(3, null) // Use of index instead of name.
+                    .bind(":photo", null);
         query.execute();
     }
     catch (SqliteException e)
