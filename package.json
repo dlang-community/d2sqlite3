@@ -4,7 +4,17 @@
 	"homepage": "https://github.com/biozic/d2sqlite3",
 	"authors": ["Nicolas Sicard"],
 	"copyright": "Copyright © 2011-13, Nicolas Sicard",
+	"libs": ["sqlite3"],
 	"license": "BSL-1.0",
-    "targetType": "library",
-	"libs": ["sqlite3"]
+	"configurations": [
+	{
+		"name": "build",
+		"targetType": "library"
+	},
+	{
+		"name": "test",
+		"targetType": "executable",
+		"versions":["TestMain"],
+		"buildOptions": ["unittests"],
+	}]
 }

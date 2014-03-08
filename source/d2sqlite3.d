@@ -49,6 +49,7 @@ Macros:
 module d2sqlite3;
 
 import std.conv;
+import std.algorithm;
 import std.exception;
 import std.range;
 import std.string;
@@ -1480,4 +1481,9 @@ unittest // Code templates
     };
     mixin(render(tpl, ["function_name": "hello_world"]));
     static assert(hello_world() == "Hello world!");
+}
+
+version(TestMain) {
+    void main() {
+    }
 }
