@@ -1414,7 +1414,7 @@ class SqliteException : Exception
 {
     int code;
 
-    @safe pure nothrow 
+    //@safe pure nothrow 
     this(int code, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
         this.code = code;
@@ -1426,7 +1426,7 @@ class SqliteException : Exception
         super(msg, file, line, next);
     }
 
-    @safe pure nothrow 
+    //@safe pure nothrow 
     this(string msg, int code = -1, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
         this.code = code;
