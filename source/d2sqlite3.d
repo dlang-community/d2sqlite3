@@ -989,11 +989,17 @@ struct Parameters
             enforce(utf8.length <= int.max, new SqliteException("string too long"));
             result = sqlite3_bind_text(statement, index, cast(char*) utf8.toStringz(), cast(int) utf8.length, null);
         }
-        else static if (isArray!U && is(Unqual!(ElementType!U) == ubyte))
+        else static if (isArray!U)
         {
-            ubyte[] buffer = cast(ubyte[]) value;
-            enforce(buffer.length <= int.max, new SqliteException("array too long"));
-            result = sqlite3_bind_blob(statement, index, cast(void*) buffer.ptr, cast(int) buffer.length, null);
+            ulong nel = value.length;
+            if (nel == 0) {
+                result = sqlite3_bind_null(statement, index);
+            } else {
+                ulong nbytes = nel * (typeof(value[0]).sizeof);
+                enforce(nbytes <= int.max, new SqliteException("array too long"));
+                result = sqlite3_bind_blob(statement, index, cast(void*) value.ptr, cast(int) nbytes, null);
+            }
+            
         }
         else
             static assert(false, "cannot bind a value of type " ~ U.stringof);
@@ -1267,9 +1273,15 @@ struct Column
                 auto result = cast(T) std.conv.to!U(data.coerce!string());
                 return result ? result : defaultValue;
             }
-            else static if (isArray!U && is(Unqual!(ElementType!U) == ubyte))
+            else static if (isArray!U)
             {
-                auto result = cast(T) data.get!(ubyte[])();
+
+                alias ForeachType!U A;
+                // Get info as ubytes
+                auto barr = data.get!(ubyte[])();
+                A* ptr = cast(A*) barr.ptr;
+                auto nel = barr.length/(A.sizeof);
+                A[] result = ptr[0..nel];
                 return result ? result : defaultValue;
             }
             else
@@ -1278,6 +1290,7 @@ struct Column
         else
             return defaultValue;
     }
+
 }
 
 unittest // Getting a colums
@@ -1406,6 +1419,25 @@ unittest // Getting blob values
     foreach (row; query.rows)
         assert(row["val"].get!(ubyte[])([1, 2, 3]) ==  [1, 2, 3]);
 }
+
+unittest // Getting more blob values
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val BLOB)");
+
+    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+    double[] array = [1.1, 2.14, 3.162];
+    query.params.bind(":val", array);
+    query.execute();
+    query.reset();
+    query.params.bind(":val", cast(double[]) []);
+    query.execute();
+
+    query = db.query("SELECT * FROM test");
+    foreach (row; query.rows)
+        assert(row["val"].get!(double[])([1.1, 2.14, 3.162]) ==  [1.1, 2.14, 3.162]);
+}
+
 
 /++
 Exception thrown when SQLite functions return an error.
