@@ -34,7 +34,7 @@ $(OL
 See example in the documentation for the Database struct below.
 
 Copyright:
-    Copyright Nicolas Sicard, 2011-2013.
+    Copyright Nicolas Sicard, 2011-2014.
 
 License:
     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).

@@ -3,7 +3,7 @@
 	"description": "A thin wrapper around SQLite3",
 	"homepage": "https://github.com/biozic/d2sqlite3",
 	"authors": ["Nicolas Sicard"],
-	"copyright": "Copyright © 2011-13, Nicolas Sicard",
+	"copyright": "Copyright © 2011-14, Nicolas Sicard",
 	"libs": ["sqlite3"],
 	"license": "BSL-1.0",
 	"configurations": [
