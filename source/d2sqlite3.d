@@ -991,15 +991,14 @@ struct Parameters
         }
         else static if (isArray!U)
         {
-            ulong nel = value.length;
-            if (nel == 0) {
+            if (!value.length)
                 result = sqlite3_bind_null(statement, index);
-            } else {
-                ulong nbytes = nel * (typeof(value[0]).sizeof);
-                enforce(nbytes <= int.max, new SqliteException("array too long"));
-                result = sqlite3_bind_blob(statement, index, cast(void*) value.ptr, cast(int) nbytes, null);
+            else
+            {
+                auto bytes = cast(ubyte[]) value;
+                enforce(bytes.length <= int.max, new SqliteException("array too long"));
+                result = sqlite3_bind_blob(statement, index, cast(void*) bytes.ptr, cast(int) bytes.length, null);
             }
-            
         }
         else
             static assert(false, "cannot bind a value of type " ~ U.stringof);
@@ -1275,13 +1274,8 @@ struct Column
             }
             else static if (isArray!U)
             {
-
-                alias ForeachType!U A;
-                // Get info as ubytes
-                auto barr = data.get!(ubyte[])();
-                A* ptr = cast(A*) barr.ptr;
-                auto nel = barr.length/(A.sizeof);
-                A[] result = ptr[0..nel];
+                alias A = ElementType!U;
+                auto result = cast(U) data.get!(ubyte[]);
                 return result ? result : defaultValue;
             }
             else
@@ -1290,7 +1284,6 @@ struct Column
         else
             return defaultValue;
     }
-
 }
 
 unittest // Getting a colums
