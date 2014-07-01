@@ -1199,6 +1199,22 @@ struct RowSet
         else
             throw new SqliteException("no row available");
     }
+    
+    /++
+    Gets list of all rows
+    +/
+    @property Row[] all()
+    {
+        auto rowlist = appender!(Row[]);
+
+        while (!empty)
+        {
+            rowlist.put(front);
+            popFront();
+        }
+
+        return rowlist.data;
+    }
 }
 
 /++
