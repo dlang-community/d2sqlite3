@@ -111,11 +111,6 @@ catch (SqliteException e)
 }
 ```
 
-## Issues
-
-1. Alpha stage! Not thouroughly tested! (But in use as the database backend for one of my web applications).
-2. BLOB handling is very basic (not taking advantage of BLOB I/O functions).
-
 ---
 License: BSL 1.0
 
