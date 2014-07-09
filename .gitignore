@@ -1,2 +1,3 @@
 .dub
 __test__*
+dub.selections.json

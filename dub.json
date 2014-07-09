@@ -1,0 +1,10 @@
+{
+	"name": "d2sqlite3",
+	"description": "A thin wrapper around SQLite3",
+	"homepage": "https://github.com/biozic/d2sqlite3",
+	"authors": ["Nicolas Sicard"],
+	"copyright": "Copyright © 2011-14, Nicolas Sicard",
+	"libs": ["sqlite3"],
+    "targetType": "library",
+	"license": "BSL-1.0"
+}
