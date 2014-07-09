@@ -1059,7 +1059,7 @@ struct Parameters
         query = db.query("SELECT * FROM test");
         foreach (row; query.rows)
         {
-            assert(row.columnCount == 3);
+            assert(row.length == 3);
             assert(row["i"].get!int() == 42);
             assert(row["f"].get!double() == 3.14);
             assert(row["t"].get!string() == "TEXT");
@@ -1125,9 +1125,7 @@ struct RowSet
         isInitialized = true;
     }
 
-    /++
-    Tests whether no more rows are available.
-    +/
+    /// Input range primitives
     @property bool empty()
     {
         assert(query);
@@ -1135,9 +1133,7 @@ struct RowSet
         return sqliteResult == SQLITE_DONE;
     }
 
-    /++
-    Gets the current row.
-    +/
+    /// ditto
     @property Row front()
     {
         if (!empty)
@@ -1183,9 +1179,7 @@ struct RowSet
             throw new SqliteException("no row available");
     }
 
-    /++
-    Jumps to the next row.
-    +/
+    /// ditto
     void popFront()
     {
         if (!empty)
@@ -1195,24 +1189,62 @@ struct RowSet
     }
 }
 
+version (unittest)
+{
+    static assert(isInputRange!RowSet);
+    static assert(is(ElementType!RowSet == Row));
+}
+
 /++
-A SQLite row.
+A SQLite row, implemented as a random-access range of Column objects.
 +/
 struct Row
 {
     private Column[] columns;
 
-    /++
-    Gets the number of columns in this row.
-    +/
-    @property size_t columnCount()
+    /// Input range primitives
+    @property bool empty()
+    {
+        return columns.empty;
+    }
+
+    /// ditto
+    @property Column front()
+    {
+        return columns.front;
+    }
+
+    /// ditto
+    void popFront()
+    {
+        columns.popFront();
+    }
+   
+    /// Forward range primitive
+    @property Row save()
+    {
+        return Row(columns);
+    }
+    
+    /// Bidirectional range primitives
+    @property Column back()
+    {
+        return columns.back;
+    }
+    
+    /// ditto
+    void popBack()
+    {
+        columns.popBack();
+    }
+    
+    /// Random access range primitives
+    @property size_t length()
     {
         return columns.length;
     }
-
-    /++
-    Gets the column at the given _index or for the given name.
-    +/
+    
+    /// ditto
     Column opIndex(size_t index)
     {
         enforce(index >= 0 && index < columns.length,
@@ -1220,7 +1252,10 @@ struct Row
         return columns[index];
     }
 
-    /// ditto
+    /// Kept for backward compatibility
+    alias columnCount = length;
+    
+    /// Returns a column based on its name
     Column opIndex(string name)
     {
         auto f = filter!((Column c) { return c.name == name; })(columns);
@@ -1235,6 +1270,12 @@ struct Row
     {
         return opIndex(name);
     }
+}
+
+version (unittest)
+{
+    static assert(isRandomAccessRange!Row);
+    static assert(is(ElementType!Row == Column));
 }
 
 /++

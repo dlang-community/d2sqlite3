@@ -105,7 +105,8 @@ See <a href="http://www.sqlite.org/sharedcache.html">http://www.sqlite.org/share
             last_name TEXT NOT NULL,
             first_name TEXT,
             score REAL,
-            photo BLOB)"</font>
+            photo BLOB
+         )"</font>
     );
 }
 <font color=blue>catch</font> (SqliteException e)
@@ -124,17 +125,17 @@ See <a href="http://www.sqlite.org/sharedcache.html">http://www.sqlite.org/share
     
     <font color=green>// Bind everything with chained calls to params.bind().
 </font>    query.params.bind(<font color=red>":last_name"</font>, <font color=red>"Smith"</font>)
-        .bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>)
-            .bind(<font color=red>":score"</font>, 77.5);
+                .bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>)
+                .bind(<font color=red>":score"</font>, 77.5);
     <font color=blue>ubyte</font>[] photo = <font color=blue>cast</font>(<font color=blue>ubyte</font>[]) <font color=red>"..."</font>; <font color=green>// Store the photo as raw array of data.
 </font>    query.params.bind(<font color=red>":photo"</font>, photo);
     query.execute();
     
     query.reset(); <font color=green>// Need to reset the query after execution.
 </font>    query.params.bind(<font color=red>":last_name"</font>, <font color=red>"Doe"</font>)
-        .bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>)
-            .bind(3, <font color=blue>null</font>) <font color=green>// Use of index instead of name.
-</font>            .bind(<font color=red>":photo"</font>, <font color=blue>null</font>);
+                .bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>)
+                .bind(3, <font color=blue>null</font>) <font color=green>// Use of index instead of name.
+</font>                .bind(<font color=red>":photo"</font>, <font color=blue>null</font>);
     query.execute();
 }
 <font color=blue>catch</font> (SqliteException e)
@@ -272,7 +273,7 @@ query = db.query(<font color=red>"SELECT w_avg(value, weight) FROM test"</font>)
 <dd>Creates and registers a collation function in the database.
 <br><br>
 The function <i>fun</i> must satisfy these criteria:
-    <ul>       <li>It must two string arguments, e.g. s1 and s2.</li>
+    <ul>       <li>It must take two string arguments, e.g. s1 and s2.</li>
         <li>Its return value <tt>ret</tt> must satisfy these criteria (when s3 is any other string):
             <ul>               <li>If s1 is less than s2, <tt>ret &lt; 0</tt>.</li>
                 <li>If s1 is equal to s2, <tt>ret == 0</tt>.</li>
@@ -468,36 +469,51 @@ This does not reset the prepared statement. Use Query.reset() for this.<br><br>
 <dd>The results of a query that returns rows, with an InputRange interface.<br><br>
 
 <dl><dt><big><a name="RowSet.empty"></a>@property bool <u>empty</u>();
+<br><a name="RowSet.front"></a>@property Row <u>front</u>();
+<br><a name="RowSet.popFront"></a>void <u>popFront</u>();
 </big></dt>
-<dd>Tests whether no more rows are available.<br><br>
-
-</dd>
-<dt><big><a name="RowSet.front"></a>@property Row <u>front</u>();
-</big></dt>
-<dd>Gets the current row.<br><br>
-
-</dd>
-<dt><big><a name="RowSet.popFront"></a>void <u>popFront</u>();
-</big></dt>
-<dd>Jumps to the next row.<br><br>
+<dd>Input range primitives<br><br>
 
 </dd>
 </dl>
 </dd>
 <dt><big><a name="Row"></a>struct <u>Row</u>;
 </big></dt>
-<dd>A SQLite row.<br><br>
+<dd>A SQLite row, implemented as a random-access range of Column objects.<br><br>
 
-<dl><dt><big><a name="Row.columnCount"></a>@property size_t <u>columnCount</u>();
+<dl><dt><big><a name="Row.empty"></a>@property bool <u>empty</u>();
+<br><a name="Row.front"></a>@property Column <u>front</u>();
+<br><a name="Row.popFront"></a>void <u>popFront</u>();
 </big></dt>
-<dd>Gets the number of columns in this row.<br><br>
+<dd>Input range primitives<br><br>
 
 </dd>
-<dt><big><a name="Row.opIndex"></a>Column <u>opIndex</u>(size_t <i>index</i>);
-<br><a name="Row.opIndex"></a>Column <u>opIndex</u>(string <i>name</i>);
+<dt><big><a name="Row.save"></a>@property Row <u>save</u>();
+</big></dt>
+<dd>Forward range primitive<br><br>
+
+</dd>
+<dt><big><a name="Row.back"></a>@property Column <u>back</u>();
+<br><a name="Row.popBack"></a>void <u>popBack</u>();
+</big></dt>
+<dd>Bidirectional range primitives<br><br>
+
+</dd>
+<dt><big><a name="Row.length"></a>@property size_t <u>length</u>();
+<br><a name="Row.opIndex"></a>Column <u>opIndex</u>(size_t <i>index</i>);
+</big></dt>
+<dd>Random access range primitives<br><br>
+
+</dd>
+<dt><big><a name="Row.columnCount"></a>alias <u>columnCount</u> = length;
+</big></dt>
+<dd>Kept for backward compatibility<br><br>
+
+</dd>
+<dt><big><a name="Row.opIndex"></a>Column <u>opIndex</u>(string <i>name</i>);
 <br><a name="Row.opDispatch"></a>Column <u>opDispatch</u>(string name)();
 </big></dt>
-<dd>Gets the column at the given index or for the given name.<br><br>
+<dd>Returns a column based on its <i>name</i><br><br>
 
 </dd>
 </dl>
@@ -521,7 +537,7 @@ This does not reset the prepared statement. Use Query.reset() for this.<br><br>
 </dd>
 </dl>
 
-        <hr><small>Page generated by <a href="http://dlang.org/ddoc.html">Ddoc</a>. Copyright Nicolas Sicard, 2011-2013.
+        <hr><small>Page generated by <a href="http://dlang.org/ddoc.html">Ddoc</a>. Copyright Nicolas Sicard, 2011-2014.
 
 </small>
         </body></html>
