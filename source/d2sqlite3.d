@@ -382,7 +382,7 @@ struct Database
             "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
             "block_read_values": block_read_values!(PT.length, name, PT)
         ]);
-        //pragma(msg, x_step_mix);
+
         mixin(x_step_mix);
 
         enum x_final = q{
@@ -410,7 +410,7 @@ struct Database
         enum x_final_mix = render(x_final, [
             "name": name
         ]);
-        //pragma(msg, x_final_mix);
+
         mixin(x_final_mix);
 
         auto result = sqlite3_create_function(
@@ -467,7 +467,7 @@ struct Database
 
     The function $(D_PARAM fun) must satisfy these criteria:
     $(UL
-        $(LI It must two string arguments, e.g. s1 and s2.)
+        $(LI It must take two string arguments, e.g. s1 and s2.)
         $(LI Its return value $(D ret) must satisfy these criteria (when s3 is any other string):
             $(UL
                 $(LI If s1 is less than s2, $(D ret < 0).)
@@ -494,9 +494,8 @@ struct Database
         alias ParameterTypeTuple!fun PT;
         static assert(isSomeString!(PT[0]), "the first argument of function " ~ name ~ " should be a string");
         static assert(isSomeString!(PT[1]), "the second argument of function " ~ name ~ " should be a string");
-        static assert(isImplicitlyConvertible!(ReturnType!fun, int), "function " ~ name ~ " should return a value convertible to an integer");
+        static assert(isImplicitlyConvertible!(ReturnType!fun, int), "function " ~ name ~ " should return a value convertible to an int");
 
-        enum funpointer = &fun;
         enum x_compare = q{
             extern (C) static int @{name}(void*, int n1, const(void*) str1, int n2, const(void* )str2)
             {
@@ -505,7 +504,7 @@ struct Database
                 s2.length = n2;
                 memcpy(s1.ptr, str1, n1);
                 memcpy(s2.ptr, str2, n2);
-                return funpointer(cast(immutable) s1, cast(immutable) s2);
+                return fun(cast(immutable) s1, cast(immutable) s2);
             }
         };
         mixin(render(x_compare, ["name": name]));
@@ -605,7 +604,7 @@ struct Database
             "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
             "block_read_values": block_read_values!(PT.length, name, PT)
         ]);
-        //pragma(msg, x_step_mix);
+
         mixin(x_func_mix);
 
         auto result = sqlite3_create_function(
@@ -1148,11 +1147,6 @@ struct RowSet
             row.columns.length = colcount;
             foreach (i; 0 .. colcount)
             {
-                /*
-                    TODO The name obtained from sqlite3_column_name is that of
-                    the query text. We should test first for the real name with
-                    sqlite3_column_database_name or sqlite3_column_table_name.
-                */
                 auto name = to!string(sqlite3_column_name(query.statement, i));
                 auto type = sqlite3_column_type(query.statement, i);
                 final switch (type) {
@@ -1439,19 +1433,12 @@ class SqliteException : Exception
 {
     int code;
 
-    //@safe pure nothrow 
     this(int code, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
         this.code = code;
-        string msg;
-        try
-            msg = "error code %d".format(code);
-        catch (Exception)
-            msg = "unknown error";
-        super(msg, file, line, next);
+        super("error code %d".format(code), file, line, next);
     }
 
-    //@safe pure nothrow 
     this(string msg, int code = -1, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
         this.code = code;
@@ -1506,9 +1493,4 @@ unittest // Code templates
     };
     mixin(render(tpl, ["function_name": "hello_world"]));
     static assert(hello_world() == "Hello world!");
-}
-
-version(TestMain) {
-    void main() {
-    }
 }
