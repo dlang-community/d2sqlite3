@@ -50,6 +50,7 @@ module d2sqlite3;
 
 import std.conv;
 import std.algorithm;
+import std.array;
 import std.exception;
 import std.range;
 import std.string;
@@ -1466,6 +1467,37 @@ unittest // Getting more blob values
         assert(row["val"].get!(double[])([1.1, 2.14, 3.162]) ==  [1.1, 2.14, 3.162]);
 }
 
+/++
+Turns a value into a literal that can be used in an SQLite expression.
++/
+string literal(T)(T value)
+{
+    static if (is(T == typeof(null)))
+        return "NULL";
+    else static if (isBoolean!T)
+        return value ? "1" : "0";
+    else static if (isNumeric!T)
+        return value.to!string();
+    else static if (isSomeString!T)
+        return format("'%s'", value.replace("'", "''"));
+    else static if (isArray!T)
+        return "'X%(%X%)'".format(cast(ubyte[]) value);
+    else
+        static assert(false, "cannot make a literal of a value of type " ~ T.stringof);
+}
+///
+unittest
+{
+    assert(null.literal == "NULL");
+    assert(false.literal == "0");
+    assert(true.literal == "1");
+    assert(4.literal == "4");
+    assert(4.1.literal == "4.1");
+    assert("foo".literal == "'foo'");
+    assert("a'b'".literal == "'a''b'''");
+    auto a = cast(ubyte[]) x"DEADBEEF";
+    assert(a.literal == "'XDEADBEEF'");
+}
 
 /++
 Exception thrown when SQLite functions return an error.
