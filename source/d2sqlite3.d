@@ -172,7 +172,7 @@ struct Database
         {
             auto msg = to!string(errmsg);
             sqlite3_free(errmsg);
-            throw new SqliteException(msg);
+            throw new SqliteException(msg, sql);
         }
     }
     
@@ -802,7 +802,7 @@ struct Query
                 &statement,
                 null
                 );
-            enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result));
+            enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result, sql));
             core = Core(db, sql, statement, Parameters(statement), RowSet(&this));
         }
         
@@ -1505,17 +1505,28 @@ Exception thrown when SQLite functions return an error.
 class SqliteException : Exception
 {
     int code;
+    string sql;
 
-    this(int code, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    this(string msg, string sql, int code, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
-        this.code = code;
-        super("error code %d".format(code), file, line, next);
-    }
-
-    this(string msg, int code = -1, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
-    {
+        this.sql = sql;
         this.code = code;
         super(msg, file, line, next);
+    }
+
+    this(int code, string sql = null, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    {
+        this("error code %d".format(code), sql, code, file, line, next);
+    }
+
+    this(string msg, int code, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    {
+        this(msg, null, code, file, line, next);
+    }
+
+    this(string msg, string sql = null, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    {
+        this(msg, sql, code, file, line, next);
     }
 }
 
