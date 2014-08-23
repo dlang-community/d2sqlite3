@@ -1291,6 +1291,8 @@ struct Column
     /++
     Gets the value of the column converted _to type T.
     If the value is NULL, it is replaced by defaultValue.
+
+    T can be a boolean, a numeric type, a string, an array or a Variant.
     +/
     T get(T)(T defaultValue = T.init)
     {
@@ -1314,6 +1316,8 @@ struct Column
                 auto result = cast(U) data.get!(ubyte[]);
                 return result ? result : defaultValue;
             }
+            else static if (is(T == Variant))
+                return data;
             else
                 static assert(false, "value cannot be converted to type " ~ T.stringof);
         }
@@ -1322,7 +1326,7 @@ struct Column
     }
 }
 
-unittest // Getting a colums
+unittest // Getting a column
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
@@ -1337,6 +1341,10 @@ unittest // Getting a colums
         assert(front[0].get!int() == 42);
         assert(front["val"].get!int() == 42);
         assert(front.val.get!int() == 42);
+
+        auto v = front[0].get!Variant();
+        assert(v.coerce!int == 42);
+        assert(v.coerce!string == "42");
     }
 }
 
