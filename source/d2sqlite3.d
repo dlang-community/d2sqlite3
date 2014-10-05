@@ -48,9 +48,9 @@ Macros:
 +/
 module d2sqlite3;
 
-import std.conv;
 import std.algorithm;
 import std.array;
+import std.conv;
 import std.exception;
 import std.range;
 import std.string;
@@ -82,12 +82,6 @@ struct Sqlite3
     {
         return sqlite3_libversion_number();
     }
-}
-
-static this()
-{
-    auto ver = Sqlite3.versionNumber;
-    enforce(ver > 3003011, "Incompatible SQLite version: " ~ Sqlite3.versionString);
 }
 
 /++
@@ -744,7 +738,7 @@ unittest // Documentation example
             auto name = format("%s, %s", row["last_name"].get!string(), row["first_name"].get!(char[])());
             // The score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs:
             auto score = row["score"].get!real(0.0);
-            // Use of opDispatch with column name:
+            // Use opDispatch to retrieve a column from its name
             auto photo = row.photo.get!(ubyte[])();
             
             // ... and use all these data!
@@ -770,9 +764,9 @@ struct Query
             string sql;
             sqlite3_stmt* statement;
             Parameters params;
-            RowSet rows;
+            RowRange rows;
             
-            this(Database db, string sql, sqlite3_stmt* statement, Parameters params, RowSet rows)
+            this(Database db, string sql, sqlite3_stmt* statement, Parameters params, RowRange rows)
             {
                 this.db = db;
                 this.sql = sql;
@@ -803,7 +797,7 @@ struct Query
                 null
                 );
             enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result, sql));
-            core = Core(db, sql, statement, Parameters(statement), RowSet(&this));
+            core = Core(db, sql, statement, Parameters(statement), RowRange(&this));
         }
         
         unittest // Query construction
@@ -837,24 +831,19 @@ struct Query
     +/
     void execute()
     {
-        if (!core.rows.isInitialized)
-        {
-            core.rows = RowSet(&this);
-            core.rows.initialize();
-        }
+        rows();
     }
     
     /++
     Gets the results of a query that returns _rows.
 
-    The returned RowSet object has a range interface. It becomes invalid
-    when the Query goes out of scope.
+    The returned object becomes invalid when the Query goes out of scope.
     +/
-    @property ref RowSet rows()
+    @property ref RowRange rows()
     {
         if (!core.rows.isInitialized)
         {
-            core.rows = RowSet(&this);
+            core.rows = RowRange(&this);
             core.rows.initialize();
         }
         return core.rows;
@@ -874,7 +863,7 @@ struct Query
     unittest // Query rows
     {
         // Query rows
-        static assert(isInputRange!RowSet);
+        static assert(isInputRange!RowRange);
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
 
@@ -895,9 +884,10 @@ struct Query
     @property auto oneValue(T)()
     {
         auto r = rows;
-        if (!r.empty) {
+        if (!r.empty)
+        {
             auto f = rows.front;
-            if (f.columns.length)
+            if (f.length)
                 return f[0].get!T;
         }
         throw new SqliteException("No value available");
@@ -923,14 +913,14 @@ struct Query
         {
             auto result = sqlite3_reset(core.statement);
             enforce(result == SQLITE_OK, new SqliteException(core.db.errorMsg, result));
-            core.rows = RowSet(&this);
+            core.rows = RowRange(&this);
         }
     }
     
     /++
     Gets the SQLite internal handle of the query _statement.
     +/
-    @property sqlite3_stmt* statement()
+    @property inout(sqlite3_stmt*) statement() inout
     {
         return core.statement;
     }
@@ -1094,9 +1084,9 @@ struct Parameters
 }
 
 /++
-The results of a query that returns rows, with an InputRange interface.
+The results of a query that returns rows, with an input range interface.
 +/
-struct RowSet
+struct RowRange
 {
     private Query* query;
     private int sqliteResult = SQLITE_DONE;
@@ -1138,44 +1128,7 @@ struct RowSet
     @property Row front()
     {
         if (!empty)
-        {
-            Row row;
-            auto colcount = sqlite3_column_count(query.statement);
-            row.columns.length = colcount;
-            foreach (i; 0 .. colcount)
-            {
-                auto name = to!string(sqlite3_column_name(query.statement, i));
-                auto type = sqlite3_column_type(query.statement, i);
-                final switch (type) {
-                case SQLITE_INTEGER:
-                    row.columns[i] = Column(i, name, Variant(sqlite3_column_int64(query.statement, i)));
-                    break;
-
-                case SQLITE_FLOAT:
-                    row.columns[i] = Column(i, name, Variant(sqlite3_column_double(query.statement, i)));
-                    break;
-
-                case SQLITE3_TEXT:
-                    auto str = to!string(sqlite3_column_text(query.statement, i));
-                    row.columns[i] = Column(i, name, Variant(str));
-                    break;
-
-                case SQLITE_BLOB:
-                    auto ptr = sqlite3_column_blob(query.statement, i);
-                    auto length = sqlite3_column_bytes(query.statement, i);
-                    ubyte[] blob;
-                    blob.length = length;
-                    memcpy(blob.ptr, ptr, length);
-                    row.columns[i] = Column(i, name, Variant(blob));
-                    break;
-
-                case SQLITE_NULL:
-                    row.columns[i] = Column(i, name, Variant.init);
-                    break;
-                }
-            }
-            return row;
-        }
+            return Row(query.statement);
         else
             throw new SqliteException("no row available");
     }
@@ -1192,8 +1145,8 @@ struct RowSet
 
 version (unittest)
 {
-    static assert(isInputRange!RowSet);
-    static assert(is(ElementType!RowSet == Row));
+    static assert(isInputRange!RowRange);
+    static assert(is(ElementType!RowRange == Row));
 }
 
 /++
@@ -1201,69 +1154,109 @@ A SQLite row, implemented as a random-access range of Column objects.
 +/
 struct Row
 {
-    private Column[] columns;
+    private {
+        sqlite3_stmt* statement;
+        immutable(int) colCount;
+        int frontIndex;
+        int backIndex;
+    }
+
+    this(sqlite3_stmt* statement)
+    {
+        assert(statement);
+        this.statement = statement;
+
+        colCount = sqlite3_column_count(statement);
+        backIndex = colCount - 1;
+    }
 
     /// Input range primitives
     @property bool empty()
     {
-        return columns.empty;
+        return length > 0;
     }
 
     /// ditto
     @property Column front()
     {
-        return columns.front;
+        return opIndex(frontIndex);
     }
 
     /// ditto
     void popFront()
     {
-        columns.popFront();
+        frontIndex++;
     }
    
     /// Forward range primitive
     @property Row save()
     {
-        return Row(columns);
+        return this;
     }
     
     /// Bidirectional range primitives
     @property Column back()
     {
-        return columns.back;
+        return opIndex(backIndex);
     }
     
     /// ditto
     void popBack()
     {
-        columns.popBack();
+        backIndex--;
     }
     
     /// Random access range primitives
     @property size_t length()
     {
-        return columns.length;
+        return backIndex - frontIndex + 1;
     }
     
     /// ditto
-    Column opIndex(size_t index)
+    Column opIndex(int index)
     {
-        enforce(index >= 0 && index < columns.length,
-                new SqliteException(format("invalid column index: %d", index)));
-        return columns[index];
+        auto i = index + frontIndex;
+
+        enforce(i >= 0 && i <= backIndex,
+                new SqliteException(format("invalid column index: %d", i)));
+                
+        auto type = sqlite3_column_type(statement, i);
+        final switch (type) {
+            case SQLITE_INTEGER:
+                return Column(Variant(sqlite3_column_int64(statement, i)), type);
+
+            case SQLITE_FLOAT:
+                return Column(Variant(sqlite3_column_double(statement, i)), type);
+
+            case SQLITE3_TEXT:
+                return Column(Variant(sqlite3_column_text(statement, i).to!string), type);
+
+            case SQLITE_BLOB:
+                auto ptr = sqlite3_column_blob(statement, i);
+                auto length = sqlite3_column_bytes(statement, i);
+                ubyte[] blob;
+                blob.length = length;
+                memcpy(blob.ptr, ptr, length);
+                return Column(Variant(blob), type);
+
+            case SQLITE_NULL:
+                return Column(Variant.init, type);        
+        }
     }
 
-    /// Kept for backward compatibility
-    alias columnCount = length;
-    
-    /// Returns a column based on its name
+    /++
+    Returns a column based on its name.
+
+    The names of the statements' columns are checked each time this function is called:
+    use numeric indexing for better performance.
+    +/
     Column opIndex(string name)
     {
-        auto f = filter!((Column c) { return c.name == name; })(columns);
-        if (!f.empty)
-            return f.front;
-        else
-            throw new SqliteException("invalid column name: " ~ name);
+        foreach (i; frontIndex .. backIndex + 1)
+            if (sqlite3_column_name(statement, i).to!string == name)
+                return opIndex(i);
+
+        throw new SqliteException("invalid column name: '%s'".format(name));
     }
 
     /// ditto
@@ -1284,9 +1277,10 @@ A SQLite column.
 +/
 struct Column
 {
-    size_t index;
-    string name;
-    private Variant data;
+    private {
+        Variant data;
+        int _type;
+    }
 
     /++
     Gets the value of the column converted _to type T.
@@ -1323,6 +1317,14 @@ struct Column
         }
         else
             return defaultValue;
+    }
+
+    /++
+    Gets the type of the column.
+    +/
+    @property int type()
+    {
+        return _type;
     }
 }
 
