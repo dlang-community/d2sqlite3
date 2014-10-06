@@ -447,7 +447,8 @@ struct Database
         auto query = db.query("INSERT INTO test (value, weight) VALUES (:v, :w)");
         double[double] list = [11.5: 3, 14.8: 1.6, 19: 2.4];
         foreach (value, weight; list) {
-            query.params.bind(":v", value).bind(":w", weight);
+            query.bind(":v", value);
+            query.bind(":w", weight);
             query.execute();
             query.reset();
         }
@@ -527,13 +528,13 @@ struct Database
         db.execute("CREATE TABLE test (val TEXT)");
 
         auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-        query.params.bind(":val", "A");
+        query.bind(":val", "A");
         query.execute();
         query.reset();
-        query.params.bind(":val", "B");
+        query.bind(":val", "B");
         query.execute();
         query.reset();
-        query.params.bind(":val", "a");
+        query.bind(":val", "a");
         query.execute();
 
         query = db.query("SELECT val FROM test ORDER BY val COLLATE my_collation");
@@ -700,18 +701,18 @@ unittest // Documentation example
         );
         
         // Bind everything with chained calls to params.bind().
-        query.params.bind(":last_name", "Smith")
-                    .bind(":first_name", "John")
-                    .bind(":score", 77.5);
+        query.bind(":last_name", "Smith");
+        query.bind(":first_name", "John");
+        query.bind(":score", 77.5);
         ubyte[] photo = cast(ubyte[]) "..."; // Store the photo as raw array of data.
-        query.params.bind(":photo", photo);
+        query.bind(":photo", photo);
         query.execute();
         
         query.reset(); // Need to reset the query after execution.
-        query.params.bind(":last_name", "Doe")
-                    .bind(":first_name", "John")
-                    .bind(3, null) // Use of index instead of name.
-                    .bind(":photo", null);
+        query.bind(":last_name", "Doe");
+        query.bind(":first_name", "John");
+        query.bind(3, null); // Use of index instead of name.
+        query.bind(":photo", null);
         query.execute();
     }
     catch (SqliteException e)
@@ -818,10 +819,148 @@ struct Query
     Gets the bindable parameters of the query.
 
     The returned Parameters object becomes invalid when the Query goes out of scope.
+
+    Deprecated: use Query.bind() directly.
     +/
-    @property ref Parameters params()
+    deprecated @property ref Parameters params()
     {
         return core.params;
+    }
+
+    /++
+    Binds values to parameters in the query.
+
+    The index is the position of the parameter in the SQL query (starting from 0).
+    The name must include the ':', '@' or '$' that introduces it in the query.
+    +/
+    void bind(T)(int index, T value)
+    {
+        enforce(parameterCount > 0, new SqliteException("no parameter to bind to"));
+        
+        alias Unqual!T U;
+        int result;
+        
+        static if (is(U == typeof(null)))
+        {
+            result = sqlite3_bind_null(statement, index);
+        }
+        else static if (is(U == void*))
+        {
+            result = sqlite3_bind_null(statement, index);
+        }
+        else static if (isIntegral!U && U.sizeof == int.sizeof)
+        {
+            result = sqlite3_bind_int(statement, index, value);
+        }
+        else static if (isIntegral!U && U.sizeof == long.sizeof)
+        {
+            result = sqlite3_bind_int64(statement, index, cast(long) value);
+        }
+        else static if (isImplicitlyConvertible!(U, double))
+        {
+            result = sqlite3_bind_double(statement, index, value);
+        }
+        else static if (isSomeString!U)
+        {
+            string utf8 = value.toUTF8();
+            enforce(utf8.length <= int.max, new SqliteException("string too long"));
+            result = sqlite3_bind_text(statement, index, cast(char*) utf8.toStringz(), cast(int) utf8.length, null);
+        }
+        else static if (isArray!U)
+        {
+            if (!value.length)
+                result = sqlite3_bind_null(statement, index);
+            else
+            {
+                auto bytes = cast(ubyte[]) value;
+                enforce(bytes.length <= int.max, new SqliteException("array too long"));
+                result = sqlite3_bind_blob(statement, index, cast(void*) bytes.ptr, cast(int) bytes.length, null);
+            }
+        }
+        else
+            static assert(false, "cannot bind a value of type " ~ U.stringof);
+        
+        enforce(result == SQLITE_OK, new SqliteException(result));
+    }
+
+    /// Ditto
+    void bind(T)(string name, T value)
+    {
+        enforce(parameterCount > 0, new SqliteException("no parameter to bind to"));
+        auto index = sqlite3_bind_parameter_index(statement, cast(char*) name.toStringz());
+        enforce(index > 0, new SqliteException(format("no parameter named '%s'", name)));
+        bind(index, value);
+    }
+
+    private int parameterCount()
+    {
+        if (statement)
+            return sqlite3_bind_parameter_count(statement);
+        else
+            return 0;
+    }
+    
+    unittest // Simple parameters binding
+    {
+        auto db = Database(":memory:");
+        db.execute("CREATE TABLE test (val INTEGER)");
+        
+        auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+        query.bind(":val", 42);
+        query.execute();
+        query.reset();
+        query.bind(1, 42);
+        query.execute();
+        query.reset();
+        query.bind(1, 42);
+        query.execute();
+        query.reset();
+        query.bind(":val", 42);
+        query.execute();
+        
+        query = db.query("SELECT * FROM test");
+        foreach (row; query.rows)
+            assert(row[0].get!int() == 42);
+    }
+    
+    unittest // Multiple parameters binding
+    {
+        auto db = Database(":memory:");
+        db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
+        auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, @f, $t)");
+        assert(query.parameterCount == 3);
+        query.bind("$t", "TEXT");
+        query.bind(":i", 42);
+        query.bind("@f", 3.14);
+        query.execute();
+        query.reset();
+        query.bind(3, "TEXT");
+        query.bind(1, 42);
+        query.bind(2, 3.14);
+        query.execute();
+        
+        query = db.query("SELECT * FROM test");
+        foreach (row; query.rows)
+        {
+            assert(row.length == 3);
+            assert(row["i"].get!int() == 42);
+            assert(row["f"].get!double() == 3.14);
+            assert(row["t"].get!string() == "TEXT");
+        }
+    }
+
+    /++
+    Clears the bindings.
+
+    This does not reset the prepared statement. Use Query.reset() for this.
+    +/
+    void clearBindings()
+    {
+        if (statement)
+        {
+            auto result = sqlite3_clear_bindings(statement);
+            enforce(result == SQLITE_OK, new SqliteException(result));
+        }
     }
 
     /++
@@ -855,8 +994,8 @@ struct Query
         db.execute(";");
         auto query = db.query("-- This is a comment !");
         assert(query.rows.empty);
-        assert(query.params.length == 0);
-        query.params.clear();
+        assert(query.parameterCount == 0);
+        query.clearBindings();
         query.reset();
     }
 
@@ -868,7 +1007,7 @@ struct Query
         db.execute("CREATE TABLE test (val INTEGER)");
 
         auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-        query.params.bind(":val", 42);
+        query.bind(":val", 42);
         query.execute();
         assert(query.rows.empty);
         query = db.query("SELECT * FROM test");
@@ -920,7 +1059,7 @@ struct Query
     /++
     Gets the SQLite internal handle of the query _statement.
     +/
-    @property inout(sqlite3_stmt*) statement() inout
+    @property sqlite3_stmt* statement()
     {
         return core.statement;
     }
@@ -1006,55 +1145,6 @@ struct Parameters
         auto index = sqlite3_bind_parameter_index(statement, cast(char*) name.toStringz());
         enforce(index > 0, new SqliteException(format("parameter named '%s' cannot be bound", name)));
         return bind(index, value);
-    }
-
-    unittest // Simple parameters binding
-    {
-        auto db = Database(":memory:");
-        db.execute("CREATE TABLE test (val INTEGER)");
-
-        auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-        query.params.bind(":val", 42);
-        query.execute();
-        query.reset();
-        query.params.bind(1, 42);
-        query.execute();
-        query.reset();
-        query.params.bind(1, 42);
-        query.execute();
-        query.reset();
-        query.params.bind(":val", 42);
-        query.execute();
-
-        query = db.query("SELECT * FROM test");
-        foreach (row; query.rows)
-            assert(row[0].get!int() == 42);
-    }
-
-    unittest // Multiple parameters binding
-    {
-        auto db = Database(":memory:");
-        db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
-        auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, @f, $t)");
-        assert(query.params.length == 3);
-        query.params.bind("$t", "TEXT")
-                    .bind(":i", 42)
-                    .bind("@f", 3.14);
-        query.execute();
-        query.reset();
-        query.params.bind(3, "TEXT")
-                    .bind(1, 42)
-                    .bind(2, 3.14);
-        query.execute();
-
-        query = db.query("SELECT * FROM test");
-        foreach (row; query.rows)
-        {
-            assert(row.length == 3);
-            assert(row["i"].get!int() == 42);
-            assert(row["f"].get!double() == 3.14);
-            assert(row["t"].get!string() == "TEXT");
-        }
     }
 
     /++
@@ -1334,7 +1424,7 @@ unittest // Getting a column
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 42);
+    query.bind(":val", 42);
     query.execute();
 
     query = db.query("SELECT val FROM test");
@@ -1358,7 +1448,7 @@ unittest // Getting null values
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", null);
+    query.bind(":val", null);
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1371,26 +1461,26 @@ unittest // Getting integer values
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 2);
-    query.params.clear(); // Resets binding to NULL.
+    query.bind(":val", 2);
+    query.clearBindings(); // Resets binding to NULL.
     query.execute();
     query.reset();
-    query.params.bind(":val", 42L);
+    query.bind(":val", 42L);
     query.execute();
     query.reset();
-    query.params.bind(":val", 42U);
+    query.bind(":val", 42U);
     query.execute();
     query.reset();
-    query.params.bind(":val", 42UL);
+    query.bind(":val", 42UL);
     query.execute();
     query.reset();
-    query.params.bind(":val", true);
+    query.bind(":val", true);
     query.execute();
     query.reset();
-    query.params.bind(":val", '\x2A');
+    query.bind(":val", '\x2A');
     query.execute();
     query.reset();
-    query.params.bind(":val", null);
+    query.bind(":val", null);
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1404,16 +1494,16 @@ unittest // Getting float values
     db.execute("CREATE TABLE test (val FLOAT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", 42.0F);
+    query.bind(":val", 42.0F);
     query.execute();
     query.reset();
-    query.params.bind(":val", 42.0);
+    query.bind(":val", 42.0);
     query.execute();
     query.reset();
-    query.params.bind(":val", 42.0L);
+    query.bind(":val", 42.0L);
     query.execute();
     query.reset();
-    query.params.bind(":val", null);
+    query.bind(":val", null);
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1427,14 +1517,14 @@ unittest // Getting text values
     db.execute("CREATE TABLE test (val TEXT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.params.bind(":val", "I am a text.");
+    query.bind(":val", "I am a text.");
     query.execute();
     query.reset();
-    query.params.bind(":val", null);
+    query.bind(":val", null);
     query.execute();
     string str;
     query.reset();
-    query.params.bind(":val", str);
+    query.bind(":val", str);
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1448,10 +1538,10 @@ unittest // Getting blob values
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     ubyte[] array = [1, 2, 3];
-    query.params.bind(":val", array);
+    query.bind(":val", array);
     query.execute();
     query.reset();
-    query.params.bind(":val", cast(ubyte[]) []);
+    query.bind(":val", cast(ubyte[]) []);
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1466,10 +1556,10 @@ unittest // Getting more blob values
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     double[] array = [1.1, 2.14, 3.162];
-    query.params.bind(":val", array);
+    query.bind(":val", array);
     query.execute();
     query.reset();
-    query.params.bind(":val", cast(double[]) []);
+    query.bind(":val", cast(double[]) []);
     query.execute();
 
     query = db.query("SELECT * FROM test");

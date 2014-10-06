@@ -13,10 +13,7 @@ exist. Possibility to enable a shared cache.
 2. `Database` has facility functions create new functions, aggregates or collations.
 
 3. `Query` is a wrapper around prepared statements and their results, with functionality
-to:
-    - bind parameters: `params.bind`
-    - iterate on result rows with an InputRange interface: `rows`
-    - convert column to D type: `get`
+to bind parameters, iterate on result rows with an InputRange interface and convert column value to a D type.
 
 ### Synopsis
 ```d
@@ -60,18 +57,18 @@ try
     );
     
     // Bind everything with chained calls to params.bind().
-    query.params.bind(":last_name", "Smith")
-                .bind(":first_name", "John")
-                .bind(":score", 77.5);
+    query.bind(":last_name", "Smith");
+    query.bind(":first_name", "John");
+    query.bind(":score", 77.5);
     ubyte[] photo = cast(ubyte[]) "..."; // Store the photo as raw array of data.
-    query.params.bind(":photo", photo);
+    query.bind(":photo", photo);
     query.execute();
     
     query.reset(); // Need to reset the query after execution.
-    query.params.bind(":last_name", "Doe")
-                .bind(":first_name", "John")
-                .bind(3, null) // Use of index instead of name.
-                .bind(":photo", null);
+    query.bind(":last_name", "Doe");
+    query.bind(":first_name", "John");
+    query.bind(3, null); // Use of index instead of name.
+    query.bind(":photo", null);
     query.execute();
 }
 catch (SqliteException e)
@@ -98,7 +95,7 @@ try
         auto name = format("%s, %s", row["last_name"].get!string(), row["first_name"].get!(char[])());
         // The score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs:
         auto score = row["score"].get!real(0.0);
-        // Use of opDispatch with column name:
+        // Use opDispatch to retrieve a column from its name
         auto photo = row.photo.get!(ubyte[])();
         
         // ... and use all these data!
