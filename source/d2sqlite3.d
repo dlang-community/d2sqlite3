@@ -48,18 +48,13 @@ Macros:
 +/
 module d2sqlite3;
 
-import std.algorithm;
 import std.array;
 import std.conv;
 import std.exception;
-import std.range;
 import std.string;
 import std.traits;
 import std.typecons;
-import std.typetuple;
-import std.utf;
 import std.variant;
-import std.c.string : memcpy;
 import etc.c.sqlite3;
 
 /++
@@ -113,8 +108,11 @@ struct Database
             
             ~this()
             {
-                auto result = sqlite3_close(handle);
-                enforce(result == SQLITE_OK, new SqliteException(result));
+                if (handle)
+                {
+                    auto result = sqlite3_close(handle);
+                    enforce(result == SQLITE_OK, new SqliteException(result));
+                }
             }
         }
         
@@ -154,6 +152,21 @@ struct Database
     }
 
     /++
+    Explicitly closes the database.
+
+    Throws an SqliteException if the database cannot be closed.
+
+    After this function has been called successfully, using this databse object
+    or a query depending on it is a programming error.
+    +/
+    void close()
+    {
+        auto result = sqlite3_close(handle);
+        enforce(result == SQLITE_OK, new SqliteException(result));
+        core.handle = null;
+    }
+
+    /++
     Execute the given SQL code.
 
     Rows returned by any statements are ignored.
@@ -161,6 +174,7 @@ struct Database
     void execute(string sql)
     {
         char* errmsg;
+        assert(core.handle);
         sqlite3_exec(core.handle, cast(char*) sql.toStringz(), null, null, &errmsg);
         if (errmsg !is null)
         {
@@ -181,6 +195,7 @@ struct Database
     +/
     Query query(string sql)
     {
+        assert(core.handle);
         return Query(this, sql);
     }
     
@@ -190,6 +205,7 @@ struct Database
     +/
     @property int changes()
     {
+        assert(core.handle);
         return sqlite3_changes(core.handle);
     }
 
@@ -199,6 +215,7 @@ struct Database
     +/
     @property int totalChanges()
     {
+        assert(core.handle);
         return sqlite3_total_changes(core.handle);
     }
 
@@ -207,6 +224,7 @@ struct Database
     +/
     @property int errorCode()
     {
+        assert(core.handle);
         return sqlite3_errcode(core.handle);
     }
     
@@ -215,6 +233,7 @@ struct Database
     +/
     @property string errorMsg()
     {
+        assert(core.handle);
         return to!string(sqlite3_errmsg(core.handle));
     }
 
@@ -278,6 +297,7 @@ struct Database
                         "argument @{n} of function @{name}() should be of an array of bytes (BLOB)"));
                     n = sqlite3_value_bytes(argv[@{index}]);
                     blob.length = n;
+                    import std.c.string : memcpy;
                     memcpy(blob.ptr, sqlite3_value_blob(argv[@{index}]), n);
                     args[@{index}] = to!(PT[@{index}])(blob.dup);
                 };
@@ -338,6 +358,8 @@ struct Database
     +/
     void createAggregate(Aggregate, string name = Aggregate.stringof)()
     {
+        import std.typetuple;
+
         static assert(is(Aggregate == struct), name ~ " shoud be a struct");
         static assert(is(typeof(Aggregate.accumulate) == function), name ~ " shoud define accumulate()");
         static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
@@ -408,6 +430,7 @@ struct Database
 
         mixin(x_final_mix);
 
+        assert(core.handle);
         auto result = sqlite3_create_function(
             core.handle,
             name.toStringz(),
@@ -498,6 +521,7 @@ struct Database
                 char[] s1, s2;
                 s1.length = n1;
                 s2.length = n2;
+                import std.c.string : memcpy;
                 memcpy(s1.ptr, str1, n1);
                 memcpy(s2.ptr, str2, n2);
                 return fun(cast(immutable) s1, cast(immutable) s2);
@@ -505,6 +529,7 @@ struct Database
         };
         mixin(render(x_compare, ["name": name]));
 
+        assert(core.handle);
         auto result = sqlite3_create_collation(
             core.handle,
             name.toStringz(),
@@ -563,6 +588,8 @@ struct Database
     +/
     void createFunction(alias fun, string name = __traits(identifier, fun))()
     {
+        import std.typetuple;
+
         static if (__traits(isStaticFunction, fun))
             enum funpointer = &fun;
         else
@@ -603,6 +630,7 @@ struct Database
 
         mixin(x_func_mix);
 
+        assert(core.handle);
         auto result = sqlite3_create_function(
             core.handle,
             name.toStringz(),
@@ -862,6 +890,7 @@ struct Query
         }
         else static if (isSomeString!U)
         {
+            import std.utf : toUTF8;
             string utf8 = value.toUTF8();
             enforce(utf8.length <= int.max, new SqliteException("string too long"));
             result = sqlite3_bind_text(statement, index, cast(char*) utf8.toStringz(), cast(int) utf8.length, null);
@@ -974,7 +1003,7 @@ struct Query
     }
     
     /++
-    Gets the results of a query that returns _rows.
+    Gets the results of a query that returns _rows as a input range of Row objects.
 
     The returned object becomes invalid when the Query goes out of scope.
     +/
@@ -1067,6 +1096,8 @@ struct Query
 
 /++
 The bound parameters of a query.
+
+Deprecated: kept only for compatibility. Use the corresponding methods of Query.
 +/
 struct Parameters
 {
@@ -1173,9 +1204,6 @@ struct Parameters
     }
 }
 
-/++
-The results of a query that returns rows, with an input range interface.
-+/
 struct RowRange
 {
     private Query* query;
@@ -1235,6 +1263,7 @@ struct RowRange
 
 version (unittest)
 {
+    import std.range;
     static assert(isInputRange!RowRange);
     static assert(is(ElementType!RowRange == Row));
 }
@@ -1326,6 +1355,7 @@ struct Row
                 auto length = sqlite3_column_bytes(statement, i);
                 ubyte[] blob;
                 blob.length = length;
+                import std.c.string : memcpy;
                 memcpy(blob.ptr, ptr, length);
                 return Column(Variant(blob), type);
 
