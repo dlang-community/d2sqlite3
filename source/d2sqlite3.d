@@ -1031,7 +1031,6 @@ struct Query
     unittest // Query rows
     {
         // Query rows
-        static assert(isInputRange!RowRange);
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
 
@@ -1081,7 +1080,7 @@ struct Query
         {
             auto result = sqlite3_reset(core.statement);
             enforce(result == SQLITE_OK, new SqliteException(core.db.errorMsg, result));
-            core.rows = RowRange(&this);
+            core.rows = RowRange(null);
         }
     }
     
@@ -1212,7 +1211,6 @@ struct RowRange
 
     private this(Query* query)
     {
-        assert(query);
         this.query = query;
     }
 
@@ -1246,7 +1244,10 @@ struct RowRange
     @property Row front()
     {
         if (!empty)
+        {
+            assert(sqliteResult == SQLITE_ROW);
             return Row(query.statement);
+        }
         else
             throw new SqliteException("no row available");
     }
@@ -1265,7 +1266,7 @@ version (unittest)
 {
     import std.range;
     static assert(isInputRange!RowRange);
-    static assert(is(ElementType!RowRange == Row));
+    static assert(is(ForeachType!RowRange == Row));
 }
 
 /++
