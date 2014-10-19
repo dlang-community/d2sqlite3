@@ -1005,7 +1005,8 @@ struct Query
     /++
     Gets the results of a query that returns _rows as a input range of Row objects.
 
-    The returned object becomes invalid when the Query goes out of scope.
+    The range of _rows can only be iterated once, and the _rows cannot be copied.
+    The range also becomes invalid when the Query goes out of scope.
     +/
     @property ref RowRange rows()
     {
@@ -1276,7 +1277,6 @@ struct Row
 {
     private {
         sqlite3_stmt* statement;
-        immutable(int) colCount;
         int frontIndex;
         int backIndex;
     }
@@ -1285,21 +1285,21 @@ struct Row
     {
         assert(statement);
         this.statement = statement;
-
-        colCount = sqlite3_column_count(statement);
-        backIndex = colCount - 1;
+        backIndex = sqlite3_column_count(statement) - 1;
     }
+
+    @disable this(this);
 
     /// Input range primitives
     @property bool empty()
     {
-        return length > 0;
+        return length == 0;
     }
 
     /// ditto
     @property Column front()
     {
-        return opIndex(frontIndex);
+        return opIndex(0);
     }
 
     /// ditto
@@ -1311,13 +1311,17 @@ struct Row
     /// Forward range primitive
     @property Row save()
     {
-        return this;
+        Row ret;
+        ret.statement = statement;
+        ret.frontIndex = frontIndex;
+        ret.backIndex = backIndex;
+        return ret;
     }
     
     /// Bidirectional range primitives
     @property Column back()
     {
-        return opIndex(backIndex);
+        return opIndex(backIndex - frontIndex);
     }
     
     /// ditto
@@ -1333,9 +1337,10 @@ struct Row
     }
     
     /// ditto
-    Column opIndex(int index)
+    Column opIndex(size_t index)
     {
-        auto i = index + frontIndex;
+        enforce(index < int.max, new SqliteException(format("index too high: %d", index)));
+        int i =  cast(int) index + frontIndex;
 
         enforce(i >= 0 && i <= backIndex,
                 new SqliteException(format("invalid column index: %d", i)));
@@ -1392,6 +1397,56 @@ version (unittest)
     static assert(isRandomAccessRange!Row);
     static assert(is(ElementType!Row == Column));
 }
+
+unittest // Row random-access range interface
+{
+    auto db = Database(":memory:");
+
+    {
+        db.execute("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER, d INTEGER)");
+        auto query = db.query("INSERT INTO test (a, b, c, d) VALUES (:a, :b, :c, :d)");
+        query.bind(":a", 1);
+        query.bind(":b", 2);
+        query.bind(":c", 3);
+        query.bind(":d", 4);
+        query.execute();
+        query.reset();
+        query.bind(":a", 5);
+        query.bind(":b", 6);
+        query.bind(":c", 7);
+        query.bind(":d", 8);
+        query.execute();
+    }
+
+    {
+        auto query = db.query("SELECT * FROM test");
+        auto values = [1, 2, 3, 4, 5, 6, 7, 8];
+        foreach (row; query.rows)
+        {
+            while (!row.empty)
+            {
+                assert(row.front.get!int == values.front);
+                row.popFront();
+                values.popFront();
+            }
+        }
+    }
+
+    {
+        auto query = db.query("SELECT * FROM test");
+        auto values = [4, 3, 2, 1, 8, 7, 6, 5];
+        foreach (row; query.rows)
+        {
+            while (!row.empty)
+            {
+                assert(row.back.get!int == values.front);
+                row.popBack();
+                values.popFront();
+            }
+        }
+    }
+}
+
 
 /++
 A SQLite column.
