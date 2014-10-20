@@ -116,7 +116,7 @@ struct Database
             }
         }
         
-        alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
+        alias RefCounted!_Core Core;
         Core core;
     }
 
@@ -810,7 +810,7 @@ struct Query
                 enforce(result == SQLITE_OK, new SqliteException(result));
             }
         }
-        alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
+        alias RefCounted!_Core Core;
         Core core;
         
         @disable this();
@@ -1054,7 +1054,7 @@ struct Query
         auto r = rows;
         if (!r.empty)
         {
-            auto f = rows.front;
+            auto f = r.front;
             if (f.length)
                 return f[0].get!T;
         }
@@ -1443,6 +1443,18 @@ unittest // Row random-access range interface
                 row.popBack();
                 values.popFront();
             }
+        }
+    }
+
+    auto query = { return db.query("SELECT * FROM test"); }();
+    auto values = [1, 2, 3, 4, 5, 6, 7, 8];
+    foreach (row; query.rows)
+    {
+        while (!row.empty)
+        {
+            assert(row.front.get!int == values.front);
+            row.popFront();
+            values.popFront();
         }
     }
 }
