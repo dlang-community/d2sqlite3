@@ -812,15 +812,13 @@ private:
         Database db;
         string sql;
         sqlite3_stmt* statement;
-        Parameters params;
         RowRange rows;
         
-        this(Database db, string sql, sqlite3_stmt* statement, Parameters params, RowRange rows)
+        this(Database db, string sql, sqlite3_stmt* statement, RowRange rows)
         {
             this.db = db;
             this.sql = sql;
             this.statement = statement;
-            this.params = params;
             this.rows = rows;
         }
         
@@ -850,7 +848,7 @@ private:
             null
         );
         enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result, sql));
-        core = Core(db, sql, statement, Parameters(statement), RowRange(&this));
+        core = Core(db, sql, statement, RowRange(&this));
     }
     
     unittest // Query construction
@@ -867,18 +865,6 @@ private:
     }
 
 public:
-    /++
-    Gets the bindable parameters of the query.
-
-    The returned Parameters object becomes invalid when the Query goes out of scope.
-
-    Deprecated: use Query.bind() directly.
-    +/
-    deprecated @property ref Parameters params()
-    {
-        return core.params;
-    }
-
     /++
     Binds values to parameters in the query.
 
@@ -1105,116 +1091,6 @@ public:
     @property sqlite3_stmt* statement()
     {
         return core.statement;
-    }
-}
-
-/++
-The bound parameters of a query.
-
-Deprecated: kept only for compatibility. Use the corresponding methods of Query.
-+/
-struct Parameters
-{
-    private sqlite3_stmt* statement;
-
-    private this(sqlite3_stmt* statement)
-    {
-        this.statement = statement;
-    }
-
-    /++
-    Binds values to parameters in the query.
-
-    The index is the position of the parameter in the SQL query (starting from 0).
-    The name must include the ':', '@' or '$' that introduces it in the query.
-    +/
-    ref Parameters bind(T)(int index, T value)
-    {
-        assert(statement);
-
-        enforce(length > 0, new SqliteException("no parameter in prepared statement."));
-
-        alias Unqual!T U;
-        int result;
-
-        static if (is(U == typeof(null)))
-        {
-            result = sqlite3_bind_null(statement, index);
-        }
-        else static if (is(U == void*))
-        {
-            result = sqlite3_bind_null(statement, index);
-        }
-        else static if (isIntegral!U && U.sizeof == int.sizeof)
-        {
-            result = sqlite3_bind_int(statement, index, value);
-        }
-        else static if (isIntegral!U && U.sizeof == long.sizeof)
-        {
-            result = sqlite3_bind_int64(statement, index, cast(long) value);
-        }
-        else static if (isImplicitlyConvertible!(U, double))
-        {
-            result = sqlite3_bind_double(statement, index, value);
-        }
-        else static if (isSomeString!U)
-        {
-            string utf8 = value.toUTF8();
-            enforce(utf8.length <= int.max, new SqliteException("string too long"));
-            result = sqlite3_bind_text(statement, index, cast(char*) utf8.toStringz(), cast(int) utf8.length, null);
-        }
-        else static if (isArray!U)
-        {
-            if (!value.length)
-                result = sqlite3_bind_null(statement, index);
-            else
-            {
-                auto bytes = cast(ubyte[]) value;
-                enforce(bytes.length <= int.max, new SqliteException("array too long"));
-                result = sqlite3_bind_blob(statement, index, cast(void*) bytes.ptr, cast(int) bytes.length, null);
-            }
-        }
-        else
-            static assert(false, "cannot bind a value of type " ~ U.stringof);
-
-        enforce(result == SQLITE_OK, new SqliteException(result));
-
-        return this;
-    }
-
-    /// Ditto
-    ref Parameters bind(T)(string name, T value)
-    {
-        assert(statement);
-        enforce(length > 0, new SqliteException("no parameter in prepared statement"));
-        auto index = sqlite3_bind_parameter_index(statement, cast(char*) name.toStringz());
-        enforce(index > 0, new SqliteException(format("parameter named '%s' cannot be bound", name)));
-        return bind(index, value);
-    }
-
-    /++
-    Gets the number of parameters.
-    +/
-    @property int length()
-    {
-        if (statement)
-            return sqlite3_bind_parameter_count(statement);
-        else
-            return 0;
-    }
-
-    /++
-    Clears the bindings.
-
-    This does not reset the prepared statement. Use Query.reset() for this.
-    +/
-    void clear()
-    {
-        if (statement)
-        {
-            auto result = sqlite3_clear_bindings(statement);
-            enforce(result == SQLITE_OK, new SqliteException(result));
-        }
     }
 }
 
