@@ -1,3 +1,4 @@
 .dub
 __test__*
 dub.selections.json
+libd2sqlite3.a
