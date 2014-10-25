@@ -52,101 +52,81 @@ Nicolas Sicard (dransic@gmail.com).
 <dd>An interface to a SQLite database connection.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
+<font color=green>// Note: exception handling is left aside for clarity.
+</font>
 <font color=green>// Open a database in memory.
-</font><u>Database</u> db;
-<font color=blue>try</font>
-{
-    db = <u>Database</u>(<font color=red>":memory:"</font>);
-}
-<font color=blue>catch</font> (SqliteException e)
-{
-    <font color=green>// Error creating the database
-</font>    <font color=blue>assert</font>(<font color=blue>false</font>, <font color=red>"Error: "</font> ~ e.msg);
-}
+</font><font color=blue>auto</font> db = <u>Database</u>(<font color=red>":memory:"</font>);
 
-<font color=green>// Create a table.
-</font><font color=blue>try</font>
-{
-    db.execute(
-        <font color=red>"CREATE TABLE person (
-            id INTEGER PRIMARY KEY,
-            last_name TEXT NOT NULL,
-            first_name TEXT,
-            score REAL,
-            photo BLOB
-         )"</font>
-    );
-}
-<font color=blue>catch</font> (SqliteException e)
-{
-    <font color=green>// Error creating the table.
-</font>    <font color=blue>assert</font>(<font color=blue>false</font>, <font color=red>"Error: "</font> ~ e.msg);
-}
+<font color=green>// Create a table
+</font>db.execute(
+    <font color=red>"CREATE TABLE person (
+        id INTEGER PRIMARY KEY,
+        last_name TEXT NOT NULL,
+        first_name TEXT,
+        score REAL,
+        photo BLOB
+     )"</font>
+);
 
 <font color=green>// Populate the table.
-</font><font color=blue>try</font>
-{
-    <font color=blue>auto</font> query = db.query(
-        <font color=red>"INSERT INTO person (last_name, first_name, score, photo)
-         VALUES (:last_name, :first_name, :score, :photo)"</font>
-    );
-    
-    <font color=green>// Bind everything with chained calls to params.bind().
-</font>    query.bind(<font color=red>":last_name"</font>, <font color=red>"Smith"</font>);
-    query.bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>);
-    query.bind(<font color=red>":score"</font>, 77.5);
-    <font color=blue>ubyte</font>[] photo = <font color=blue>cast</font>(<font color=blue>ubyte</font>[]) <font color=red>"..."</font>; <font color=green>// Store the photo as raw array of data.
-</font>    query.bind(<font color=red>":photo"</font>, photo);
-    query.execute();
-    
-    query.reset(); <font color=green>// Need to reset the query after execution.
-</font>    query.bind(<font color=red>":last_name"</font>, <font color=red>"Doe"</font>);
-    query.bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>);
-    query.bind(3, 46.8); <font color=green>// Use of index instead of name.
-</font>    query.bind(<font color=red>":photo"</font>, <font color=blue>cast</font>(<font color=blue>ubyte</font>[]) x"DEADBEEF");
-    query.execute();
-}
-<font color=blue>catch</font> (SqliteException e)
-{
-    <font color=green>// Error executing the query.
-</font>    <font color=blue>assert</font>(<font color=blue>false</font>, <font color=red>"Error: "</font> ~ e.msg);
-}
-<font color=blue>assert</font>(db.totalChanges == 2); <font color=green>// Two 'persons' were inserted.
-</font>
-<font color=green>// Reading the table
-</font><font color=blue>try</font>
-{
-    <font color=green>// Count the Johns in the table.
-</font>    <font color=blue>auto</font> query = db.query(<font color=red>"SELECT count(*) FROM person WHERE first_name == 'John'"</font>);
-    <font color=blue>assert</font>(query.oneValue!<font color=blue>long</font> == 2);
-    
-    <font color=green>// Fetch the data from the table.
-</font>    query = db.query(<font color=red>"SELECT * FROM person"</font>);
-    <font color=blue>foreach</font> (row; query)
-    {
-        <font color=green>// Retrieve "id", which is the column at index 0, and contains an int,
-</font>        <font color=green>// e.g. using the peek function.
-</font>        <font color=blue>auto</font> id = row.peek!<font color=blue>long</font>(0);
+</font><font color=blue>auto</font> query = db.query(
+    <font color=red>"INSERT INTO person (last_name, first_name, score, photo)
+     VALUES (:last_name, :first_name, :score, :photo)"</font>
+);
 
-        <font color=green>// Retrieve "score", which is at index 3, e.g. using the peek function.
-</font>        <font color=blue>auto</font> score = row.peek!<font color=blue>double</font>(<font color=red>"score"</font>);
+<font color=green>// Bind values.
+</font>query.bind(<font color=red>":last_name"</font>, <font color=red>"Smith"</font>);
+query.bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>);
+query.bind(<font color=red>":score"</font>, 77.5);
+query.bind(<font color=red>":photo"</font>, <font color=blue>cast</font>(<font color=blue>ubyte</font>[]) <font color=red>"..."</font>); <font color=green>// Store the photo as raw array of data.
+</font>query.execute();
 
-        <font color=green>// Retrieve "last_name" and "first_name", e.g. using opIndex(string),
-</font>        <font color=green>// which returns a Variant.
-</font>        <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>].get!string, row[<font color=red>"first_name"</font>].get!string);
+query.reset(); <font color=green>// Need to reset the query after execution.
+</font>query.bind(<font color=red>":last_name"</font>, <font color=red>"Doe"</font>);
+query.bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>);
+query.bind(3, 46.8); <font color=green>// Use of index instead of name.
+</font>query.bind(<font color=red>":photo"</font>, <font color=blue>cast</font>(<font color=blue>ubyte</font>[]) x"DEADBEEF");
+query.execute();
 
-        <font color=green>// Retrieve "photo", e.g. using opIndex(index),
-</font>        <font color=green>// which returns a Variant.
-</font>        <font color=blue>auto</font> photo = row[4].get!(<font color=blue>ubyte</font>[]);
-        
-        <font color=green>// ... and use all these data!
-</font>    }
-}
-<font color=blue>catch</font> (SqliteException e)
+<font color=green>// Count the changes
+</font><font color=blue>assert</font>(db.totalChanges == 2);
+
+<font color=green>// Count the Johns in the table.
+</font>query = db.query(<font color=red>"SELECT count(*) FROM person WHERE first_name == 'John'"</font>);
+<font color=blue>assert</font>(query.oneValue!<font color=blue>long</font> == 2);
+
+<font color=green>// Read the data from the table lazily
+</font>query = db.query(<font color=red>"SELECT * FROM person"</font>);
+<font color=blue>foreach</font> (row; query)
 {
-    <font color=green>// Error reading the database.
-</font>    <font color=blue>assert</font>(<font color=blue>false</font>, <font color=red>"Error: "</font> ~ e.msg);
-}
+    <font color=green>// Retrieve "id", which is the column at index 0, and contains an int,
+</font>    <font color=green>// e.g. using the peek function.
+</font>    <font color=blue>auto</font> id = row.peek!<font color=blue>long</font>(0);
+
+    <font color=green>// Retrieve "score", which is at index 3, e.g. using the peek function.
+</font>    <font color=blue>auto</font> score = row.peek!<font color=blue>double</font>(<font color=red>"score"</font>);
+
+    <font color=green>// Retrieve "last_name" and "first_name", e.g. using opIndex(string),
+</font>    <font color=green>// which returns a Variant.
+</font>    <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>].get!string, row[<font color=red>"first_name"</font>].get!string);
+
+    <font color=green>// Retrieve "photo", e.g. using opIndex(index),
+</font>    <font color=green>// which returns a Variant.
+</font>    <font color=blue>auto</font> photo = row[4].get!(<font color=blue>ubyte</font>[]);
+    
+    <font color=green>// ... and use all these data!
+</font>}
+
+<font color=green>// Read all the table in memory at once
+</font><font color=blue>auto</font> data = QueryCache(db.query(<font color=red>"SELECT * FROM person"</font>));
+<font color=blue>foreach</font> (row; data)
+{
+    <font color=blue>auto</font> id = row[0].get!<font color=blue>long</font>;
+    <font color=blue>auto</font> score = row[<font color=red>"score"</font>].get!<font color=blue>double</font>;
+    <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>], row[<font color=red>"first_name"</font>]);
+    <font color=blue>auto</font> photo = row[4].get!(<font color=blue>ubyte</font>[]);
+    <font color=green>// etc.
+</font>}
 </pre>
 <br><br>
 <dl><dt><big><a name="Database.this"></a>this(string <i>path</i>, int <i>flags</i> = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
@@ -378,7 +358,10 @@ If the query is expected to return rows, use the query's input range interface
 <br><a name="Query.front"></a>@property Row <u>front</u>();
 <br><a name="Query.popFront"></a>void <u>popFront</u>();
 </big></dt>
-<dd>InputRange interface. A <tt>Query</tt> is an input range of <tt>Row</tt>s.<br><br>
+<dd>Input range interface.
+<br><br>
+A <tt>Query</tt> is an input range of <tt>Row</tt>s. A Row becomes invalid
+    as soon as <tt>Query.popFront</tt> is called (it contains undefined data afterwards).<br><br>
 
 </dd>
 <dt><big><a name="Query.oneValue"></a>auto <u>oneValue</u>(T)();

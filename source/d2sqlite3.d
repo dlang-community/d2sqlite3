@@ -626,100 +626,80 @@ public:
 ///
 unittest // Documentation example
 {
-    // Open a database in memory.
-    Database db;
-    try
-    {
-        db = Database(":memory:");
-    }
-    catch (SqliteException e)
-    {
-        // Error creating the database
-        assert(false, "Error: " ~ e.msg);
-    }
+    // Note: exception handling is left aside for clarity.
 
-    // Create a table.
-    try
-    {
-        db.execute(
-            "CREATE TABLE person (
-                id INTEGER PRIMARY KEY,
-                last_name TEXT NOT NULL,
-                first_name TEXT,
-                score REAL,
-                photo BLOB
-             )"
-        );
-    }
-    catch (SqliteException e)
-    {
-        // Error creating the table.
-        assert(false, "Error: " ~ e.msg);
-    }
+    // Open a database in memory.
+    auto db = Database(":memory:");
+
+    // Create a table
+    db.execute(
+        "CREATE TABLE person (
+            id INTEGER PRIMARY KEY,
+            last_name TEXT NOT NULL,
+            first_name TEXT,
+            score REAL,
+            photo BLOB
+         )"
+    );
 
     // Populate the table.
-    try
+    auto query = db.query(
+        "INSERT INTO person (last_name, first_name, score, photo)
+         VALUES (:last_name, :first_name, :score, :photo)"
+    );
+    
+    // Bind values.
+    query.bind(":last_name", "Smith");
+    query.bind(":first_name", "John");
+    query.bind(":score", 77.5);
+    query.bind(":photo", cast(ubyte[]) "..."); // Store the photo as raw array of data.
+    query.execute();
+    
+    query.reset(); // Need to reset the query after execution.
+    query.bind(":last_name", "Doe");
+    query.bind(":first_name", "John");
+    query.bind(3, 46.8); // Use of index instead of name.
+    query.bind(":photo", cast(ubyte[]) x"DEADBEEF");
+    query.execute();
+
+    // Count the changes
+    assert(db.totalChanges == 2);
+
+    // Count the Johns in the table.
+    query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
+    assert(query.oneValue!long == 2);
+    
+    // Read the data from the table lazily
+    query = db.query("SELECT * FROM person");
+    foreach (row; query)
     {
-        auto query = db.query(
-            "INSERT INTO person (last_name, first_name, score, photo)
-             VALUES (:last_name, :first_name, :score, :photo)"
-        );
+        // Retrieve "id", which is the column at index 0, and contains an int,
+        // e.g. using the peek function.
+        auto id = row.peek!long(0);
+
+        // Retrieve "score", which is at index 3, e.g. using the peek function.
+        auto score = row.peek!double("score");
+
+        // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
+        // which returns a Variant.
+        auto name = format("%s, %s", row["last_name"].get!string, row["first_name"].get!string);
+
+        // Retrieve "photo", e.g. using opIndex(index),
+        // which returns a Variant.
+        auto photo = row[4].get!(ubyte[]);
         
-        // Bind everything with chained calls to params.bind().
-        query.bind(":last_name", "Smith");
-        query.bind(":first_name", "John");
-        query.bind(":score", 77.5);
-        ubyte[] photo = cast(ubyte[]) "..."; // Store the photo as raw array of data.
-        query.bind(":photo", photo);
-        query.execute();
-        
-        query.reset(); // Need to reset the query after execution.
-        query.bind(":last_name", "Doe");
-        query.bind(":first_name", "John");
-        query.bind(3, 46.8); // Use of index instead of name.
-        query.bind(":photo", cast(ubyte[]) x"DEADBEEF");
-        query.execute();
+        // ... and use all these data!
     }
-    catch (SqliteException e)
+
+    // Read all the table in memory at once
+    auto data = QueryCache(db.query("SELECT * FROM person"));
+    foreach (row; data)
     {
-        // Error executing the query.
-        assert(false, "Error: " ~ e.msg);
-    }
-    assert(db.totalChanges == 2); // Two 'persons' were inserted.
-
-    // Reading the table
-    try
-    {
-        // Count the Johns in the table.
-        auto query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
-        assert(query.oneValue!long == 2);
-        
-        // Fetch the data from the table.
-        query = db.query("SELECT * FROM person");
-        foreach (row; query)
-        {
-            // Retrieve "id", which is the column at index 0, and contains an int,
-            // e.g. using the peek function.
-            auto id = row.peek!long(0);
-
-            // Retrieve "score", which is at index 3, e.g. using the peek function.
-            auto score = row.peek!double("score");
-
-            // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
-            // which returns a Variant.
-            auto name = format("%s, %s", row["last_name"].get!string, row["first_name"].get!string);
-
-            // Retrieve "photo", e.g. using opIndex(index),
-            // which returns a Variant.
-            auto photo = row[4].get!(ubyte[]);
-            
-            // ... and use all these data!
-        }
-    }
-    catch (SqliteException e)
-    {
-        // Error reading the database.
-        assert(false, "Error: " ~ e.msg);
+        auto id = row[0].get!long;
+        auto score = row["score"].get!double;
+        auto name = format("%s, %s", row["last_name"], row["first_name"]);
+        auto photo = row[4].get!(ubyte[]);
+        // etc.
     }
 }
 
@@ -913,7 +893,10 @@ public:
     }
     
     /++
-    InputRange interface. A $(D Query) is an input range of $(D Row)s.
+    Input range interface.
+
+    A $(D Query) is an input range of $(D Row)s. A Row becomes invalid
+    as soon as $(D Query.popFront) is called (it contains undefined data afterwards).
     +/
     @property bool empty()
     {
@@ -937,7 +920,7 @@ public:
         enforce(!empty, new SqliteException("No rows available"));
         core.state = sqlite3_step(core.statement);
         enforce(core.state == SQLITE_DONE || core.state == SQLITE_ROW,
-               new SqliteException(core.db.errorMsg, core.state));
+                new SqliteException(core.db.errorMsg, core.state));
     }
 
     /++
