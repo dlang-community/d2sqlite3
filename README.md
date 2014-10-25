@@ -6,14 +6,11 @@ engine.
 
 ## Features
 
-1. `Database` is wrapper around a database connection. The connection is open
-at the time of its creation and it is automatically closed when no more references
-exist. Possibility to enable a shared cache.
+1. `Database` is wrapper around a database connection. The connection is open at the time of its creation and it is automatically closed when no more references exist.
 
 2. `Database` has facility functions create new functions, aggregates or collations.
 
-3. `Query` is a wrapper around prepared statements and their results, with functionality
-to bind parameters, iterate on result rows with an InputRange interface and convert column value to a D type.
+3. `Query` is a wrapper around prepared statements and their results, with functionality to bind parameters, iterate on result rows with an InputRange interface and convert column value to a built-in type or a Variant.
 
 ### Synopsis
 ```d
@@ -67,8 +64,8 @@ try
     query.reset(); // Need to reset the query after execution.
     query.bind(":last_name", "Doe");
     query.bind(":first_name", "John");
-    query.bind(3, null); // Use of index instead of name.
-    query.bind(":photo", null);
+    query.bind(3, 46.8); // Use of index instead of name.
+    query.bind(":photo", cast(ubyte[]) x"DEADBEEF");
     query.execute();
 }
 catch (SqliteException e)
@@ -83,20 +80,26 @@ try
 {
     // Count the Johns in the table.
     auto query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
-    assert(query.rows.front[0].get!int() == 2);
+    assert(query.oneValue!long == 2);
     
     // Fetch the data from the table.
     query = db.query("SELECT * FROM person");
-    foreach (row; query.rows)
+    foreach (row; query)
     {
-        // "id" should be the column at index 0:
-        auto id = row[0].get!int();
-        // Some conversions are possible with the method as():
-        auto name = format("%s, %s", row["last_name"].get!string(), row["first_name"].get!(char[])());
-        // The score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs:
-        auto score = row["score"].get!real(0.0);
-        // Use opDispatch to retrieve a column from its name
-        auto photo = row.photo.get!(ubyte[])();
+        // Retrieve "id", which is the column at index 0, and contains an int,
+        // e.g. using the peek function.
+        auto id = row.peek!long(0);
+
+        // Retrieve "score", which is at index 3, e.g. using the peek function.
+        auto score = row.peek!double("score");
+
+        // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
+        // which returns a Variant.
+        auto name = format("%s, %s", row["last_name"].get!string, row["first_name"].get!string);
+
+        // Retrieve "photo", e.g. using opIndex(index),
+        // which returns a Variant.
+        auto photo = row[4].get!(ubyte[]);
         
         // ... and use all these data!
     }

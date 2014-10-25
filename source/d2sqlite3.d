@@ -10,27 +10,6 @@ objects they need. They are reference-counted, so that when their last
 reference goes out of scope, the underlying SQLite objects are automatically
 closed and finalized. They are not thread-safe.
 
-Usage:
-$(OL
-    $(LI Create a Database object, providing the path of the database file (or
-    an empty path, or the reserved path ":memory:").)
-    $(LI Execute SQL code according to your need:
-    $(UL
-        $(LI If you don't need parameter binding, create a Query object with a
-        single SQL statement and either use Query.execute() if you don't expect
-        the query to return rows, or use Query.rows() directly in the other
-        case.)
-        $(LI If you need parameter binding, create a Query object with a
-        single SQL statement that includes binding names, and use Parameter methods
-        as many times as necessary to bind all values. Then either use
-        Query.execute() if you don't expect the query to return rows, or use
-        Query.rows() directly in the other case.)
-        $(LI If you don't need parameter bindings and if you can ignore the
-        rows that the query could return, you can use the facility function
-        Database.execute(). In this case, more than one statements can be run
-        in one call, as long as they are separated by semi-colons.)
-    ))
-)
 See example in the documentation for the Database struct below.
 
 The C API is available through $(D etc.c.sqlite3).
@@ -60,6 +39,7 @@ import std.typecons;
 import std.variant;
 public import etc.c.sqlite3;
 
+
 /++
 Metadata from the SQLite library.
 +/
@@ -82,11 +62,13 @@ struct Sqlite3
     }
 }
 
+
 deprecated enum SharedCache : bool
 {
     enabled = true, /// Shared cache is _enabled.
     disabled = false /// Shared cache is _disabled (the default in SQLite).
 }
+
 
 /++
 An interface to a SQLite database connection.
@@ -655,7 +637,7 @@ unittest // Documentation example
         // Error creating the database
         assert(false, "Error: " ~ e.msg);
     }
-    
+
     // Create a table.
     try
     {
@@ -674,7 +656,7 @@ unittest // Documentation example
         // Error creating the table.
         assert(false, "Error: " ~ e.msg);
     }
-    
+
     // Populate the table.
     try
     {
@@ -694,8 +676,8 @@ unittest // Documentation example
         query.reset(); // Need to reset the query after execution.
         query.bind(":last_name", "Doe");
         query.bind(":first_name", "John");
-        query.bind(3, null); // Use of index instead of name.
-        query.bind(":photo", null);
+        query.bind(3, 46.8); // Use of index instead of name.
+        query.bind(":photo", cast(ubyte[]) x"DEADBEEF");
         query.execute();
     }
     catch (SqliteException e)
@@ -704,26 +686,32 @@ unittest // Documentation example
         assert(false, "Error: " ~ e.msg);
     }
     assert(db.totalChanges == 2); // Two 'persons' were inserted.
-    
+
     // Reading the table
     try
     {
         // Count the Johns in the table.
         auto query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
-        assert(query.front[0].get!int() == 2);
+        assert(query.oneValue!long == 2);
         
         // Fetch the data from the table.
         query = db.query("SELECT * FROM person");
         foreach (row; query)
         {
-            // "id" should be the column at index 0:
-            auto id = row[0].get!int();
-            // Some conversions are possible with the method as():
-            auto name = format("%s, %s", row["last_name"].get!string(), row["first_name"].get!(char[])());
-            // The score can be NULL, so provide 0 (instead of NAN) as a default value to replace NULLs:
-            auto score = row["score"].get!real(0.0);
-            // Use opDispatch to retrieve a column from its name
-            auto photo = row.photo.get!(ubyte[])();
+            // Retrieve "id", which is the column at index 0, and contains an int,
+            // e.g. using the peek function.
+            auto id = row.peek!long(0);
+
+            // Retrieve "score", which is at index 3, e.g. using the peek function.
+            auto score = row.peek!double("score");
+
+            // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
+            // which returns a Variant.
+            auto name = format("%s, %s", row["last_name"].get!string, row["first_name"].get!string);
+
+            // Retrieve "photo", e.g. using opIndex(index),
+            // which returns a Variant.
+            auto photo = row[4].get!(ubyte[]);
             
             // ... and use all these data!
         }
@@ -753,6 +741,7 @@ unittest // Execute an SQL statement
     db.execute(";");
     db.execute("ANALYZE");
 }
+
 
 /++
 An interface to SQLite query execution.
@@ -956,7 +945,7 @@ public:
     +/
     auto oneValue(T)()
     {
-        return front.front.get!T();
+        return front.peek!T(0);
     }
     ///
     unittest // One value
@@ -964,33 +953,7 @@ public:
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
         auto query = db.query("SELECT count(*) FROM test");
-        assert(query.oneValue!int == 0);
-    }
-    
-    /++
-    Gets the results of a query as a 2D array.
-
-    Warning:
-        Calling this function resets the query: don't call it while
-        iterating the rows with the input range interface.
-    +/
-    Column[][] array()
-    {
-        static Column[][] result;
-        if (!result)
-        {
-            auto rowapp = appender!(Column[][]);
-            foreach (row; this)
-            {
-                auto colapp = appender!(Column[]);
-                foreach (col; row)
-                    colapp.put(col);
-                rowapp.put(colapp.data);
-            }
-            result = rowapp.data;
-            reset();
-        }
-        return result;
+        assert(query.oneValue!long == 0);
     }
 }
 
@@ -1019,7 +982,7 @@ unittest // Simple parameters binding
     
     query = db.query("SELECT * FROM test");
     foreach (row; query)
-        assert(row[0].get!int() == 42);
+        assert(row.peek!long(0) == 42);
 }
 
 unittest // Multiple parameters binding
@@ -1042,9 +1005,9 @@ unittest // Multiple parameters binding
     foreach (row; query)
     {
         assert(row.length == 3);
-        assert(row["i"].get!int() == 42);
-        assert(row["f"].get!double() == 3.14);
-        assert(row["t"].get!string() == "TEXT");
+        assert(row.peek!long("i") == 42);
+        assert(row.peek!double("f") == 3.14);
+        assert(row.peek!string("t") == "TEXT");
     }
 }
 
@@ -1060,14 +1023,14 @@ unittest // Query references
     
     auto query = { return db.query("SELECT * FROM test"); }();
     assert(!query.empty);
-    assert(query.front[0].get!int() == 42);
+    assert(query.front.peek!long(0) == 42);
     query.popFront();
     assert(query.empty);
 }
 
 
 /++
-A SQLite row, implemented as a random-access range of $(D Column) objects.
+A SQLite row, implemented as a random-access range of Variant.
 
 Warning:
     A Row is just a view of the current row when iterating the results of a $(D Query). 
@@ -1097,9 +1060,9 @@ struct Row
     }
 
     /// ditto
-    @property Column front()
+    @property Variant front()
     {
-        return opIndex(0);
+        return peek!Variant(0);
     }
 
     /// ditto
@@ -1119,9 +1082,9 @@ struct Row
     }
     
     /// Bidirectional range primitives.
-    @property Column back()
+    @property Variant back()
     {
-        return opIndex(backIndex - frontIndex);
+        return peek!Variant(backIndex - frontIndex);
     }
     
     /// ditto
@@ -1131,71 +1094,101 @@ struct Row
     }
     
     /// Random access range primitives.
-    @property size_t length()
+    @property int length()
     {
         return backIndex - frontIndex + 1;
     }
-    
-    /// ditto
-    Column opIndex(size_t index)
-    {
-        enforce(index < int.max, new SqliteException(format("index too high: %d", index)));
-        int i =  cast(int) index + frontIndex;
-
-        enforce(i >= 0 && i <= backIndex,
-                new SqliteException(format("invalid column index: %d", i)));
-                
-        auto type = sqlite3_column_type(statement, i);
-        final switch (type) {
-            case SQLITE_INTEGER:
-                return Column(Variant(sqlite3_column_int64(statement, i)), type);
-
-            case SQLITE_FLOAT:
-                return Column(Variant(sqlite3_column_double(statement, i)), type);
-
-            case SQLITE3_TEXT:
-                return Column(Variant(sqlite3_column_text(statement, i).to!string), type);
-
-            case SQLITE_BLOB:
-                auto ptr = sqlite3_column_blob(statement, i);
-                auto length = sqlite3_column_bytes(statement, i);
-                ubyte[] blob;
-                blob.length = length;
-                import std.c.string : memcpy;
-                memcpy(blob.ptr, ptr, length);
-                return Column(Variant(blob), type);
-
-            case SQLITE_NULL:
-                return Column(Variant.init, type);        
-        }
-    }
 
     /++
-    Returns a column based on its name.
+    Return the content of a column, automatically cast to T.
 
-    The names of the statements' columns are checked each time this function is called:
-    use numeric indexing for better performance.
+    T must be a boolean, a built-in numeric type, a string, an array or a Variant.
+
+    Warning:
+        If the column is specified by its name, the names of all the columns are tested
+        each time this function is called: use numeric indexing for better performance.
     +/
-    Column opIndex(string name)
+    auto peek(T)(int index)
+    {
+        int i =  cast(int) index + frontIndex;
+        enforce(i >= 0 && i <= backIndex, new SqliteException(format("invalid column index: %d", i)));
+        
+        static if (isBoolean!T || isIntegral!T)
+        {
+            return cast(T) sqlite3_column_int64(statement, i);
+        }
+        else static if (isFloatingPoint!T)
+        {
+            return cast(T) sqlite3_column_double(statement, i);
+        }
+        else static if (isSomeString!T)
+        {
+            return sqlite3_column_text(statement, i).to!T;
+        }
+        else static if (isArray!T)
+        {
+            auto ptr = sqlite3_column_blob(statement, i);
+            auto length = sqlite3_column_bytes(statement, i);
+            ubyte[] blob;
+            blob.length = length;
+            import std.c.string : memcpy;
+            memcpy(blob.ptr, ptr, length);
+            return cast(T) blob;
+        }
+        else static if (is(T == Variant))
+        {
+            auto type = sqlite3_column_type(statement, i);
+            final switch (type)
+            {
+                case SQLITE_INTEGER:
+                    return Variant(peek!long(index));
+                    
+                case SQLITE_FLOAT:
+                    return Variant(peek!double(index));
+                    
+                case SQLITE3_TEXT:
+                    return Variant(peek!string(index));
+                    
+                case SQLITE_BLOB:
+                    return Variant(peek!(ubyte[])(index));
+                    
+                case SQLITE_NULL:
+                    return Variant.init;        
+            }
+        }
+        else
+            static assert(false, "value cannot be converted to type " ~ T.stringof);
+    }
+
+    /// ditto
+    auto peek(T)(string name)
     {
         foreach (i; frontIndex .. backIndex + 1)
             if (sqlite3_column_name(statement, i).to!string == name)
-                return opIndex(i);
-
+                return peek!T(i);
+        
         throw new SqliteException("invalid column name: '%s'".format(name));
     }
 
-    /// ditto
-    @property Column opDispatch(string name)()
+    /++
+    Returns the data of a given column as a Variant.
+    +/
+    Variant opIndex(int index)
     {
-        return opIndex(name);
+        return peek!Variant(index);
+    }
+    
+    /// ditto
+    Variant opIndex(string name)
+    {
+        return peek!Variant(name);
     }
 }
 
 version (unittest)
 {
     static assert(isRandomAccessRange!Row);
-    static assert(is(ElementType!Row == Column));
+    static assert(is(ElementType!Row == Variant));
 }
 
 unittest // Row random-access range interface
@@ -1225,7 +1218,7 @@ unittest // Row random-access range interface
         {
             while (!row.empty)
             {
-                assert(row.front.get!int == values.front);
+                assert(row.front.get!long == values.front);
                 row.popFront();
                 values.popFront();
             }
@@ -1239,7 +1232,7 @@ unittest // Row random-access range interface
         {
             while (!row.empty)
             {
-                assert(row.back.get!int == values.front);
+                assert(row.back.get!long == values.front);
                 row.popBack();
                 values.popFront();
             }
@@ -1252,103 +1245,11 @@ unittest // Row random-access range interface
     {
         while (!row.empty)
         {
-            assert(row.front.get!int == values.front);
+            assert(row.front.get!long == values.front);
             row.popFront();
             values.popFront();
         }
     }
-}
-
-
-/++
-A SQLite column.
-+/
-struct Column
-{
-    private {
-        Variant data;
-        int _type;
-    }
-
-    /++
-    Gets the value of the column converted _to type T.
-    If the value is NULL, it is replaced by defaultValue.
-
-    T can be a boolean, a numeric type, a string, an array or a Variant.
-    +/
-    T get(T)(T defaultValue = T.init)
-    {
-        alias Unqual!T U;
-        if (data.hasValue)
-        {
-            static if (is(U == bool))
-                return cast(T) data.coerce!long() != 0;
-            else static if (isIntegral!U)
-                return cast(T) std.conv.to!U(data.coerce!long());
-            else static if (isFloatingPoint!U)
-                return cast(T) std.conv.to!U(data.coerce!double());
-            else static if (isSomeString!U)
-            {
-                auto result = cast(T) std.conv.to!U(data.coerce!string());
-                return result ? result : defaultValue;
-            }
-            else static if (isArray!U)
-            {
-                alias A = ElementType!U;
-                auto result = cast(U) data.get!(ubyte[]);
-                return result ? result : defaultValue;
-            }
-            else static if (is(T == Variant))
-                return data;
-            else
-                static assert(false, "value cannot be converted to type " ~ T.stringof);
-        }
-        else
-            return defaultValue;
-    }
-
-    /++
-    Gets the type of the column.
-    +/
-    @property int type()
-    {
-        return _type;
-    }
-}
-
-unittest // Getting a column
-{
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", 42);
-    query.execute();
-
-    query = db.query("SELECT val FROM test");
-    with (query)
-    {
-        assert(front[0].get!int() == 42);
-        assert(front["val"].get!int() == 42);
-        assert(front.val.get!int() == 42);
-
-        auto v = front[0].get!Variant();
-        assert(v.coerce!int == 42);
-        assert(v.coerce!string == "42");
-    }
-}
-
-unittest // Getting null values
-{
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", null);
-    query.execute();
-
-    query = db.query("SELECT * FROM test");
-    assert(query.front["val"].get!int(-42) == -42);
 }
 
 unittest // Getting integer values
@@ -1357,10 +1258,6 @@ unittest // Getting integer values
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", 2);
-    query.clearBindings(); // Resets binding to NULL.
-    query.execute();
-    query.reset();
     query.bind(":val", 42L);
     query.execute();
     query.reset();
@@ -1370,18 +1267,12 @@ unittest // Getting integer values
     query.bind(":val", 42UL);
     query.execute();
     query.reset();
-    query.bind(":val", true);
-    query.execute();
-    query.reset();
     query.bind(":val", '\x2A');
-    query.execute();
-    query.reset();
-    query.bind(":val", null);
     query.execute();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query)
-        assert(row[0].get!long(42) == 42 || row[0].get!long() == 1);
+        assert(row.peek!long(0) == 42);
 }
 
 unittest // Getting float values
@@ -1399,12 +1290,12 @@ unittest // Getting float values
     query.bind(":val", 42.0L);
     query.execute();
     query.reset();
-    query.bind(":val", null);
+    query.bind(":val", "42");
     query.execute();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query)
-        assert(row[0].get!real(42.0) == 42.0);
+        assert(row.peek!double(0) == 42.0);
 }
 
 unittest // Getting text values
@@ -1415,16 +1306,9 @@ unittest // Getting text values
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
     query.bind(":val", "I am a text.");
     query.execute();
-    query.reset();
-    query.bind(":val", null);
-    query.execute();
-    string str;
-    query.reset();
-    query.bind(":val", str);
-    query.execute();
 
     query = db.query("SELECT * FROM test");
-    assert(query.front[0].get!string("I am a text") == "I am a text.");
+    assert(query.front.peek!string(0) == "I am a text.");
 }
 
 unittest // Getting blob values
@@ -1436,32 +1320,144 @@ unittest // Getting blob values
     ubyte[] array = [1, 2, 3];
     query.bind(":val", array);
     query.execute();
-    query.reset();
-    query.bind(":val", cast(ubyte[]) []);
-    query.execute();
 
     query = db.query("SELECT * FROM test");
     foreach (row; query)
-        assert(row[0].get!(ubyte[])([1, 2, 3]) ==  [1, 2, 3]);
+        assert(row.peek!(ubyte[])(0) ==  [1, 2, 3]);
 }
 
-unittest // Getting more blob values
+unittest // Getting null values
 {
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val BLOB)");
+    db.execute("CREATE TABLE test (val TEXT)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    double[] array = [1.1, 2.14, 3.162];
-    query.bind(":val", array);
-    query.execute();
-    query.reset();
-    query.bind(":val", cast(double[]) []);
+    query.bind(":val", null);
     query.execute();
 
     query = db.query("SELECT * FROM test");
-    foreach (row; query)
-        assert(row[0].get!(double[])([1.1, 2.14, 3.162]) ==  [1.1, 2.14, 3.162]);
+    assert(query.front.peek!bool(0) == false);
+    assert(query.front.peek!long(0) == 0);
+    assert(query.front.peek!double(0) == 0.0);
+    assert(query.front.peek!string(0) is null);
+    assert(query.front.peek!(ubyte[])(0) is null);
 }
+
+
+/++
+Caches all the results of a Query in memory as Variants.
+
+Allows to iterate on the rows and their columns with an array-like interface.
+The rows can be viewed as an array of Variant or as an associative array of
+Variant indexed by the column names.
++/
+struct QueryCache
+{
+    struct CachedRow
+    {
+        Variant[] columns;
+        alias columns this;
+
+        int[string] columnIndexes;
+
+        private this(Row row, int[string] columnIndexes)
+        {
+            this.columnIndexes = columnIndexes;
+
+            auto colapp = appender!(Variant[]);
+            foreach (i; 0 .. row.length)
+                colapp.put(row.peek!Variant(i));
+            columns = colapp.data;
+        }
+
+        Variant opIndex(int index)
+        {
+            return columns[index];
+        }
+
+        Variant opIndex(string name)
+        {
+            auto index = name in columnIndexes;
+            enforce(index, new SqliteException("Unknown column name: %s".format(name)));
+            return columns[*index];
+        }
+    }
+
+    CachedRow[] rows;
+    alias rows this;
+
+    private int[string] columnIndexes;
+
+    /++
+    Creates and populates the cache from the results of the query.
+
+    Warning:
+        The query will be reset once this constructor have populated the cache.
+        Don't call this constructor while using query's range interface.
+    +/
+    this(Query query)
+    {
+        if (!query.empty)
+        {
+            auto first = query.front;
+            foreach (i; 0 .. first.length)
+            {
+                auto name = sqlite3_column_name(first.statement, i).to!string;
+                columnIndexes[name] = i;
+            }
+        }
+
+        auto rowapp = appender!(CachedRow[]);        
+        foreach (row; query)
+            rowapp.put(CachedRow(row, columnIndexes));
+        rows = rowapp.data;
+        query.reset();
+    }
+}
+///
+unittest
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (msg TEXT, num FLOAT)");
+    
+    auto query = db.query("INSERT INTO test (msg, num) VALUES (:msg, :num)");
+    query.bind(":msg", "ABC");
+    query.bind(":num", 123);
+    query.execute();
+    query.reset();
+    query.bind(":msg", "DEF");
+    query.bind(":num", 456);
+    query.execute();
+    
+    query = db.query("SELECT * FROM test");
+    auto data = QueryCache(query);
+    assert(data.length == 2);
+    assert(data[0].front == "ABC");
+    assert(data[0][1] == 123);
+    assert(data[1]["msg"] == "DEF");
+    assert(data[1]["num"] == 456);
+    assert(data[1]["num"].coerce!string == "456");
+}
+
+unittest // QueryCache copies
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (msg TEXT)");
+    auto query = db.query("INSERT INTO test (msg) VALUES (:msg)");
+    query.bind(":msg", "ABC");
+    query.execute();
+
+    static getdata(Database db)
+    {
+        auto query = db.query("SELECT * FROM test");
+        return QueryCache(query);
+    }
+
+    auto data = getdata(db);
+    assert(data.length == 1);
+    assert(data[0][0] == "ABC");
+}
+
 
 /++
 Turns a value into a literal that can be used in an SQLite expression.
