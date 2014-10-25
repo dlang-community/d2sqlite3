@@ -1707,24 +1707,28 @@ class SqliteException : Exception
     int code;
     string sql;
 
-    this(string msg, string sql, int code, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    private this(string msg, string sql, int code,
+                 string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
         this.sql = sql;
         this.code = code;
         super(msg, file, line, next);
     }
 
-    this(int code, string sql = null, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    this(int code, string sql = null,
+         string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
-        this("error code %d".format(code), sql, code, file, line, next);
+        this("error %d".format(code), sql, code, file, line, next);
     }
 
-    this(string msg, int code, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    this(string msg, int code, string sql = null,
+         string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
-        this(msg, null, code, file, line, next);
+        this("error %d : %s".format(code, msg), sql, code, file, line, next);
     }
 
-    this(string msg, string sql = null, string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+    this(string msg, string sql = null,
+         string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
         this(msg, sql, code, file, line, next);
     }
