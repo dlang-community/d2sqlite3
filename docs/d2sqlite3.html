@@ -36,6 +36,9 @@ closed and finalized. They are not thread-safe.
     </ul></li>
 </ol>
 See example in the documentation for the Database struct below.
+<br><br>
+
+The C API is available through <tt>etc.c.sqlite3</tt>.
 
 <br><br>
 <b>License:</b><br>
@@ -175,12 +178,22 @@ See <a href="http://www.sqlite.org/sharedcache.html">http://www.sqlite.org/share
 }
 </pre>
 <br><br>
-<dl><dt><big><a name="Database.this"></a>this(string <i>path</i>, SharedCache <i>sharedCache</i> = SharedCache.disabled);
+<dl><dt><big><a name="Database.this"></a>this(string <i>path</i>, int <i>flags</i> = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, string <i>vfs</i> = null);
 </big></dt>
 <dd>Opens a database connection.
 <br><br>
-The <i>path</i> of the database file can be empty or set to ":memory:",
-    according to the SQLite specification.<br><br>
+The database is open using the sqlite3_open_v2 function.
+    See <a href="http://www.sqlite.org/c3ref/open.html">http://www.sqlite.org/c3ref/open.html</a> to know how to use the <i>flags</i> or <i>vfs</i>
+    parameters, or to use <i>path</i> as a file URI if the current configuration allows it.<br><br>
+
+</dd>
+<dt><big><a name="Database.this"></a>deprecated this(string <i>path</i>, SharedCache <i>sharedCache</i>);
+</big></dt>
+<dd>Opens a database connection.
+<br><br>
+<font color=red>Deprecated:</font><br>
+Use the constructor that takes sqlite3_open_v2 arguments or set the <i>path</i> as
+        a file URI (v3.7.7+) and set the URI to e.g. <tt>"file:<i>path</i>?cache=shared"</tt>.<br><br>
 
 </dd>
 <dt><big><a name="Database.close"></a>void <u>close</u>();
@@ -438,7 +451,8 @@ Use rows() directly if the query is expected to return rows.<br><br>
 </big></dt>
 <dd>Gets the results of a query that returns rows as a input range of Row objects.
 <br><br>
-The returned object becomes invalid when the Query goes out of scope.<br><br>
+The range of rows can only be iterated once, and the rows cannot be copied.
+    The range also becomes invalid when the Query goes out of scope.<br><br>
 
 </dd>
 <dt><big><a name="Query.oneValue"></a>@property auto <u>oneValue</u>(T)();
@@ -521,7 +535,7 @@ This does not reset the prepared statement. Use Query.reset() for this.<br><br>
 
 </dd>
 <dt><big><a name="Row.length"></a>@property size_t <u>length</u>();
-<br><a name="Row.opIndex"></a>Column <u>opIndex</u>(int <i>index</i>);
+<br><a name="Row.opIndex"></a>Column <u>opIndex</u>(size_t <i>index</i>);
 </big></dt>
 <dd>Random access range primitives<br><br>
 

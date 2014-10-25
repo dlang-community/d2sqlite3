@@ -33,6 +33,8 @@ $(OL
 )
 See example in the documentation for the Database struct below.
 
+The C API is available through $(D etc.c.sqlite3).
+
 Copyright:
     Copyright Nicolas Sicard, 2011-2014.
 
@@ -55,7 +57,7 @@ import std.string;
 import std.traits;
 import std.typecons;
 import std.variant;
-import etc.c.sqlite3;
+public import etc.c.sqlite3;
 
 /++
 Metadata from the SQLite library.
