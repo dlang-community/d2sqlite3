@@ -804,22 +804,31 @@ public:
         alias Unqual!T U;
         int result;
         
-        static if (is(U == typeof(null)))
+        static if (is(U == typeof(null)) || is(U == void*))
+        {
             result = sqlite3_bind_null(core.statement, index);
-        else static if (is(U == void*))
-            result = sqlite3_bind_null(core.statement, index);
-        else static if (isIntegral!U && U.sizeof == int.sizeof)
+        }
+        else static if (isIntegral!U && U.sizeof <= int.sizeof || isSomeChar!U)
+        {
             result = sqlite3_bind_int(core.statement, index, value);
-        else static if (isIntegral!U && U.sizeof == long.sizeof)
-            result = sqlite3_bind_int64(core.statement, index, cast(long) value);
-        else static if (isImplicitlyConvertible!(U, double))
+        }
+        else static if (isIntegral!U && U.sizeof <= long.sizeof)
+        {
+            result = sqlite3_bind_int64(core.statement, index, value);
+        }
+        else static if (isFloatingPoint!U)
+        {
             result = sqlite3_bind_double(core.statement, index, value);
+        }
         else static if (isSomeString!U)
         {
-            import std.utf : toUTF8;
-            string utf8 = value.toUTF8();
+            string utf8 = value.to!string;
             enforce(utf8.length <= int.max, new SqliteException("string too long"));
-            result = sqlite3_bind_text(core.statement, index, cast(char*) utf8.toStringz(), cast(int) utf8.length, null);
+            result = sqlite3_bind_text(core.statement,
+                                       index,
+                                       cast(char*) utf8.toStringz(),
+                                       cast(int) utf8.length,
+                                       null);
         }
         else static if (isArray!U)
         {
@@ -829,7 +838,11 @@ public:
             {
                 auto bytes = cast(ubyte[]) value;
                 enforce(bytes.length <= int.max, new SqliteException("array too long"));
-                result = sqlite3_bind_blob(core.statement, index, cast(void*) bytes.ptr, cast(int) bytes.length, null);
+                result = sqlite3_bind_blob(core.statement,
+                                           index,
+                                           cast(void*) bytes.ptr,
+                                           cast(int) bytes.length,
+                                           null);
             }
         }
         else
@@ -1235,13 +1248,13 @@ unittest // Row random-access range interface
     }
 }
 
-unittest // Getting integer values
+unittest // Getting integral values
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", 42L);
+    query.bind(":val", cast(byte) 42);
     query.execute();
     query.reset();
     query.bind(":val", 42U);
@@ -1258,7 +1271,7 @@ unittest // Getting integer values
         assert(row.peek!long(0) == 42);
 }
 
-unittest // Getting float values
+unittest // Getting floating point values
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val FLOAT)");
