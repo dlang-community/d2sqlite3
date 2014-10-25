@@ -86,7 +86,7 @@ Use of a shared cache.
 
 See $(LINK http://www.sqlite.org/sharedcache.html)
 +/
-enum SharedCache : bool
+deprecated enum SharedCache : bool
 {
     enabled = true, /// Shared cache is _enabled.
     disabled = false /// Shared cache is _disabled (the default in SQLite).
@@ -97,38 +97,60 @@ An interface to a SQLite database connection.
 +/
 struct Database
 {
-    private
+private:
+    struct _Core
     {
-        struct _Core
+        sqlite3* handle;
+        
+        this(sqlite3* handle)
         {
-            sqlite3* handle;
-            
-            this(sqlite3* handle)
-            {
-                this.handle = handle;
-            }
-            
-            ~this()
-            {
-                if (handle)
-                {
-                    auto result = sqlite3_close(handle);
-                    enforce(result == SQLITE_OK, new SqliteException(result));
-                }
-            }
+            this.handle = handle;
         }
         
-        alias RefCounted!_Core Core;
-        Core core;
+        ~this()
+        {
+            if (handle)
+            {
+                auto result = sqlite3_close(handle);
+                enforce(result == SQLITE_OK, new SqliteException(result));
+            }
+            handle = null;
+        }
+
+        @disable this(this);
+        void opAssign(_Core) { assert(false); }
+    }
+    
+    alias RefCounted!_Core Core;
+    Core core;
+
+public:
+    /++
+    Opens a database connection.
+
+    The database is open using the sqlite3_open_v2 function.
+    See $(LINK http://www.sqlite.org/c3ref/open.html) to know how to use the flags or vfs
+    parameters, or to use path as a file URI if the current configuration allows it.
+    +/
+    this(string path, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, string vfs = null)
+    {
+        sqlite3* hdl;
+        auto result = sqlite3_open_v2(cast(char*) path.toStringz,
+                                      &hdl,
+                                      flags,
+                                      vfs ? cast(char*) vfs.toStringz : null);
+        core = Core(hdl);
+        enforce(result == SQLITE_OK && core.handle, new SqliteException(errorMsg, result));
     }
 
     /++
     Opens a database connection.
 
-    The path of the database file can be empty or set to ":memory:",
-    according to the SQLite specification.
+    Deprecated:
+        Use the constructor that takes sqlite3_open_v2 arguments or set the path as 
+        a file URI (v3.7.7+) and set the URI to e.g. $(D "file:path?cache=shared").
     +/
-    this(string path, SharedCache sharedCache = SharedCache.disabled)
+    deprecated this(string path, SharedCache sharedCache)
     {
         if (sharedCache)
         {
@@ -146,8 +168,8 @@ struct Database
         Database db1;
         auto db2 = db1;
         db1 = Database(":memory:");
-        db2 = Database(":memory:");
-        auto db3 = Database(":memory:");
+        db2 = Database("");
+        auto db3 = Database(null);
         db1 = db2;
         assert(db2.core.refCountedStore.refCount == 2);
         assert(db1.core.refCountedStore.refCount == 2);
@@ -197,7 +219,6 @@ struct Database
     +/
     Query query(string sql)
     {
-        assert(core.handle);
         return Query(this, sql);
     }
     
@@ -226,8 +247,7 @@ struct Database
     +/
     @property int errorCode()
     {
-        assert(core.handle);
-        return sqlite3_errcode(core.handle);
+        return core.handle ? sqlite3_errcode(core.handle) : 0;
     }
     
     /++
@@ -235,8 +255,7 @@ struct Database
     +/
     @property string errorMsg()
     {
-        assert(core.handle);
-        return to!string(sqlite3_errmsg(core.handle));
+        return core.handle ? sqlite3_errmsg(core.handle).to!string : "Database is not open";
     }
 
     /++
@@ -787,64 +806,67 @@ An interface to SQLite query execution.
 +/
 struct Query
 {
-    private
+private:
+    struct _Core
     {
-        struct _Core
-        {
-            Database db;
-            string sql;
-            sqlite3_stmt* statement;
-            Parameters params;
-            RowRange rows;
-            
-            this(Database db, string sql, sqlite3_stmt* statement, Parameters params, RowRange rows)
-            {
-                this.db = db;
-                this.sql = sql;
-                this.statement = statement;
-                this.params = params;
-                this.rows = rows;
-            }
-            
-            ~this()
-            {
-                auto result = sqlite3_finalize(statement);
-                enforce(result == SQLITE_OK, new SqliteException(result));
-            }
-        }
-        alias RefCounted!_Core Core;
-        Core core;
+        Database db;
+        string sql;
+        sqlite3_stmt* statement;
+        Parameters params;
+        RowRange rows;
         
-        @disable this();
-        
-        this(Database db, string sql)
+        this(Database db, string sql, sqlite3_stmt* statement, Parameters params, RowRange rows)
         {
-            sqlite3_stmt* statement;
-            auto result = sqlite3_prepare_v2(
-                db.core.handle,
-                cast(char*) sql.toStringz(),
-                cast(int) sql.length,
-                &statement,
-                null
-                );
-            enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result, sql));
-            core = Core(db, sql, statement, Parameters(statement), RowRange(&this));
+            this.db = db;
+            this.sql = sql;
+            this.statement = statement;
+            this.params = params;
+            this.rows = rows;
         }
         
-        unittest // Query construction
+        ~this()
         {
-            Database db = Database(":memory:");
-            auto q1 = db.query("SELECT 42");
-            assert(q1.statement);
-            {
-                auto q2 = q1;
-                assert(q1.core.refCountedStore.refCount == 2);
-                assert(q2.core.refCountedStore.refCount == 2);
-            }
-            assert(q1.core.refCountedStore.refCount == 1);
+            auto result = sqlite3_finalize(statement);
+            enforce(result == SQLITE_OK, new SqliteException(result));
+            statement = null;
         }
+
+        @disable this(this);
+        void opAssign(_Core) { assert(false); }
+    }
+    alias RefCounted!_Core Core;
+    Core core;
+    
+    @disable this();
+    
+    this(Database db, string sql)
+    {
+        sqlite3_stmt* statement;
+        auto result = sqlite3_prepare_v2(
+            db.core.handle,
+            cast(char*) sql.toStringz(),
+            cast(int) sql.length,
+            &statement,
+            null
+        );
+        enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result, sql));
+        core = Core(db, sql, statement, Parameters(statement), RowRange(&this));
+    }
+    
+    unittest // Query construction
+    {
+        Database db = Database(":memory:");
+        auto q1 = db.query("SELECT 42");
+        assert(q1.statement);
+        {
+            auto q2 = q1;
+            assert(q1.core.refCountedStore.refCount == 2);
+            assert(q2.core.refCountedStore.refCount == 2);
+        }
+        assert(q1.core.refCountedStore.refCount == 1);
     }
 
+public:
     /++
     Gets the bindable parameters of the query.
 
@@ -871,25 +893,15 @@ struct Query
         int result;
         
         static if (is(U == typeof(null)))
-        {
             result = sqlite3_bind_null(statement, index);
-        }
         else static if (is(U == void*))
-        {
             result = sqlite3_bind_null(statement, index);
-        }
         else static if (isIntegral!U && U.sizeof == int.sizeof)
-        {
             result = sqlite3_bind_int(statement, index, value);
-        }
         else static if (isIntegral!U && U.sizeof == long.sizeof)
-        {
             result = sqlite3_bind_int64(statement, index, cast(long) value);
-        }
         else static if (isImplicitlyConvertible!(U, double))
-        {
             result = sqlite3_bind_double(statement, index, value);
-        }
         else static if (isSomeString!U)
         {
             import std.utf : toUTF8;
@@ -1033,15 +1045,15 @@ struct Query
 
     unittest // Query rows
     {
-        // Query rows
         auto db = Database(":memory:");
-        db.execute("CREATE TABLE test (val INTEGER)");
+        {
+            db.execute("CREATE TABLE test (val INTEGER)");
+            auto tmp = db.query("INSERT INTO test (val) VALUES (:val)");
+            tmp.bind(":val", 42);
+            tmp.execute();
+        }
 
-        auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-        query.bind(":val", 42);
-        query.execute();
-        assert(query.rows.empty);
-        query = db.query("SELECT * FROM test");
+        auto query = { return db.query("SELECT * FROM test"); }();
         assert(!query.rows.empty);
         assert(query.rows.front[0].get!int() == 42);
         query.rows.popFront();
