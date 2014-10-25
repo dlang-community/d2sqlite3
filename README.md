@@ -10,7 +10,9 @@ engine.
 
 2. `Database` has facility functions create new functions, aggregates or collations.
 
-3. `Query` is a wrapper around prepared statements and their results, with functionality to bind parameters, iterate on result rows with an InputRange interface and convert column value to a built-in type or a Variant.
+3. `Query` is a wrapper around prepared statements and their results, with functionality to bind parameters, iterate on result rows with a lazy input range interface and convert column value to a built-in type or a Variant.
+
+4. `QueryCache` is a helper struct that stores all the results of a query in memory in the form of a two-dimensional-array-like interface.
 
 ### Synopsis
 ```d
