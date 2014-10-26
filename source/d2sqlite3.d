@@ -1107,15 +1107,16 @@ struct Row
 
     If the column data is NULL, T.init is returned.
 
-    Warning:
+    Warnings:
+        The result is undefined if then index is out of range.
+
         If the column is specified by its name, the names of all the columns are tested
         each time this function is called: use numeric indexing for better performance.
     +/
     auto peek(T)(int index)
     {
         int i =  cast(int) index + frontIndex;
-        enforce(i >= 0 && i <= backIndex, new SqliteException(format("invalid column index: %d", i)));
-        
+
         static if (isBoolean!T || isIntegral!T)
         {
             return cast(T) sqlite3_column_int64(statement, i);
@@ -1180,6 +1181,8 @@ struct Row
     +/
     ColumnData opIndex(int index)
     {
+        int i =  cast(int) index + frontIndex;
+        enforce(i >= 0 && i <= backIndex, new SqliteException(format("invalid column index: %d", i)));
         return ColumnData(peek!Variant(index));
     }
     
