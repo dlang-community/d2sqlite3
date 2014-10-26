@@ -913,6 +913,8 @@ public:
     +/
     @property bool empty()
     {
+        if (!core.state) execute();
+        assert(core.state);
         return core.state == SQLITE_DONE;
     }
     
@@ -1007,7 +1009,7 @@ unittest // Multiple parameters binding
     }
 }
 
-unittest // Query references
+unittest // Other Query tests
 {
     auto db = Database(":memory:");
     {
@@ -1021,6 +1023,9 @@ unittest // Query references
     assert(!query.empty);
     assert(query.front.peek!int(0) == 42);
     query.popFront();
+    assert(query.empty);
+
+    query = db.query("SELECT * FROM test WHERE val=%s".format(43.literal));
     assert(query.empty);
 }
 
