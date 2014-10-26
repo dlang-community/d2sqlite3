@@ -99,7 +99,7 @@ private:
         void opAssign(_Core) { assert(false); }
     }
     
-    alias RefCounted!_Core Core;
+    alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
     Core core;
 
 public:
@@ -753,7 +753,7 @@ private:
         @disable this(this);
         void opAssign(_Core) { assert(false); }
     }
-    alias RefCounted!_Core Core;
+    alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
     Core core;
     
     @disable this();
