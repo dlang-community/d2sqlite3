@@ -121,7 +121,7 @@ query.execute();
 </font><font color=blue>auto</font> data = QueryCache(db.query(<font color=red>"SELECT * FROM person"</font>));
 <font color=blue>foreach</font> (row; data)
 {
-    <font color=blue>auto</font> id = row[0].get!<font color=blue>long</font>;
+    <font color=blue>auto</font> id = row[0].as!<font color=blue>long</font>;
     <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>], row[<font color=red>"first_name"</font>]);
     <font color=blue>auto</font> score = row[<font color=red>"score"</font>].as!<font color=blue>double</font>;
     <font color=blue>auto</font> photo = row[4].as!(<font color=blue>ubyte</font>[]);
@@ -436,14 +436,11 @@ If the column is specified by its name, the names of all the columns are tested
 </dd>
 <dt><big><a name="ColumnData"></a>struct <u>ColumnData</u>;
 </big></dt>
-<dd>Some column's data stored internally as a Variant.<br><br>
+<dd>Some column's data.
+<br><br>
+The data is stored internally as a Variant, which is accessible through "<tt>alias this</tt>".<br><br>
 
-<dl><dt><big><a name="ColumnData.get"></a>auto <u>get</u>(T)();
-</big></dt>
-<dd>Returns the data as Variant.<u>get</u> would.<br><br>
-
-</dd>
-<dt><big><a name="ColumnData.as"></a>auto <u>as</u>(T)(T <i>defaultValue</i> = T.init);
+<dl><dt><big><a name="ColumnData.as"></a>auto <u>as</u>(T)(T <i>defaultValue</i> = T.init);
 </big></dt>
 <dd>Returns the data converted to T.
 <br><br>

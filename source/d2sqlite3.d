@@ -695,7 +695,7 @@ unittest // Documentation example
     auto data = QueryCache(db.query("SELECT * FROM person"));
     foreach (row; data)
     {
-        auto id = row[0].get!long;
+        auto id = row[0].as!long;
         auto name = format("%s, %s", row["last_name"], row["first_name"]);
         auto score = row["score"].as!double;
         auto photo = row[4].as!(ubyte[]);
@@ -1254,19 +1254,14 @@ unittest // Row random-access range interface
 
 
 /++
-Some column's data stored internally as a Variant.
+Some column's data.
+
+The data is stored internally as a Variant, which is accessible through "$(D alias this)".
 +/
 struct ColumnData
 {
     Variant variant;
-    
-    /++
-    Returns the data as Variant.get would.
-    +/
-    auto get(T)()
-    {
-        return variant.get!T();
-    }
+    alias variant this;
     
     /++
     Returns the data converted to T.
