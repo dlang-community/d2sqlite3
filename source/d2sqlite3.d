@@ -1467,8 +1467,11 @@ struct QueryCache
         }
 
         auto rowapp = appender!(CachedRow[]);        
-        foreach (row; query)
-            rowapp.put(CachedRow(row, columnIndexes));
+        while (!query.empty)
+        {
+            rowapp.put(CachedRow(query.front, columnIndexes));
+            query.popFront();
+        }
         rows = rowapp.data;
         query.reset();
     }
