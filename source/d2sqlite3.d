@@ -1290,6 +1290,14 @@ struct ColumnData
         else
             throw new SqliteException("Cannot convert value to type %s".format(T.stringof));
     }
+
+    void toString(scope void delegate(const(char)[]) sink)
+    {
+        if (variant.hasValue)
+            sink(variant.toString);
+        else
+            sink("NULL");
+    }
 }
 
 
