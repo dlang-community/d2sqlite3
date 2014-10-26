@@ -790,7 +790,13 @@ public:
     {
         return core.statement;
     }
-    
+
+    // Kepts for compatibility
+    ref Query rows()
+    {
+        return this;
+    }
+
     /++
     Binds values to parameters in the query.
 
