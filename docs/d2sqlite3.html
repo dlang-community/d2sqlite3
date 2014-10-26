@@ -63,7 +63,7 @@ Nicolas Sicard (dransic@gmail.com).
         id INTEGER PRIMARY KEY,
         last_name TEXT NOT NULL,
         first_name TEXT,
-        score REAL,
+        score FLOAT,
         photo BLOB
      )"</font>
 );
@@ -78,14 +78,14 @@ Nicolas Sicard (dransic@gmail.com).
 </font>query.bind(<font color=red>":last_name"</font>, <font color=red>"Smith"</font>);
 query.bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>);
 query.bind(<font color=red>":score"</font>, 77.5);
-query.bind(<font color=red>":photo"</font>, <font color=blue>cast</font>(<font color=blue>ubyte</font>[]) <font color=red>"..."</font>); <font color=green>// Store the photo as raw array of data.
-</font>query.execute();
+query.bind(<font color=red>":photo"</font>, [0xDE, 0xEA, 0xBE, 0xEF]);
+query.execute();
 
 query.reset(); <font color=green>// Need to reset the query after execution.
 </font>query.bind(<font color=red>":last_name"</font>, <font color=red>"Doe"</font>);
 query.bind(<font color=red>":first_name"</font>, <font color=red>"John"</font>);
 query.bind(3, 46.8); <font color=green>// Use of index instead of name.
-</font>query.bind(<font color=red>":photo"</font>, <font color=blue>cast</font>(<font color=blue>ubyte</font>[]) x"DEADBEEF");
+</font>query.bind(<font color=red>":photo"</font>, <font color=blue>null</font>);
 query.execute();
 
 <font color=green>// Count the changes
@@ -100,19 +100,19 @@ query.execute();
 <font color=blue>foreach</font> (row; query)
 {
     <font color=green>// Retrieve "id", which is the column at index 0, and contains an int,
-</font>    <font color=green>// e.g. using the peek function.
+</font>    <font color=green>// e.g. using the peek function (best performance).
 </font>    <font color=blue>auto</font> id = row.peek!<font color=blue>long</font>(0);
+
+    <font color=green>// Retrieve "last_name" and "first_name", e.g. using opIndex(string),
+</font>    <font color=green>// which returns a ColumnData.
+</font>    <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>].as!string, row[<font color=red>"first_name"</font>].as!string);
 
     <font color=green>// Retrieve "score", which is at index 3, e.g. using the peek function.
 </font>    <font color=blue>auto</font> score = row.peek!<font color=blue>double</font>(<font color=red>"score"</font>);
-
-    <font color=green>// Retrieve "last_name" and "first_name", e.g. using opIndex(string),
-</font>    <font color=green>// which returns a Variant.
-</font>    <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>].get!string, row[<font color=red>"first_name"</font>].get!string);
-
+    
     <font color=green>// Retrieve "photo", e.g. using opIndex(index),
-</font>    <font color=green>// which returns a Variant.
-</font>    <font color=blue>auto</font> photo = row[4].get!(<font color=blue>ubyte</font>[]);
+</font>    <font color=green>// which returns a ColumnData.
+</font>    <font color=blue>auto</font> photo = row[4].as!(<font color=blue>ubyte</font>[]);
     
     <font color=green>// ... and use all these data!
 </font>}
@@ -122,9 +122,9 @@ query.execute();
 <font color=blue>foreach</font> (row; data)
 {
     <font color=blue>auto</font> id = row[0].get!<font color=blue>long</font>;
-    <font color=blue>auto</font> score = row[<font color=red>"score"</font>].get!<font color=blue>double</font>;
     <font color=blue>auto</font> name = format(<font color=red>"%s, %s"</font>, row[<font color=red>"last_name"</font>], row[<font color=red>"first_name"</font>]);
-    <font color=blue>auto</font> photo = row[4].get!(<font color=blue>ubyte</font>[]);
+    <font color=blue>auto</font> score = row[<font color=red>"score"</font>].as!<font color=blue>double</font>;
+    <font color=blue>auto</font> photo = row[4].as!(<font color=blue>ubyte</font>[]);
     <font color=green>// etc.
 </font>}
 </pre>
@@ -380,7 +380,7 @@ db.execute(<font color=red>"CREATE TABLE test (val INTEGER)"</font>);
 </dd>
 <dt><big><a name="Row"></a>struct <u>Row</u>;
 </big></dt>
-<dd>A SQLite row, implemented as a random-access range of Variant.
+<dd>A SQLite row, implemented as a random-access range of ColumnData.
 <br><br>
 <b>Warning:</b><br>
 A <u>Row</u> is just a view of the current row when iterating the results of a <tt>Query</tt>.
@@ -388,7 +388,7 @@ A <u>Row</u> is just a view of the current row when iterating the results of a <
     undefined data afterwards.<br><br>
 
 <dl><dt><big><a name="Row.empty"></a>@property bool <u>empty</u>();
-<br><a name="Row.front"></a>@property Variant <u>front</u>();
+<br><a name="Row.front"></a>@property ColumnData <u>front</u>();
 <br><a name="Row.popFront"></a>void <u>popFront</u>();
 </big></dt>
 <dd>Input range primitives.<br><br>
@@ -399,7 +399,7 @@ A <u>Row</u> is just a view of the current row when iterating the results of a <
 <dd>Forward range primitive.<br><br>
 
 </dd>
-<dt><big><a name="Row.back"></a>@property Variant <u>back</u>();
+<dt><big><a name="Row.back"></a>@property ColumnData <u>back</u>();
 <br><a name="Row.popBack"></a>void <u>popBack</u>();
 </big></dt>
 <dd>Bidirectional range primitives.<br><br>
@@ -416,6 +416,9 @@ A <u>Row</u> is just a view of the current row when iterating the results of a <
 <dd>Return the content of a column, automatically cast to T.
 <br><br>
 T must be a boolean, a built-in numeric type, a string, an array or a Variant.
+<br><br>
+
+    If the column data is NULL, T.init is returned.
 
 <br><br>
 <b>Warning:</b><br>
@@ -423,21 +426,39 @@ If the column is specified by its name, the names of all the columns are tested
         each time this function is called: use numeric indexing for better performance.<br><br>
 
 </dd>
-<dt><big><a name="Row.opIndex"></a>Variant <u>opIndex</u>(int <i>index</i>);
-<br><a name="Row.opIndex"></a>Variant <u>opIndex</u>(string <i>name</i>);
+<dt><big><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(int <i>index</i>);
+<br><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(string <i>name</i>);
 </big></dt>
-<dd>Returns the data of a given column as a Variant.<br><br>
+<dd>Returns the data of a given column as a ColumnData.<br><br>
+
+</dd>
+</dl>
+</dd>
+<dt><big><a name="ColumnData"></a>struct <u>ColumnData</u>;
+</big></dt>
+<dd>Some column's data stored internally as a Variant.<br><br>
+
+<dl><dt><big><a name="ColumnData.get"></a>auto <u>get</u>(T)();
+</big></dt>
+<dd>Returns the data as Variant.<u>get</u> would.<br><br>
+
+</dd>
+<dt><big><a name="ColumnData.as"></a>auto <u>as</u>(T)(T <i>defaultValue</i> = T.init);
+</big></dt>
+<dd>Returns the data converted to T.
+<br><br>
+If the data is NULL, defaultValue is returned.<br><br>
 
 </dd>
 </dl>
 </dd>
 <dt><big><a name="QueryCache"></a>struct <u>QueryCache</u>;
 </big></dt>
-<dd>Caches all the results of a Query in memory as Variants.
+<dd>Caches all the results of a Query in memory as ColumnData.
 <br><br>
 Allows to iterate on the rows and their columns with an array-like interface.
-The rows can be viewed as an array of Variant or as an associative array of
-Variant indexed by the column names.<br><br>
+The rows can be viewed as an array of ColumnData or as an associative array of
+ColumnData indexed by the column names.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
@@ -455,11 +476,10 @@ query.execute();
 query = db.query(<font color=red>"SELECT * FROM test"</font>);
 <font color=blue>auto</font> data = <u>QueryCache</u>(query);
 <font color=blue>assert</font>(data.length == 2);
-<font color=blue>assert</font>(data[0].front == <font color=red>"ABC"</font>);
-<font color=blue>assert</font>(data[0][1] == 123);
-<font color=blue>assert</font>(data[1][<font color=red>"msg"</font>] == <font color=red>"DEF"</font>);
-<font color=blue>assert</font>(data[1][<font color=red>"num"</font>] == 456);
-<font color=blue>assert</font>(data[1][<font color=red>"num"</font>].coerce!string == <font color=red>"456"</font>);
+<font color=blue>assert</font>(data[0].front.as!string == <font color=red>"ABC"</font>);
+<font color=blue>assert</font>(data[0][1].as!<font color=blue>int</font> == 123);
+<font color=blue>assert</font>(data[1][<font color=red>"msg"</font>].as!string == <font color=red>"DEF"</font>);
+<font color=blue>assert</font>(data[1][<font color=red>"num"</font>].as!<font color=blue>int</font> == 456);
 </pre>
 <br><br>
 <dl><dt><big><a name="QueryCache.this"></a>this(Query <i>query</i>);

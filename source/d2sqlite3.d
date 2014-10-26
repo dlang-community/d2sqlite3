@@ -637,7 +637,7 @@ unittest // Documentation example
             id INTEGER PRIMARY KEY,
             last_name TEXT NOT NULL,
             first_name TEXT,
-            score REAL,
+            score FLOAT,
             photo BLOB
          )"
     );
@@ -652,14 +652,14 @@ unittest // Documentation example
     query.bind(":last_name", "Smith");
     query.bind(":first_name", "John");
     query.bind(":score", 77.5);
-    query.bind(":photo", cast(ubyte[]) "..."); // Store the photo as raw array of data.
+    query.bind(":photo", [0xDE, 0xEA, 0xBE, 0xEF]);
     query.execute();
     
     query.reset(); // Need to reset the query after execution.
     query.bind(":last_name", "Doe");
     query.bind(":first_name", "John");
     query.bind(3, 46.8); // Use of index instead of name.
-    query.bind(":photo", cast(ubyte[]) x"DEADBEEF");
+    query.bind(":photo", null);
     query.execute();
 
     // Count the changes
@@ -668,25 +668,25 @@ unittest // Documentation example
     // Count the Johns in the table.
     query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
     assert(query.oneValue!long == 2);
-    
+
     // Read the data from the table lazily
     query = db.query("SELECT * FROM person");
     foreach (row; query)
     {
         // Retrieve "id", which is the column at index 0, and contains an int,
-        // e.g. using the peek function.
+        // e.g. using the peek function (best performance).
         auto id = row.peek!long(0);
+
+        // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
+        // which returns a ColumnData.
+        auto name = format("%s, %s", row["last_name"].as!string, row["first_name"].as!string);
 
         // Retrieve "score", which is at index 3, e.g. using the peek function.
         auto score = row.peek!double("score");
-
-        // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
-        // which returns a Variant.
-        auto name = format("%s, %s", row["last_name"].get!string, row["first_name"].get!string);
-
+        
         // Retrieve "photo", e.g. using opIndex(index),
-        // which returns a Variant.
-        auto photo = row[4].get!(ubyte[]);
+        // which returns a ColumnData.
+        auto photo = row[4].as!(ubyte[]);
         
         // ... and use all these data!
     }
@@ -696,9 +696,9 @@ unittest // Documentation example
     foreach (row; data)
     {
         auto id = row[0].get!long;
-        auto score = row["score"].get!double;
         auto name = format("%s, %s", row["last_name"], row["first_name"]);
-        auto photo = row[4].get!(ubyte[]);
+        auto score = row["score"].as!double;
+        auto photo = row[4].as!(ubyte[]);
         // etc.
     }
 }
@@ -978,7 +978,7 @@ unittest // Simple parameters binding
     
     query = db.query("SELECT * FROM test");
     foreach (row; query)
-        assert(row.peek!long(0) == 42);
+        assert(row.peek!int(0) == 42);
 }
 
 unittest // Multiple parameters binding
@@ -1001,7 +1001,7 @@ unittest // Multiple parameters binding
     foreach (row; query)
     {
         assert(row.length == 3);
-        assert(row.peek!long("i") == 42);
+        assert(row.peek!int("i") == 42);
         assert(row.peek!double("f") == 3.14);
         assert(row.peek!string("t") == "TEXT");
     }
@@ -1019,14 +1019,14 @@ unittest // Query references
     
     auto query = { return db.query("SELECT * FROM test"); }();
     assert(!query.empty);
-    assert(query.front.peek!long(0) == 42);
+    assert(query.front.peek!int(0) == 42);
     query.popFront();
     assert(query.empty);
 }
 
 
 /++
-A SQLite row, implemented as a random-access range of Variant.
+A SQLite row, implemented as a random-access range of ColumnData.
 
 Warning:
     A Row is just a view of the current row when iterating the results of a $(D Query). 
@@ -1056,9 +1056,9 @@ struct Row
     }
 
     /// ditto
-    @property Variant front()
+    @property ColumnData front()
     {
-        return peek!Variant(0);
+        return ColumnData(peek!Variant(0));
     }
 
     /// ditto
@@ -1078,9 +1078,9 @@ struct Row
     }
     
     /// Bidirectional range primitives.
-    @property Variant back()
+    @property ColumnData back()
     {
-        return peek!Variant(backIndex - frontIndex);
+        return ColumnData(peek!Variant(backIndex - frontIndex));
     }
     
     /// ditto
@@ -1100,6 +1100,8 @@ struct Row
 
     T must be a boolean, a built-in numeric type, a string, an array or a Variant.
 
+    If the column data is NULL, T.init is returned.
+
     Warning:
         If the column is specified by its name, the names of all the columns are tested
         each time this function is called: use numeric indexing for better performance.
@@ -1115,6 +1117,8 @@ struct Row
         }
         else static if (isFloatingPoint!T)
         {
+            if (sqlite3_column_type(statement, i) == SQLITE_NULL)
+                return double.nan;
             return cast(T) sqlite3_column_double(statement, i);
         }
         else static if (isSomeString!T)
@@ -1149,7 +1153,7 @@ struct Row
                     return Variant(peek!(ubyte[])(index));
                     
                 case SQLITE_NULL:
-                    return Variant.init;        
+                    return Variant();        
             }
         }
         else
@@ -1167,24 +1171,24 @@ struct Row
     }
 
     /++
-    Returns the data of a given column as a Variant.
+    Returns the data of a given column as a ColumnData.
     +/
-    Variant opIndex(int index)
+    ColumnData opIndex(int index)
     {
-        return peek!Variant(index);
+        return ColumnData(peek!Variant(index));
     }
     
     /// ditto
-    Variant opIndex(string name)
+    ColumnData opIndex(string name)
     {
-        return peek!Variant(name);
+        return ColumnData(peek!Variant(name));
     }
 }
 
 version (unittest)
 {
     static assert(isRandomAccessRange!Row);
-    static assert(is(ElementType!Row == Variant));
+    static assert(is(ElementType!Row == ColumnData));
 }
 
 unittest // Row random-access range interface
@@ -1214,7 +1218,7 @@ unittest // Row random-access range interface
         {
             while (!row.empty)
             {
-                assert(row.front.get!long == values.front);
+                assert(row.front.as!int == values.front);
                 row.popFront();
                 values.popFront();
             }
@@ -1228,7 +1232,7 @@ unittest // Row random-access range interface
         {
             while (!row.empty)
             {
-                assert(row.back.get!long == values.front);
+                assert(row.back.as!int == values.front);
                 row.popBack();
                 values.popFront();
             }
@@ -1241,12 +1245,53 @@ unittest // Row random-access range interface
     {
         while (!row.empty)
         {
-            assert(row.front.get!long == values.front);
+            assert(row.front.as!int == values.front);
             row.popFront();
             values.popFront();
         }
     }
 }
+
+
+/++
+Some column's data stored internally as a Variant.
++/
+struct ColumnData
+{
+    Variant variant;
+    
+    /++
+    Returns the data as Variant.get would.
+    +/
+    auto get(T)()
+    {
+        return variant.get!T();
+    }
+    
+    /++
+    Returns the data converted to T.
+
+    If the data is NULL, defaultValue is returned.
+    +/
+    auto as(T)(T defaultValue = T.init)
+    {
+        if (!variant.hasValue)
+            return defaultValue;
+        
+        static if (isBoolean!T || isNumeric!T || isSomeChar!T || isSomeString!T)
+        {
+            return variant.coerce!T;
+        }
+        else static if (isArray!T)
+        {
+            auto a = variant.get!(ubyte[]);
+            return cast(T) a;
+        }
+        else
+            throw new SqliteException("Cannot convert value to type %s".format(T.stringof));
+    }
+}
+
 
 unittest // Getting integral values
 {
@@ -1324,6 +1369,8 @@ unittest // Getting blob values
 
 unittest // Getting null values
 {
+    import std.math;
+
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
@@ -1334,24 +1381,29 @@ unittest // Getting null values
     query = db.query("SELECT * FROM test");
     assert(query.front.peek!bool(0) == false);
     assert(query.front.peek!long(0) == 0);
-    assert(query.front.peek!double(0) == 0.0);
+    assert(query.front.peek!double(0).isnan);
     assert(query.front.peek!string(0) is null);
     assert(query.front.peek!(ubyte[])(0) is null);
+    assert(query.front[0].as!bool == false);
+    assert(query.front[0].as!long == 0);
+    assert(query.front[0].as!double.isnan);
+    assert(query.front[0].as!string is null);
+    assert(query.front[0].as!(ubyte[]) is null);
 }
 
 
 /++
-Caches all the results of a Query in memory as Variants.
+Caches all the results of a Query in memory as ColumnData.
 
 Allows to iterate on the rows and their columns with an array-like interface.
-The rows can be viewed as an array of Variant or as an associative array of
-Variant indexed by the column names.
+The rows can be viewed as an array of ColumnData or as an associative array of
+ColumnData indexed by the column names.
 +/
 struct QueryCache
 {
     struct CachedRow
     {
-        Variant[] columns;
+        ColumnData[] columns;
         alias columns this;
 
         int[string] columnIndexes;
@@ -1360,18 +1412,18 @@ struct QueryCache
         {
             this.columnIndexes = columnIndexes;
 
-            auto colapp = appender!(Variant[]);
+            auto colapp = appender!(ColumnData[]);
             foreach (i; 0 .. row.length)
-                colapp.put(row.peek!Variant(i));
+                colapp.put(ColumnData(row.peek!Variant(i)));
             columns = colapp.data;
         }
 
-        Variant opIndex(int index)
+        ColumnData opIndex(int index)
         {
             return columns[index];
         }
 
-        Variant opIndex(string name)
+        ColumnData opIndex(string name)
         {
             auto index = name in columnIndexes;
             enforce(index, new SqliteException("Unknown column name: %s".format(name)));
@@ -1428,11 +1480,10 @@ unittest
     query = db.query("SELECT * FROM test");
     auto data = QueryCache(query);
     assert(data.length == 2);
-    assert(data[0].front == "ABC");
-    assert(data[0][1] == 123);
-    assert(data[1]["msg"] == "DEF");
-    assert(data[1]["num"] == 456);
-    assert(data[1]["num"].coerce!string == "456");
+    assert(data[0].front.as!string == "ABC");
+    assert(data[0][1].as!int == 123);
+    assert(data[1]["msg"].as!string == "DEF");
+    assert(data[1]["num"].as!int == 456);
 }
 
 unittest // QueryCache copies
@@ -1451,7 +1502,7 @@ unittest // QueryCache copies
 
     auto data = getdata(db);
     assert(data.length == 1);
-    assert(data[0][0] == "ABC");
+    assert(data[0][0].as!string == "ABC");
 }
 
 

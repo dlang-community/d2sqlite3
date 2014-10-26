@@ -27,7 +27,7 @@ db.execute(
         id INTEGER PRIMARY KEY,
         last_name TEXT NOT NULL,
         first_name TEXT,
-        score REAL,
+        score FLOAT,
         photo BLOB
      )"
 );
@@ -42,14 +42,14 @@ auto query = db.query(
 query.bind(":last_name", "Smith");
 query.bind(":first_name", "John");
 query.bind(":score", 77.5);
-query.bind(":photo", cast(ubyte[]) "..."); // Store the photo as raw array of data.
+query.bind(":photo", [0xDE, 0xEA, 0xBE, 0xEF]);
 query.execute();
 
 query.reset(); // Need to reset the query after execution.
 query.bind(":last_name", "Doe");
 query.bind(":first_name", "John");
 query.bind(3, 46.8); // Use of index instead of name.
-query.bind(":photo", cast(ubyte[]) x"DEADBEEF");
+query.bind(":photo", null);
 query.execute();
 
 // Count the changes
@@ -64,19 +64,19 @@ query = db.query("SELECT * FROM person");
 foreach (row; query)
 {
     // Retrieve "id", which is the column at index 0, and contains an int,
-    // e.g. using the peek function.
+    // e.g. using the peek function (best performance).
     auto id = row.peek!long(0);
+
+    // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
+    // which returns a ColumnData.
+    auto name = format("%s, %s", row["last_name"].as!string, row["first_name"].as!string);
 
     // Retrieve "score", which is at index 3, e.g. using the peek function.
     auto score = row.peek!double("score");
-
-    // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
-    // which returns a Variant.
-    auto name = format("%s, %s", row["last_name"].get!string, row["first_name"].get!string);
-
+    
     // Retrieve "photo", e.g. using opIndex(index),
-    // which returns a Variant.
-    auto photo = row[4].get!(ubyte[]);
+    // which returns a ColumnData.
+    auto photo = row[4].as!(ubyte[]);
     
     // ... and use all these data!
 }
@@ -86,9 +86,9 @@ auto data = QueryCache(db.query("SELECT * FROM person"));
 foreach (row; data)
 {
     auto id = row[0].get!long;
-    auto score = row["score"].get!double;
     auto name = format("%s, %s", row["last_name"], row["first_name"]);
-    auto photo = row[4].get!(ubyte[]);
+    auto score = row["score"].as!double;
+    auto photo = row[4].as!(ubyte[]);
     // etc.
 }
 ```
