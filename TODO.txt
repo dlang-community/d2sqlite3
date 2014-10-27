@@ -1,0 +1,3 @@
+- Add a more recent C API binding
+- Add functions using sqlite3_uint64 as size if 64 bit size_t
+- Check for new functionality
