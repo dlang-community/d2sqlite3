@@ -237,10 +237,12 @@ public:
     
     /++
     Creates a _query on the database and returns it.
+
+    The _query becomes invalid if the Database goes out of scope and is destroyed.
     +/
     Query query(string sql)
     {
-        return Query(this, sql);
+        return Query(core.handle, sql);
     }
     
     /++
@@ -796,6 +798,11 @@ unittest // Execute an SQL statement with call back
     assertThrown!SqliteException(db.execute("EXPLAIN VACUUM;", &i1));
 }
 
+private string errmsg(sqlite3* dbHandle)
+{
+    return sqlite3_errmsg(dbHandle).to!string;
+}
+
 /++
 An interface to SQLite query execution.
 +/
@@ -804,17 +811,10 @@ struct Query
 private:
     struct _Core
     {
-        Database db;
         string sql;
+        sqlite3* dbHandle;
         sqlite3_stmt* statement; // null if error or empty statement
         int state;
-        
-        this(Database db, string sql, sqlite3_stmt* statement)
-        {
-            this.db = db;
-            this.sql = sql;
-            this.statement = statement;
-        }
         
         ~this()
         {
@@ -831,18 +831,18 @@ private:
     
     @disable this();
     
-    this(Database db, string sql)
+    this(sqlite3* dbHandle, string sql)
     {
         sqlite3_stmt* statement;
         auto result = sqlite3_prepare_v2(
-            db.core.handle,
+            dbHandle,
             cast(char*) sql.toStringz(),
             cast(int) sql.length,
             &statement,
             null
         );
-        enforce(result == SQLITE_OK, new SqliteException(db.errorMsg, result, sql));
-        core = Core(db, sql, statement);
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(dbHandle), result, sql));
+        core = Core(sql, dbHandle, statement);
         if (statement is null)
             core.state = SQLITE_DONE;
     }
@@ -959,7 +959,7 @@ public:
         if (core.statement)
         {
             auto result = sqlite3_reset(core.statement);
-            enforce(result == SQLITE_OK, new SqliteException(core.db.errorMsg, result));
+            enforce(result == SQLITE_OK, new SqliteException(errmsg(core.dbHandle), result));
             core.state = 0;
         }
     }
@@ -976,7 +976,7 @@ public:
         if (core.state != SQLITE_ROW && core.state != SQLITE_DONE)
         {
             reset(); // necessary to retrieve the error message.
-            throw new SqliteException(core.db.errorMsg, core.state);
+            throw new SqliteException(errmsg(core.dbHandle), core.state);
         }
     }
     
@@ -1010,7 +1010,7 @@ public:
         enforce(!empty, new SqliteException("No rows available"));
         core.state = sqlite3_step(core.statement);
         enforce(core.state == SQLITE_DONE || core.state == SQLITE_ROW,
-                new SqliteException(core.db.errorMsg, core.state));
+                new SqliteException(errmsg(core.dbHandle), core.state));
     }
 
     /++
