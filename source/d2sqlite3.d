@@ -37,7 +37,7 @@ import std.string;
 import std.traits;
 import std.typecons;
 import std.variant;
-public import etc.c.sqlite3;
+import sqlite3;
 
 
 /++
