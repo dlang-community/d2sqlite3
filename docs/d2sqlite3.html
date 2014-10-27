@@ -189,7 +189,9 @@ db.<u>execute</u>(<font color=red>"EXPLAIN VACUUM;"</font>, &amp;printRows);
 </dd>
 <dt><big><a name="Database.query"></a>Query <u>query</u>(string <i>sql</i>);
 </big></dt>
-<dd>Creates a query on the database and returns it.<br><br>
+<dd>Creates a query on the database and returns it.
+<br><br>
+The query becomes invalid if the Database goes out of scope and is destroyed.<br><br>
 
 </dd>
 <dt><big><a name="Database.changes"></a>nothrow @property int <u>changes</u>();
@@ -540,6 +542,17 @@ The <i>query</i> will be reset once this constructor have populated the cache.
 </big></dt>
 <dd>Exception thrown when SQLite functions return an error.<br><br>
 
+<dl><dt><big><a name="SqliteException.code"></a>int <u>code</u>;
+</big></dt>
+<dd>The code of the error that raised the exception, or 0 if this code is not known.<br><br>
+
+</dd>
+<dt><big><a name="SqliteException.sql"></a>string <u>sql</u>;
+</big></dt>
+<dd>The SQL code that raised the exception, if applicable.<br><br>
+
+</dd>
+</dl>
 </dd>
 </dl>
 

@@ -1631,7 +1631,14 @@ Exception thrown when SQLite functions return an error.
 +/
 class SqliteException : Exception
 {
+    /++ 
+    The _code of the error that raised the exception, or 0 if this _code is not known.
+    +/
     int code;
+
+    /++
+    The SQL code that raised the exception, if applicable.
+    +/
     string sql;
 
     private this(string msg, string sql, int code,
@@ -1657,7 +1664,7 @@ class SqliteException : Exception
     this(string msg, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
-        this(msg, sql, code, file, line, next);
+        this(msg, sql, 0, file, line, next);
     }
 }
 
