@@ -46,17 +46,17 @@ Metadata from the SQLite library.
 struct Sqlite3
 {
     /++
-    Gets the library's version string (e.g. 3.6.12).
+    Gets the library's version string (e.g. 3.8.7).
     +/
-    static @property string versionString()
+    static @property string versionString() nothrow
     {
         return to!string(sqlite3_libversion());
     }
     
     /++
-    Gets the library's version number (e.g. 3006012).
+    Gets the library's version number (e.g. 3008007).
     +/
-    static @property int versionNumber()
+    static @property int versionNumber() nothrow
     {
         return sqlite3_libversion_number();
     }
@@ -80,7 +80,7 @@ private:
     {
         sqlite3* handle;
         
-        this(sqlite3* handle)
+        this(sqlite3* handle) @safe pure nothrow
         {
             this.handle = handle;
         }
@@ -135,7 +135,7 @@ public:
     /++
     Gets the SQLite internal _handle of the database connection.
     +/
-    @property sqlite3* handle()
+    @property sqlite3* handle() @safe pure nothrow
     {
         return core.handle;
     }
@@ -185,7 +185,7 @@ public:
     Gets the number of database rows that were changed, inserted or deleted by
     the most recently completed query.
     +/
-    @property int changes()
+    @property int changes() nothrow
     {
         assert(core.handle);
         return sqlite3_changes(core.handle);
@@ -195,7 +195,7 @@ public:
     Gets the number of database rows that were changed, inserted or deleted
     since the database was opened.
     +/
-    @property int totalChanges()
+    @property int totalChanges() nothrow
     {
         assert(core.handle);
         return sqlite3_total_changes(core.handle);
@@ -204,7 +204,7 @@ public:
     /++
     Gets the SQLite error code of the last operation.
     +/
-    @property int errorCode()
+    @property int errorCode() nothrow
     {
         return core.handle ? sqlite3_errcode(core.handle) : 0;
     }
@@ -212,7 +212,7 @@ public:
     /++
     Gets the SQLite error message of the last operation.
     +/
-    @property string errorMsg()
+    @property string errorMsg() nothrow
     {
         return core.handle ? sqlite3_errmsg(core.handle).to!string : "Database is not open";
     }
@@ -774,7 +774,7 @@ private:
             core.state = SQLITE_DONE;
     }
 
-    int parameterCount()
+    int parameterCount() nothrow
     {
         if (core.statement)
             return sqlite3_bind_parameter_count(core.statement);
@@ -792,7 +792,7 @@ public:
     }
 
     // Kepts for compatibility
-    ref Query rows()
+    ref Query rows() @safe pure nothrow
     {
         return this;
     }
@@ -814,13 +814,9 @@ public:
         {
             result = sqlite3_bind_null(core.statement, index);
         }
-        else static if (isIntegral!U && U.sizeof <= int.sizeof || isSomeChar!U)
+        else static if (isIntegral!U || isSomeChar!U)
         {
-            result = sqlite3_bind_int(core.statement, index, value);
-        }
-        else static if (isIntegral!U && U.sizeof <= long.sizeof)
-        {
-            result = sqlite3_bind_int64(core.statement, index, value);
+            result = sqlite3_bind_int64(core.statement, index, cast(long) value);
         }
         else static if (isFloatingPoint!U)
         {
@@ -1053,7 +1049,7 @@ struct Row
         int backIndex;
     }
 
-    this(sqlite3_stmt* statement)
+    this(sqlite3_stmt* statement) nothrow
     {
         assert(statement);
         this.statement = statement;
@@ -1061,25 +1057,25 @@ struct Row
     }
 
     /// Input range primitives.
-    @property bool empty()
+    @property bool empty() @safe pure nothrow
     {
         return length == 0;
     }
 
     /// ditto
-    @property ColumnData front()
+    @property ColumnData front() nothrow
     {
         return ColumnData(peek!Variant(0));
     }
 
     /// ditto
-    void popFront()
+    void popFront() @safe pure nothrow
     {
         frontIndex++;
     }
    
     /// Forward range primitive.
-    @property Row save()
+    @property Row save() @safe pure nothrow
     {
         Row ret;
         ret.statement = statement;
@@ -1089,19 +1085,19 @@ struct Row
     }
     
     /// Bidirectional range primitives.
-    @property ColumnData back()
+    @property ColumnData back() nothrow
     {
         return ColumnData(peek!Variant(backIndex - frontIndex));
     }
     
     /// ditto
-    void popBack()
+    void popBack() @safe pure nothrow
     {
         backIndex--;
     }
     
     /// Random access range primitives.
-    @property int length()
+    @property int length() @safe pure nothrow
     {
         return backIndex - frontIndex + 1;
     }
@@ -1425,7 +1421,7 @@ struct QueryCache
 
         int[string] columnIndexes;
 
-        private this(Row row, int[string] columnIndexes)
+        private this(Row row, int[string] columnIndexes) nothrow
         {
             this.columnIndexes = columnIndexes;
 
@@ -1435,7 +1431,7 @@ struct QueryCache
             columns = colapp.data;
         }
 
-        ColumnData opIndex(int index)
+        ColumnData opIndex(int index) nothrow
         {
             return columns[index];
         }
