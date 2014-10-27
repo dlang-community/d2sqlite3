@@ -37,6 +37,7 @@ import std.string;
 import std.traits;
 import std.typecons;
 import std.variant;
+import std.c.string : memcpy;
 import sqlite3;
 
 
@@ -156,21 +157,82 @@ public:
     }
 
     /++
-    Execute the given SQL code.
+    Executes the given SQL code.
 
-    Rows returned by any statements are ignored.
+    Rows returned by any statements are ignored, unless a callback is given.
+    The callback will be called for each row returned by the query. The first argument
+    of the callback is a $(D string[]) containing the names of the row's columns;
+    the second argument of the callback is a $(D string[]) containing the data of the
+    row's columns. The callback must return an $(D int) or $(D void).
+    If the callback returns an $(D int) that is not zero, the execution of
+    the query is aborted.
+
+    See: $(LINK http://www.sqlite.org/c3ref/exec.html).
     +/
-    void execute(string sql)
+    void execute(F = typeof(null))(string sql, F callback = null)
     {
-        char* errmsg;
+        static if (is(typeof({ F fun; int i = fun([""], [""]); })))
+            enum funType = "int";
+        else static if (is(typeof({ F fun; fun([""], [""]); })))
+            enum funType = "void";
+        else static if (is(F == typeof(null)))
+            enum funType = "null";
+        else
+            static assert(false, "Unexpected type of callback");
+
+        static string[] fromc(char** data, int len) pure nothrow
+        {
+            auto app = appender!(string[]);
+            foreach (i; 0 .. len)
+                app.put(data[i].to!string);
+            return app.data;
+        }
+
+        extern(C) static int callbackAdapter(void* callback, int nCol, char** texts, char** names)
+        {
+            auto fun = cast(int function(string[], string[])) callback;
+            static if (funType == "int")
+                return fun(fromc(names, nCol), fromc(texts, nCol));
+            else
+            {
+                fun(fromc(names, nCol), fromc(texts, nCol));
+                return 0;
+            }
+        }
+
         assert(core.handle);
-        sqlite3_exec(core.handle, cast(char*) sql.toStringz(), null, null, &errmsg);
+
+        char* errmsg;
+        auto result = sqlite3_exec(core.handle,
+                                   cast(char*) sql.toStringz(),
+                                   callback ? &callbackAdapter : null,
+                                   callback,
+                                   &errmsg);
+
         if (errmsg !is null)
         {
             auto msg = to!string(errmsg);
             sqlite3_free(errmsg);
             throw new SqliteException(msg, sql);
         }
+    }
+    ///
+    unittest
+    {
+        auto db = Database(":memory:");
+        db.execute("VACUUM;");
+    }
+    ///
+    unittest
+    {
+        static int printRows(string[] names, string[] texts)
+        {
+            // use names and texts
+            return 0;
+        }
+        
+        auto db = Database(":memory:");
+        db.execute("EXPLAIN VACUUM;", &printRows);
     }
     
     /++
@@ -269,7 +331,6 @@ public:
                         "argument @{n} of function @{name}() should be of an array of bytes (BLOB)"));
                     n = sqlite3_value_bytes(argv[@{index}]);
                     blob.length = n;
-                    import std.c.string : memcpy;
                     memcpy(blob.ptr, sqlite3_value_blob(argv[@{index}]), n);
                     args[@{index}] = to!(PT[@{index}])(blob.dup);
                 };
@@ -492,7 +553,6 @@ public:
                 char[] s1, s2;
                 s1.length = n1;
                 s2.length = n2;
-                import std.c.string : memcpy;
                 memcpy(s1.ptr, str1, n1);
                 memcpy(s2.ptr, str2, n2);
                 return fun(cast(immutable) s1, cast(immutable) s2);
@@ -722,6 +782,19 @@ unittest // Execute an SQL statement
     db.execute("ANALYZE");
 }
 
+unittest // Execute an SQL statement with call back
+{
+    import std.exception;
+
+    static void v(string[] names, string[] texts) { }
+    static int i0(string[] names, string[] texts) { return 0; }
+    static int i1(string[] names, string[] texts) { return 1; }
+    
+    auto db = Database(":memory:");
+    db.execute("EXPLAIN VACUUM;", &v);
+    db.execute("EXPLAIN VACUUM;", &i0);
+    assertThrown!SqliteException(db.execute("EXPLAIN VACUUM;", &i1));
+}
 
 /++
 An interface to SQLite query execution.
@@ -1139,7 +1212,6 @@ struct Row
             auto length = sqlite3_column_bytes(statement, i);
             ubyte[] blob;
             blob.length = length;
-            import std.c.string : memcpy;
             memcpy(blob.ptr, ptr, length);
             return cast(T) blob;
         }

@@ -2,3 +2,4 @@
 __test__*
 dub.selections.json
 libd2sqlite3.a
+sqlite3.html

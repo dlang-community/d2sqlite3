@@ -35,14 +35,14 @@ Nicolas Sicard (dransic@gmail.com).
 </big></dt>
 <dd>Metadata from the SQLite library.<br><br>
 
-<dl><dt><big><a name="Sqlite3.versionString"></a>static @property string <u>versionString</u>();
+<dl><dt><big><a name="Sqlite3.versionString"></a>static nothrow @property string <u>versionString</u>();
 </big></dt>
-<dd>Gets the library's version string (e.g. 3.6.12).<br><br>
+<dd>Gets the library's version string (e.g. 3.8.7).<br><br>
 
 </dd>
-<dt><big><a name="Sqlite3.versionNumber"></a>static @property int <u>versionNumber</u>();
+<dt><big><a name="Sqlite3.versionNumber"></a>static nothrow @property int <u>versionNumber</u>();
 </big></dt>
-<dd>Gets the library's version number (e.g. 3006012).<br><br>
+<dd>Gets the library's version number (e.g. 3008007).<br><br>
 
 </dd>
 </dl>
@@ -138,7 +138,7 @@ The database is open using the sqlite3_open_v2 function.
     parameter or to use <i>path</i> as a file URI if the current configuration allows it.<br><br>
 
 </dd>
-<dt><big><a name="Database.handle"></a>@property sqlite3* <u>handle</u>();
+<dt><big><a name="Database.handle"></a>pure nothrow @property @safe sqlite3* <u>handle</u>();
 </big></dt>
 <dd>Gets the SQLite internal handle of the database connection.<br><br>
 
@@ -154,36 +154,62 @@ Throws an SqliteException if the database cannot be closed.
     or a query depending on it is a programming error.<br><br>
 
 </dd>
-<dt><big><a name="Database.execute"></a>void <u>execute</u>(string <i>sql</i>);
+<dt><big><a name="Database.execute"></a>void <u>execute</u>(F = typeof(null))(string <i>sql</i>, F <i>callback</i> = null);
 </big></dt>
-<dd>Execute the given SQL code.
+<dd>Executes the given SQL code.
 <br><br>
-Rows returned by any statements are ignored.<br><br>
+Rows returned by any statements are ignored, unless a callback is given.
+    The callback will be called for each row returned by the query. The first argument
+    of the callback is a <tt>string[]</tt> containing the names of the row's columns;
+    the second argument of the callback is a <tt>string[]</tt> containing the data of the
+    row's columns. The callback must return an <tt>int</tt> or <tt>void</tt>.
+    If the callback returns an <tt>int</tt> that is not zero, the execution of
+    the query is aborted.
 
+<br><br>
+<b>See:</b><br>
+<a href="http://www.sqlite.org/c3ref/exec.html">http://www.sqlite.org/c3ref/exec.html</a>.<br><br>
+<b>Examples:</b><br>
+<pre class="d_code">
+<font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
+db.<u>execute</u>(<font color=red>"VACUUM;"</font>);
+</pre>
+<br><br><b>Examples:</b><br>
+<pre class="d_code">
+<font color=blue>static</font> <font color=blue>int</font> printRows(string[] names, string[] texts)
+{
+    <font color=green>// use names and texts
+</font>    <font color=blue>return</font> 0;
+}
+
+<font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
+db.<u>execute</u>(<font color=red>"EXPLAIN VACUUM;"</font>, &amp;printRows);
+</pre>
+<br><br>
 </dd>
 <dt><big><a name="Database.query"></a>Query <u>query</u>(string <i>sql</i>);
 </big></dt>
 <dd>Creates a query on the database and returns it.<br><br>
 
 </dd>
-<dt><big><a name="Database.changes"></a>@property int <u>changes</u>();
+<dt><big><a name="Database.changes"></a>nothrow @property int <u>changes</u>();
 </big></dt>
 <dd>Gets the number of database rows that were changed, inserted or deleted by
     the most recently completed query.<br><br>
 
 </dd>
-<dt><big><a name="Database.totalChanges"></a>@property int <u>totalChanges</u>();
+<dt><big><a name="Database.totalChanges"></a>nothrow @property int <u>totalChanges</u>();
 </big></dt>
 <dd>Gets the number of database rows that were changed, inserted or deleted
     since the database was opened.<br><br>
 
 </dd>
-<dt><big><a name="Database.errorCode"></a>@property int <u>errorCode</u>();
+<dt><big><a name="Database.errorCode"></a>nothrow @property int <u>errorCode</u>();
 </big></dt>
 <dd>Gets the SQLite error code of the last operation.<br><br>
 
 </dd>
-<dt><big><a name="Database.errorMsg"></a>@property string <u>errorMsg</u>();
+<dt><big><a name="Database.errorMsg"></a>nothrow @property string <u>errorMsg</u>();
 </big></dt>
 <dd>Gets the SQLite error message of the last operation.<br><br>
 
@@ -387,25 +413,25 @@ A <u>Row</u> is just a view of the current row when iterating the results of a <
     It becomes invalid as soon as <tt>Query.popFront</tt> is called. <u>Row</u> contains
     undefined data afterwards.<br><br>
 
-<dl><dt><big><a name="Row.empty"></a>@property bool <u>empty</u>();
-<br><a name="Row.front"></a>@property ColumnData <u>front</u>();
-<br><a name="Row.popFront"></a>void <u>popFront</u>();
+<dl><dt><big><a name="Row.empty"></a>pure nothrow @property @safe bool <u>empty</u>();
+<br><a name="Row.front"></a>nothrow @property ColumnData <u>front</u>();
+<br><a name="Row.popFront"></a>pure nothrow @safe void <u>popFront</u>();
 </big></dt>
 <dd>Input range primitives.<br><br>
 
 </dd>
-<dt><big><a name="Row.save"></a>@property Row <u>save</u>();
+<dt><big><a name="Row.save"></a>pure nothrow @property @safe Row <u>save</u>();
 </big></dt>
 <dd>Forward range primitive.<br><br>
 
 </dd>
-<dt><big><a name="Row.back"></a>@property ColumnData <u>back</u>();
-<br><a name="Row.popBack"></a>void <u>popBack</u>();
+<dt><big><a name="Row.back"></a>nothrow @property ColumnData <u>back</u>();
+<br><a name="Row.popBack"></a>pure nothrow @safe void <u>popBack</u>();
 </big></dt>
 <dd>Bidirectional range primitives.<br><br>
 
 </dd>
-<dt><big><a name="Row.length"></a>@property int <u>length</u>();
+<dt><big><a name="Row.length"></a>pure nothrow @property @safe int <u>length</u>();
 </big></dt>
 <dd>Random access range primitives.<br><br>
 
@@ -421,8 +447,11 @@ T must be a boolean, a built-in numeric type, a string, an array or a Variant.
     If the column data is NULL, T.init is returned.
 
 <br><br>
-<b>Warning:</b><br>
-If the column is specified by its name, the names of all the columns are tested
+<b>Warnings:</b><br>
+The result is undefined if then index is out of range.
+<br><br>
+
+        If the column is specified by its name, the names of all the columns are tested
         each time this function is called: use numeric indexing for better performance.<br><br>
 
 </dd>
