@@ -842,8 +842,6 @@ private:
     alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
     Core core;
     
-    @disable this();
-    
     this(sqlite3* dbHandle, string sql)
     {
         sqlite3_stmt* statement;
