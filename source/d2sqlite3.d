@@ -398,6 +398,8 @@ public:
         static assert(is(Aggregate == struct), name ~ " shoud be a struct");
         static assert(is(typeof(Aggregate.accumulate) == function), name ~ " shoud define accumulate()");
         static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
+        static assert(variadicFunctionStyle!(Aggregate.accumulate) == Variadic.no, "variadic functions are not supported");
+        static assert(variadicFunctionStyle!(Aggregate.result) == Variadic.no, "variadic functions are not supported");
 
         alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PT;
         alias ReturnType!(Aggregate.result) RT;
@@ -541,8 +543,9 @@ public:
     +/
     void createCollation(alias fun, string name = __traits(identifier, fun))()
     {
-        static assert(__traits(isStaticFunction, fun), "symbol " ~ __traits(identifier, fun)
-                      ~ " of type " ~ typeof(fun).stringof ~ " is not a static function");
+        static assert(isCallable!fun, "expecting a callable");
+        static assert(__traits(isStaticFunction, fun), "function with context pointers are not supported");
+        static assert(variadicFunctionStyle!(fun) == Variadic.no, "variadic functions are not supported");
 
         alias ParameterTypeTuple!fun PT;
         static assert(isSomeString!(PT[0]), "the first argument of function " ~ name ~ " should be a string");
@@ -616,13 +619,11 @@ public:
     {
         import std.typetuple;
 
-        static if (__traits(isStaticFunction, fun))
-            enum funpointer = &fun;
-        else
-            static assert(false, "symbol " ~ __traits(identifier, fun) ~ " of type "
-                          ~ typeof(fun).stringof ~ " is not a static function");
+        static assert(isCallable!fun, "expecting a callable");
+        static assert(__traits(isStaticFunction, fun), "function with context pointers are not supported");
+        static assert(variadicFunctionStyle!(fun) == Variadic.no, "variadic functions are not supported");
 
-        static assert(variadicFunctionStyle!(fun) == Variadic.no);
+        enum funpointer = &fun;
 
         alias staticMap!(Unqual, ParameterTypeTuple!fun) PT;
         alias ReturnType!fun RT;
