@@ -39,7 +39,7 @@ import std.typecons;
 import std.typetuple;
 import std.variant;
 import std.c.string : memcpy;
-import sqlite3;
+public import sqlite3;
 
 
 /++
