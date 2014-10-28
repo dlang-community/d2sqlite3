@@ -1669,7 +1669,7 @@ class SqliteException : Exception
     this(string msg, int code, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
-        this("error %d : %s".format(code, msg), sql, code, file, line, next);
+        this("error %d: %s".format(code, msg), sql, code, file, line, next);
     }
 
     this(string msg, string sql = null,
