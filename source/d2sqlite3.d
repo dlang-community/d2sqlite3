@@ -36,6 +36,7 @@ import std.range;
 import std.string;
 import std.traits;
 import std.typecons;
+import std.typetuple;
 import std.variant;
 import std.c.string : memcpy;
 import sqlite3;
@@ -68,6 +69,17 @@ deprecated enum SharedCache : bool
 {
     enabled = true, /// Shared cache is _enabled.
     disabled = false /// Shared cache is _disabled (the default in SQLite).
+}
+
+
+///
+enum Deterministic
+{
+    ///
+    yes = 0x800,
+
+    ///
+    no = 0
 }
 
 
@@ -389,12 +401,12 @@ public:
     The type Aggregate must be a $(DK struct) that implements at least these
     two methods: $(D accumulate) and $(D result), and that must be default-constructible.
 
-    See also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
+    See also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
-    void createAggregate(Aggregate, string name = Aggregate.stringof)()
+    void createAggregate(Aggregate,
+                         string name = __traits(identifier, Aggregate),
+                         Deterministic det = Deterministic.yes)()
     {
-        import std.typetuple;
-
         static assert(is(Aggregate == struct), name ~ " shoud be a struct");
         static assert(is(typeof(Aggregate.accumulate) == function), name ~ " shoud define accumulate()");
         static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
@@ -472,7 +484,7 @@ public:
             core.handle,
             name.toStringz(),
             PT.length,
-            SQLITE_UTF8,
+            SQLITE_UTF8 | det,
             null,
             null,
             mixin(format("&%s_step", name)),
@@ -613,12 +625,12 @@ public:
     The function will have the name $(D_PARAM name) in the database; this name defaults to
     the identifier of the function fun.
 
-    See also: $(LINK http://www.sqlite.org/lang_corefunc.html)
+    See also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
-    void createFunction(alias fun, string name = __traits(identifier, fun))()
+    void createFunction(alias fun,
+                        string name = __traits(identifier, fun),
+                        Deterministic det = Deterministic.yes)()
     {
-        import std.typetuple;
-
         static assert(isCallable!fun, "expecting a callable");
         static assert(__traits(isStaticFunction, fun), "function with context pointers are not supported");
         static assert(variadicFunctionStyle!(fun) == Variadic.no, "variadic functions are not supported");
@@ -662,7 +674,7 @@ public:
             core.handle,
             name.toStringz(),
             PT.length,
-            SQLITE_UTF8,
+            SQLITE_UTF8 | det,
             null,
             mixin(format("&%s", name)),
             null,

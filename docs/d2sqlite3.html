@@ -47,6 +47,17 @@ Nicolas Sicard (dransic@gmail.com).
 </dd>
 </dl>
 </dd>
+<dt><big><a name="Deterministic"></a>enum <u>Deterministic</u>: int;
+</big></dt>
+<dd><br><br>
+<dl><dt><big><a name="Deterministic.yes"></a><u>yes</u></big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="Deterministic.no"></a><u>no</u></big></dt>
+<dd><br><br>
+</dd>
+</dl>
+</dd>
 <dt><big><a name="Database"></a>struct <u>Database</u>;
 </big></dt>
 <dd>An interface to a SQLite database connection.<br><br>
@@ -216,7 +227,7 @@ The query becomes invalid if the Database goes out of scope and is destroyed.<br
 <dd>Gets the SQLite error message of the last operation.<br><br>
 
 </dd>
-<dt><big><a name="Database.createAggregate"></a>void <u>createAggregate</u>(Aggregate, string name = Aggregate.stringof)();
+<dt><big><a name="Database.createAggregate"></a>void <u>createAggregate</u>(Aggregate, string name = __traits(identifier, Aggregate), Deterministic det = Deterministic.yes)();
 </big></dt>
 <dd>Creates and registers a new aggregate function in the database.
 <br><br>
@@ -224,7 +235,7 @@ The type Aggregate must be a <strong><tt>struct</tt></strong> that implements at
     two methods: <tt>accumulate</tt> and <tt>result</tt>, and that must be default-constructible.
 <br><br>
 
-    See also: <a href="http://www.sqlite.org/lang_aggfunc.html">http://www.sqlite.org/lang_aggfunc.html</a><br><br>
+    See also: <a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>struct</font> weighted_average
@@ -310,7 +321,7 @@ query = db.query(<font color=red>"SELECT word FROM test ORDER BY word COLLATE my
 </pre>
 <br><br>
 </dd>
-<dt><big><a name="Database.createFunction"></a>void <u>createFunction</u>(alias fun, string name = __traits(identifier, fun))();
+<dt><big><a name="Database.createFunction"></a>void <u>createFunction</u>(alias fun, string name = __traits(identifier, fun), Deterministic det = Deterministic.yes)();
 </big></dt>
 <dd>Creates and registers a simple function in the database.
 <br><br>
@@ -324,7 +335,7 @@ The function <i>fun</i> must satisfy these criteria:
     the identifier of the function fun.
 <br><br>
 
-    See also: <a href="http://www.sqlite.org/lang_corefunc.html">http://www.sqlite.org/lang_corefunc.html</a><br><br>
+    See also: <a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>static</font> string my_msg(string name)
