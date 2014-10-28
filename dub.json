@@ -4,7 +4,22 @@
 	"homepage": "https://github.com/biozic/d2sqlite3",
 	"authors": ["Nicolas Sicard"],
 	"copyright": "Copyright © 2011-14, Nicolas Sicard",
+	"license": "BSL-1.0",
 	"libs": ["sqlite3"],
-	"targetType": "library",
-	"license": "BSL-1.0"
+	"configurations": [
+		{
+			"name": "library",
+			"targetType": "library"
+		},
+		{
+			"name": "dsqlar",
+            "targetName": "dsqlar",
+			"targetType": "executable",
+			"sourcePaths": ["examples/dsqlar"],
+			"dependencies": {
+				"sizefmt": ">=0.1.0"
+			},
+            "lflags": ["-L/usr/local/lib"]
+		}
+	]
 }
