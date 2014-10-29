@@ -233,7 +233,7 @@ public:
     unittest
     {
         auto db = Database(":memory:");
-        db.execute("VACUUM;");
+        db.execute("VACUUM");
     }
     ///
     unittest
@@ -245,7 +245,7 @@ public:
         }
         
         auto db = Database(":memory:");
-        db.execute("EXPLAIN VACUUM;", &printRows);
+        db.execute("EXPLAIN VACUUM", &printRows);
     }
     
     /++
@@ -637,11 +637,12 @@ public:
         db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
         db.createAggregate!(weighted_average, "w_avg")();
         
-        auto query = db.query("INSERT INTO test (value, weight) VALUES (:v, :w)");
+        auto query = db.query("INSERT INTO test (value, weight) VALUES (?1, ?2)");
         double[double] list = [11.5: 3, 14.8: 1.6, 19: 2.4];
-        foreach (value, weight; list) {
-            query.bind(":v", value);
-            query.bind(":w", weight);
+        foreach (value, weight; list)
+        {
+            query.bind(1, value);
+            query.bind(2, weight);
             query.execute();
             query.reset();
         }
@@ -721,10 +722,10 @@ public:
         db.createCollation!my_collation();
         db.execute("CREATE TABLE test (word TEXT)");
         
-        auto query = db.query("INSERT INTO test (word) VALUES (:wd)");
+        auto query = db.query("INSERT INTO test (word) VALUES (?)");
         foreach (word; ["straße", "strasses"])
         {
-            query.bind(":wd", word);
+            query.bind(1, word);
             query.execute();
             query.reset();
         }
@@ -926,8 +927,6 @@ public:
     +/
     void bind(T)(int index, T value)
     {
-        enforce(parameterCount > 0, new SqliteException("no parameter to bind to"));
-        
         alias Unqual!T U;
         int result;
         
@@ -975,7 +974,6 @@ public:
     /// Ditto
     void bind(T)(string name, T value)
     {
-        enforce(parameterCount > 0, new SqliteException("no parameter to bind to"));
         auto index = sqlite3_bind_parameter_index(core.statement, cast(char*) name.toStringz());
         enforce(index > 0, new SqliteException(format("no parameter named '%s'", name)));
         bind(index, value);
@@ -1092,8 +1090,8 @@ unittest // Simple parameters binding
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
     
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", 42);
+    auto query = db.query("INSERT INTO test (val) VALUES (?)");
+    query.bind(1, 42);
     query.execute();
     query.reset();
     query.bind(1, 42);
@@ -1135,8 +1133,8 @@ unittest // Other Query tests
     auto db = Database(":memory:");
     {
         db.execute("CREATE TABLE test (val INTEGER)");
-        auto tmp = db.query("INSERT INTO test (val) VALUES (:val)");
-        tmp.bind(":val", 42);
+        auto tmp = db.query("INSERT INTO test (val) VALUES (?)");
+        tmp.bind(1, 42);
         tmp.execute();
     }
     
@@ -1325,17 +1323,17 @@ unittest // Row random-access range interface
 
     {
         db.execute("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER, d INTEGER)");
-        auto query = db.query("INSERT INTO test (a, b, c, d) VALUES (:a, :b, :c, :d)");
-        query.bind(":a", 1);
-        query.bind(":b", 2);
-        query.bind(":c", 3);
-        query.bind(":d", 4);
+        auto query = db.query("INSERT INTO test (a, b, c, d) VALUES (?, ?, ?, ?)");
+        query.bind(1, 1);
+        query.bind(2, 2);
+        query.bind(3, 3);
+        query.bind(4, 4);
         query.execute();
         query.reset();
-        query.bind(":a", 5);
-        query.bind(":b", 6);
-        query.bind(":c", 7);
-        query.bind(":d", 8);
+        query.bind(1, 5);
+        query.bind(2, 6);
+        query.bind(3, 7);
+        query.bind(4, 8);
         query.execute();
     }
 
@@ -1429,17 +1427,17 @@ unittest // Getting integral values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", cast(byte) 42);
+    auto query = db.query("INSERT INTO test (val) VALUES (?)");
+    query.bind(1, cast(byte) 42);
     query.execute();
     query.reset();
-    query.bind(":val", 42U);
+    query.bind(1, 42U);
     query.execute();
     query.reset();
-    query.bind(":val", 42UL);
+    query.bind(1, 42UL);
     query.execute();
     query.reset();
-    query.bind(":val", '\x2A');
+    query.bind(1, '\x2A');
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1452,17 +1450,17 @@ unittest // Getting floating point values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val FLOAT)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", 42.0F);
+    auto query = db.query("INSERT INTO test (val) VALUES (?)");
+    query.bind(1, 42.0F);
     query.execute();
     query.reset();
-    query.bind(":val", 42.0);
+    query.bind(1, 42.0);
     query.execute();
     query.reset();
-    query.bind(":val", 42.0L);
+    query.bind(1, 42.0L);
     query.execute();
     query.reset();
-    query.bind(":val", "42");
+    query.bind(1, "42");
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1475,8 +1473,8 @@ unittest // Getting text values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", "I am a text.");
+    auto query = db.query("INSERT INTO test (val) VALUES (?)");
+    query.bind(1, "I am a text.");
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1488,9 +1486,9 @@ unittest // Getting blob values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val BLOB)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
+    auto query = db.query("INSERT INTO test (val) VALUES (?)");
     ubyte[] array = [1, 2, 3];
-    query.bind(":val", array);
+    query.bind(1, array);
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1505,8 +1503,8 @@ unittest // Getting null values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (:val)");
-    query.bind(":val", null);
+    auto query = db.query("INSERT INTO test (val) VALUES (?)");
+    query.bind(1, null);
     query.execute();
 
     query = db.query("SELECT * FROM test");
@@ -1602,13 +1600,13 @@ unittest
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (msg TEXT, num FLOAT)");
     
-    auto query = db.query("INSERT INTO test (msg, num) VALUES (:msg, :num)");
-    query.bind(":msg", "ABC");
-    query.bind(":num", 123);
+    auto query = db.query("INSERT INTO test (msg, num) VALUES (?1, ?2)");
+    query.bind(1, "ABC");
+    query.bind(2, 123);
     query.execute();
     query.reset();
-    query.bind(":msg", "DEF");
-    query.bind(":num", 456);
+    query.bind(1, "DEF");
+    query.bind(2, 456);
     query.execute();
     
     query = db.query("SELECT * FROM test");
@@ -1624,8 +1622,8 @@ unittest // QueryCache copies
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (msg TEXT)");
-    auto query = db.query("INSERT INTO test (msg) VALUES (:msg)");
-    query.bind(":msg", "ABC");
+    auto query = db.query("INSERT INTO test (msg) VALUES (?)");
+    query.bind(1, "ABC");
     query.execute();
 
     static getdata(Database db)
