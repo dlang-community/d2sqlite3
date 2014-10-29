@@ -227,6 +227,56 @@ The query becomes invalid if the Database goes out of scope and is destroyed.<br
 <dd>Gets the SQLite error message of the last operation.<br><br>
 
 </dd>
+<dt><big><a name="Database.createFunction"></a>void <u>createFunction</u>(alias fun, string name = __traits(identifier, fun), Deterministic det = Deterministic.yes)(void* <i>userData</i> = null);
+</big></dt>
+<dd>Creates and registers a simple function in the database.
+<br><br>
+The function <i>fun</i> must satisfy these criteria:
+    <ul>        <li>It must not be a variadic.</li>
+        <li>Its arguments must all have a type that is compatible with SQLite types:
+             boolean, integral, floating point, string, or array of bytes (BLOB types).</li>
+        <li>It can have only one parameter of type <tt>void*</tt> and it must be the last one.</li>
+        <li>Its return value must also be of a compatible type.</li>
+    </ul>
+    The function will have the name <i>name</i> in the database; this name defaults to
+    the identifier of the function fun.
+
+<br><br>
+<b>Parameters:</b><br>
+userData = A pointer to some user data, that will be passed to <i>fun</i>
+            as its last argument if its type is <tt>void*</tt>.
+<br><br>
+
+    See also: <a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
+<b>Examples:</b><br>
+<pre class="d_code">
+<font color=blue>static</font> string my_msg(string name)
+{
+    <font color=blue>return</font> <font color=red>"Hello, %s!"</font>.format(name);
+}
+
+<font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
+db.<u>createFunction</u>!my_msg();
+
+<font color=blue>auto</font> query = db.query(<font color=red>"SELECT my_msg('John')"</font>);
+<font color=blue>assert</font>(query.oneValue!string() == <font color=red>"Hello, John!"</font>);
+</pre>
+<br><br><b>Examples:</b><br>
+<pre class="d_code">
+<font color=blue>static</font> string fun(string msg, <font color=blue>void</font>* data)
+{
+    <font color=blue>auto</font> ptr = <font color=blue>cast</font>(<font color=blue>int</font>*) data;
+    <font color=blue>return</font> <font color=red>"%s %d"</font>.format(msg, *ptr);
+}
+
+<font color=blue>int</font> value = 42;
+<font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
+db.<u>createFunction</u>!fun(&amp;value);
+<font color=blue>auto</font> query = db.query(<font color=red>"SELECT fun('The number is')"</font>);
+<font color=blue>assert</font>(query.oneValue!string() == <font color=red>"The number is 42"</font>);
+</pre>
+<br><br>
+</dd>
 <dt><big><a name="Database.createAggregate"></a>void <u>createAggregate</u>(Aggregate, string name = __traits(identifier, Aggregate), Deterministic det = Deterministic.yes)();
 </big></dt>
 <dd>Creates and registers a new aggregate function in the database.
@@ -242,13 +292,13 @@ The type Aggregate must be a <strong><tt>struct</tt></strong> that implements at
 {
     <font color=blue>double</font> total_value = 0.0;
     <font color=blue>double</font> total_weight = 0.0;
-
+    
     <font color=blue>void</font> accumulate(<font color=blue>double</font> value, <font color=blue>double</font> weight)
     {
         total_value += value * weight;
         total_weight += weight;
     }
-
+    
     <font color=blue>double</font> result()
     {
         <font color=blue>return</font> total_value / total_weight;
@@ -318,36 +368,6 @@ db.execute(<font color=red>"CREATE TABLE test (word TEXT)"</font>);
 
 query = db.query(<font color=red>"SELECT word FROM test ORDER BY word COLLATE my_collation"</font>);
 <font color=blue>assert</font>(query.oneValue!string == <font color=red>"straße"</font>);
-</pre>
-<br><br>
-</dd>
-<dt><big><a name="Database.createFunction"></a>void <u>createFunction</u>(alias fun, string name = __traits(identifier, fun), Deterministic det = Deterministic.yes)();
-</big></dt>
-<dd>Creates and registers a simple function in the database.
-<br><br>
-The function <i>fun</i> must satisfy these criteria:
-    <ul>        <li>It must not be a variadic.</li>
-        <li>Its arguments must all have a type that is compatible with SQLite types:
-             boolean, integral, floating point, string, or array of bytes (BLOB types).</li>
-        <li>Its return value must also be of a compatible type.</li>
-    </ul>
-    The function will have the name <i>name</i> in the database; this name defaults to
-    the identifier of the function fun.
-<br><br>
-
-    See also: <a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
-<b>Examples:</b><br>
-<pre class="d_code">
-<font color=blue>static</font> string my_msg(string name)
-{
-    <font color=blue>return</font> <font color=red>"Hello, %s!"</font>.format(name);
-}
-
-<font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
-db.<u>createFunction</u>!my_msg();
-
-<font color=blue>auto</font> query = db.query(<font color=red>"SELECT my_msg('John')"</font>);
-<font color=blue>assert</font>(query.oneValue!string() == <font color=red>"Hello, John!"</font>);
 </pre>
 <br><br>
 </dd>

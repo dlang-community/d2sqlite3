@@ -29,6 +29,7 @@ Macros:
 +/
 module d2sqlite3;
 
+import std.algorithm;
 import std.array;
 import std.conv;
 import std.exception;
@@ -348,6 +349,10 @@ public:
                     memcpy(blob.ptr, sqlite3_value_blob(argv[@{index}]), n);
                     args[@{index}] = to!(PT[@{index}])(blob.dup);
                 };
+            else static if (is(UT == void*))
+                enum templ = q{
+                    @{previous_block}
+                };
             else
                 static assert(false, PT[index].stringof ~ " is not a compatible argument type");
 
@@ -396,9 +401,125 @@ public:
     }
 
     /++
+    Creates and registers a simple function in the database.
+
+    The function $(D_PARAM fun) must satisfy these criteria:
+    $(UL
+        $(LI It must not be a variadic.)
+        $(LI Its arguments must all have a type that is compatible with SQLite types:
+             boolean, integral, floating point, string, or array of bytes (BLOB types).)
+        $(LI It can have only one parameter of type $(D void*) and it must be the last one.)
+        $(LI Its return value must also be of a compatible type.)
+    )
+    The function will have the name $(D_PARAM name) in the database; this name defaults to
+    the identifier of the function fun.
+
+    Parameters:
+        userData = A pointer to some user data, that will be passed to $(D_PARAM fun)
+            as its last argument if its type is $(D void*).
+
+    See also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
+    +/
+    void createFunction(alias fun,
+                        string name = __traits(identifier, fun),
+                        Deterministic det = Deterministic.yes)
+        (void* userData = null)
+    {
+        static assert(isCallable!fun, "expecting a callable");
+        static assert(__traits(isStaticFunction, fun), "function with context pointers are not supported");
+        static assert(variadicFunctionStyle!(fun) == Variadic.no, "variadic functions are not supported");
+
+        enum funpointer = &fun;
+
+        alias PTorig = staticMap!(Unqual, ParameterTypeTuple!fun);
+        static assert(staticIndexOf!(void*, PTorig).among(-1, PTorig.length - 1),
+                      "The paramater of type void* must be the last one");
+        enum hasVoid = staticIndexOf!(void*, PTorig) >= 0;
+        alias PT = Erase!(void*, PTorig);
+        alias ReturnType!fun RT;
+
+        enum x_func = q{
+            extern(C) static void @{name}(sqlite3_context* context, int argc, sqlite3_value** argv)
+            {
+                PT args;
+                int type, n;
+                @{blob}
+
+                @{block_read_values}
+
+                static if (hasVoid)
+                    auto userData = sqlite3_user_data(context);
+
+                try
+                {
+                    static if (hasVoid)
+                        auto tmp = funpointer(args, userData);
+                    else
+                        auto tmp = funpointer(args);
+                    mixin(block_return_result!RT);
+                }
+                catch (Exception e)
+                {
+                    auto txt = "error in function @{name}(): " ~ e.msg;
+                    sqlite3_result_error(context, cast(char*) txt.toStringz(), -1);
+                }
+            }
+        };
+        enum x_func_mix = render(x_func, [
+            "name": name,
+            "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
+            "block_read_values": block_read_values!(PT.length, name, PT)
+        ]);
+
+        mixin(x_func_mix);
+
+        assert(core.handle);
+        auto result = sqlite3_create_function(
+            core.handle,
+            name.toStringz(),
+            PT.length,
+            SQLITE_UTF8 | det,
+            userData,
+            mixin(format("&%s", name)),
+            null,
+            null
+        );
+        enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
+    }
+    ///
+    unittest // Function creation
+    {
+        static string my_msg(string name)
+        {
+            return "Hello, %s!".format(name);
+        }
+       
+        auto db = Database(":memory:");
+        db.createFunction!my_msg();
+
+        auto query = db.query("SELECT my_msg('John')");
+        assert(query.oneValue!string() == "Hello, John!");
+    }
+    ///
+    unittest // Function creation with user data
+    {
+        static string fun(string msg, void* data)
+        {
+            auto ptr = cast(int*) data;
+            return "%s %d".format(msg, *ptr);
+        }
+
+        int value = 42;
+        auto db = Database(":memory:");
+        db.createFunction!fun(&value);
+        auto query = db.query("SELECT fun('The number is')");
+        assert(query.oneValue!string() == "The number is 42");
+    }
+
+    /++
     Creates and registers a new aggregate function in the database.
 
-    The type Aggregate must be a $(DK struct) that implements at least these
+     The type Aggregate must be a $(DK struct) that implements at least these
     two methods: $(D accumulate) and $(D result), and that must be default-constructible.
 
     See also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
@@ -412,10 +533,10 @@ public:
         static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
         static assert(variadicFunctionStyle!(Aggregate.accumulate) == Variadic.no, "variadic functions are not supported");
         static assert(variadicFunctionStyle!(Aggregate.result) == Variadic.no, "variadic functions are not supported");
-
+        
         alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PT;
         alias ReturnType!(Aggregate.result) RT;
-
+        
         enum x_step = q{
             extern(C) static void @{name}_step(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
@@ -425,13 +546,13 @@ public:
                     sqlite3_result_error_nomem(context);
                     return;
                 }
-
+                
                 PT args;
                 int type;
                 @{blob}
-
+                
                 @{block_read_values}
-
+                
                 try
                 {
                     agg.accumulate(args);
@@ -448,9 +569,9 @@ public:
             "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
             "block_read_values": block_read_values!(PT.length, name, PT)
         ]);
-
+        
         mixin(x_step_mix);
-
+        
         enum x_final = q{
             extern(C) static void @{name}_final(sqlite3_context* context)
             {
@@ -460,7 +581,7 @@ public:
                     sqlite3_result_error_nomem(context);
                     return;
                 }
-
+                
                 try
                 {
                     auto tmp = agg.result();
@@ -476,9 +597,9 @@ public:
         enum x_final_mix = render(x_final, [
             "name": name
         ]);
-
+        
         mixin(x_final_mix);
-
+        
         assert(core.handle);
         auto result = sqlite3_create_function(
             core.handle,
@@ -489,7 +610,7 @@ public:
             null,
             mixin(format("&%s_step", name)),
             mixin(format("&%s_final", name))
-        );
+            );
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
     ///
@@ -499,23 +620,23 @@ public:
         {
             double total_value = 0.0;
             double total_weight = 0.0;
-
+            
             void accumulate(double value, double weight)
             {
                 total_value += value * weight;
                 total_weight += weight;
             }
-
+            
             double result()
             {
                 return total_value / total_weight;
             }
         }
-
+        
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
         db.createAggregate!(weighted_average, "w_avg")();
-
+        
         auto query = db.query("INSERT INTO test (value, weight) VALUES (:v, :w)");
         double[double] list = [11.5: 3, 14.8: 1.6, 19: 2.4];
         foreach (value, weight; list) {
@@ -524,7 +645,7 @@ public:
             query.execute();
             query.reset();
         }
-
+        
         query = db.query("SELECT w_avg(value, weight) FROM test");
         import std.math: approxEqual;        
         assert(approxEqual(query.oneValue!double, (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
@@ -558,12 +679,12 @@ public:
         static assert(isCallable!fun, "expecting a callable");
         static assert(__traits(isStaticFunction, fun), "function with context pointers are not supported");
         static assert(variadicFunctionStyle!(fun) == Variadic.no, "variadic functions are not supported");
-
+        
         alias ParameterTypeTuple!fun PT;
         static assert(isSomeString!(PT[0]), "the first argument of function " ~ name ~ " should be a string");
         static assert(isSomeString!(PT[1]), "the second argument of function " ~ name ~ " should be a string");
         static assert(isImplicitlyConvertible!(ReturnType!fun, int), "function " ~ name ~ " should return a value convertible to an int");
-
+        
         enum x_compare = q{
             extern (C) static int @{name}(void*, int n1, const(void*) str1, int n2, const(void* )str2)
             {
@@ -576,7 +697,7 @@ public:
             }
         };
         mixin(render(x_compare, ["name": name]));
-
+        
         assert(core.handle);
         auto result = sqlite3_create_collation(
             core.handle,
@@ -584,7 +705,7 @@ public:
             SQLITE_UTF8,
             null,
             mixin("&" ~ name)
-        );
+            );
         enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
     }
     ///
@@ -595,11 +716,11 @@ public:
             import std.uni;
             return icmp(s1, s2);
         }
-
+        
         auto db = Database(":memory:");
         db.createCollation!my_collation();
         db.execute("CREATE TABLE test (word TEXT)");
-
+        
         auto query = db.query("INSERT INTO test (word) VALUES (:wd)");
         foreach (word; ["straße", "strasses"])
         {
@@ -607,94 +728,9 @@ public:
             query.execute();
             query.reset();
         }
-
+        
         query = db.query("SELECT word FROM test ORDER BY word COLLATE my_collation");
         assert(query.oneValue!string == "straße");
-    }
-
-    /++
-    Creates and registers a simple function in the database.
-
-    The function $(D_PARAM fun) must satisfy these criteria:
-    $(UL
-        $(LI It must not be a variadic.)
-        $(LI Its arguments must all have a type that is compatible with SQLite types:
-             boolean, integral, floating point, string, or array of bytes (BLOB types).)
-        $(LI Its return value must also be of a compatible type.)
-    )
-    The function will have the name $(D_PARAM name) in the database; this name defaults to
-    the identifier of the function fun.
-
-    See also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
-    +/
-    void createFunction(alias fun,
-                        string name = __traits(identifier, fun),
-                        Deterministic det = Deterministic.yes)()
-    {
-        static assert(isCallable!fun, "expecting a callable");
-        static assert(__traits(isStaticFunction, fun), "function with context pointers are not supported");
-        static assert(variadicFunctionStyle!(fun) == Variadic.no, "variadic functions are not supported");
-
-        enum funpointer = &fun;
-
-        alias staticMap!(Unqual, ParameterTypeTuple!fun) PT;
-        alias ReturnType!fun RT;
-
-        enum x_func = q{
-            extern(C) static void @{name}(sqlite3_context* context, int argc, sqlite3_value** argv)
-            {
-                PT args;
-                int type, n;
-                @{blob}
-
-                @{block_read_values}
-
-                try
-                {
-                    auto tmp = funpointer(args);
-                    mixin(block_return_result!RT);
-                }
-                catch (Exception e)
-                {
-                    auto txt = "error in function @{name}(): " ~ e.msg;
-                    sqlite3_result_error(context, cast(char*) txt.toStringz(), -1);
-                }
-            }
-        };
-        enum x_func_mix = render(x_func, [
-            "name": name,
-            "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
-            "block_read_values": block_read_values!(PT.length, name, PT)
-        ]);
-
-        mixin(x_func_mix);
-
-        assert(core.handle);
-        auto result = sqlite3_create_function(
-            core.handle,
-            name.toStringz(),
-            PT.length,
-            SQLITE_UTF8 | det,
-            null,
-            mixin(format("&%s", name)),
-            null,
-            null
-        );
-        enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
-    }
-    ///
-    unittest // Function creation
-    {
-        static string my_msg(string name)
-        {
-            return "Hello, %s!".format(name);
-        }
-       
-        auto db = Database(":memory:");
-        db.createFunction!my_msg();
-
-        auto query = db.query("SELECT my_msg('John')");
-        assert(query.oneValue!string() == "Hello, John!");
     }
 }
 
@@ -810,6 +846,7 @@ unittest // Execute an SQL statement with call back
     db.execute("EXPLAIN VACUUM;", &i0);
     assertThrown!SqliteException(db.execute("EXPLAIN VACUUM;", &i1));
 }
+
 
 private string errmsg(sqlite3* dbHandle)
 {
