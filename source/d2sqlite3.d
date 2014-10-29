@@ -104,7 +104,7 @@ private:
             if (handle)
             {
                 auto result = sqlite3_close(handle);
-                enforce(result == SQLITE_OK, new SqliteException(result));
+                enforce(result == SQLITE_OK, new SqliteException("Could not close the database", result));
             }
             handle = null;
         }
@@ -165,7 +165,7 @@ public:
     void close()
     {
         auto result = sqlite3_close(handle);
-        enforce(result == SQLITE_OK, new SqliteException(result));
+        enforce(result == SQLITE_OK, new SqliteException("Could not close the database", result));
         core.handle = null;
     }
 
@@ -226,7 +226,7 @@ public:
         {
             auto msg = to!string(errmsg);
             sqlite3_free(errmsg);
-            throw new SqliteException(msg, sql);
+            throw new SqliteException(msg, sql, result);
         }
     }
     ///
@@ -869,7 +869,7 @@ private:
         ~this()
         {
             auto result = sqlite3_finalize(statement);
-            enforce(result == SQLITE_OK, new SqliteException(result));
+            enforce(result == SQLITE_OK, new SqliteException("Coud not destroy the query", result));
             statement = null;
         }
 
@@ -946,7 +946,6 @@ public:
         else static if (isSomeString!U)
         {
             string utf8 = value.to!string;
-            enforce(utf8.length <= int.max, new SqliteException("string too long"));
             result = sqlite3_bind_text(core.statement,
                                        index,
                                        cast(char*) utf8.toStringz(),
@@ -960,7 +959,6 @@ public:
             else
             {
                 auto bytes = cast(ubyte[]) value;
-                enforce(bytes.length <= int.max, new SqliteException("array too long"));
                 result = sqlite3_bind_blob(core.statement,
                                            index,
                                            cast(void*) bytes.ptr,
@@ -971,7 +969,7 @@ public:
         else
             static assert(false, "cannot bind a value of type " ~ U.stringof);
         
-        enforce(result == SQLITE_OK, new SqliteException(result));
+        enforce(result == SQLITE_OK, new SqliteException("Could not bind value", result));
     }
 
     /// Ditto
@@ -993,7 +991,7 @@ public:
         if (core.statement)
         {
             auto result = sqlite3_clear_bindings(core.statement);
-            enforce(result == SQLITE_OK, new SqliteException(result));
+            enforce(result == SQLITE_OK, new SqliteException("Could not clear the bindings", result));
         }
     }
 
@@ -1007,7 +1005,7 @@ public:
         if (core.statement)
         {
             auto result = sqlite3_reset(core.statement);
-            enforce(result == SQLITE_OK, new SqliteException(errmsg(core.dbHandle), result));
+            enforce(result == SQLITE_OK, new SqliteException("Could not reset the statement", result));
             core.state = 0;
         }
     }
@@ -1695,12 +1693,6 @@ class SqliteException : Exception
         this.sql = sql;
         this.code = code;
         super(msg, file, line, next);
-    }
-
-    this(int code, string sql = null,
-         string file = __FILE__, size_t line = __LINE__, Throwable next = null)
-    {
-        this("error %d".format(code), sql, code, file, line, next);
     }
 
     this(string msg, int code, string sql = null,
