@@ -184,12 +184,19 @@ void list()
 
         if (options.verbose)
         {
+            writefln("%10s %10s  %-4s  %-19s  %-s",
+                     "Full Size",
+                     "Compressed",
+                     "Mode",
+                     "Date/Time",
+                     "File");
+
             auto query = db.query("SELECT name, sz, length(data), mode, datetime(mtime,'unixepoch') "~
                                   "FROM sqlar ORDER BY name");
             while (!query.empty)
             {
                 auto row = query.front;
-                writefln("%10s %10s  %03o  %s  %10s",
+                writefln("%s %s  %4o  %s  %10s",
                          Size(row.peek!size_t(1)),
                          Size(row.peek!size_t(2)),
                          row.peek!uint(3) & octal!777,
@@ -285,6 +292,8 @@ void extract()
 
 void main(string[] args)
 {
+    Size.config.spacing = Spacing.tabular;
+
     processCmdLine(args);
 
     if (options.list)
