@@ -7,19 +7,9 @@
 Simple SQLite interface.
 <br><br>
 This module provides a simple "object-oriented" interface to the SQLite
-database engine.
-<br><br>
-
-Objects in this interface (Database and Query) automatically create the SQLite
-objects they need. They are reference-counted, so that when their last
-reference goes out of scope, the underlying SQLite objects are automatically
-closed and finalized. They are not thread-safe.
-<br><br>
-
-See example in the documentation for the Database struct below.
-<br><br>
-
-The C API is available through <tt>etc.c.sqlite3</tt>.
+database engine. See example in the documentation for the Database struct
+below. The (hopefully) complete C API is available through the <tt>sqlite3</tt>
+module, which is publicly imported by this module.
 
 <br><br>
 <b>License:</b><br>
@@ -37,7 +27,7 @@ Nicolas Sicard (dransic@gmail.com).
 
 <dl><dt><big><a name="Sqlite3.versionString"></a>static nothrow @property string <u>versionString</u>();
 </big></dt>
-<dd>Gets the library's version string (e.g. 3.8.7).<br><br>
+<dd>Gets the library's version string (e.g. "3.8.7").<br><br>
 
 </dd>
 <dt><big><a name="Sqlite3.versionNumber"></a>static nothrow @property int <u>versionNumber</u>();
@@ -49,18 +39,25 @@ Nicolas Sicard (dransic@gmail.com).
 </dd>
 <dt><big><a name="Deterministic"></a>enum <u>Deterministic</u>: int;
 </big></dt>
-<dd><br><br>
+<dd>A caracteristic of user-defined functions or aggregates.<br><br>
+
 <dl><dt><big><a name="Deterministic.yes"></a><u>yes</u></big></dt>
-<dd><br><br>
+<dd>The returned value is the same if the function is called with the same
+    parameters.<br><br>
+
 </dd>
 <dt><big><a name="Deterministic.no"></a><u>no</u></big></dt>
-<dd><br><br>
+<dd>The returned value can vary even if the function is called with the same
+    parameters.<br><br>
+
 </dd>
 </dl>
 </dd>
 <dt><big><a name="Database"></a>struct <u>Database</u>;
 </big></dt>
-<dd>An interface to a SQLite database connection.<br><br>
+<dd>An interface to a SQLite database connection.
+<br><br>
+This struct is a reference-counted wrapper around a <tt>sqlite3*</tt> pointer.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=green>// Note: exception handling is left aside for clarity.
@@ -144,9 +141,17 @@ query.execute();
 </big></dt>
 <dd>Opens a database connection.
 <br><br>
-The database is open using the sqlite3_open_v2 function.
-    See <a href="http://www.sqlite.org/c3ref/open.html">http://www.sqlite.org/c3ref/open.html</a> to know how to use the <i>flags</i>
-    parameter or to use <i>path</i> as a file URI if the current configuration allows it.<br><br>
+<b>Params:</b><br>
+<table><tr><td>string <i>path</i></td>
+<td>The <i>path</i> to the database file. In recent versions of SQLite, the
+    <i>path</i> can be an URI with options.</td></tr>
+<tr><td>int <i>flags</i></td>
+<td>Options <i>flags</i>.</td></tr>
+</table><br>
+<b>See Also:</b><br>
+<a href="http://www.sqlite.org/c3ref/open.html">http://www.sqlite.org/c3ref/open.html</a> to know how to use
+    the <i>flags</i> parameter or to use <i>path</i> as a file URI if the current
+    configuration allows it.<br><br>
 
 </dd>
 <dt><big><a name="Database.handle"></a>pure nothrow @property @safe sqlite3* <u>handle</u>();
@@ -158,43 +163,45 @@ The database is open using the sqlite3_open_v2 function.
 </big></dt>
 <dd>Explicitly closes the database.
 <br><br>
-Throws an SqliteException if the database cannot be closed.
-<br><br>
-
-    After this function has been called successfully, using this databse object
-    or a query depending on it is a programming error.<br><br>
+After this function has been called successfully, the result of using this
+    database object or a query depending on is undefined.<br><br>
 
 </dd>
 <dt><big><a name="Database.execute"></a>void <u>execute</u>(F = typeof(null))(string <i>sql</i>, F <i>callback</i> = null);
 </big></dt>
 <dd>Executes the given SQL code.
 <br><br>
-Rows returned by any statements are ignored, unless a callback is given.
-    The callback will be called for each row returned by the query. The first argument
-    of the callback is a <tt>string[]</tt> containing the names of the row's columns;
-    the second argument of the callback is a <tt>string[]</tt> containing the data of the
-    row's columns. The callback must return an <tt>int</tt> or <tt>void</tt>.
-    If the callback returns an <tt>int</tt> that is not zero, the execution of
-    the query is aborted.
-
-<br><br>
-<b>See:</b><br>
+<b>Params:</b><br>
+<table><tr><td>string sql</td>
+<td>The SQL statements that should be executed.</td></tr>
+<tr><td>F callback</td>
+<td>A function that will be called on each row returned by the
+        excecution. The first argument of the callback is a <tt>string[]</tt> that
+        will contain the names of the row's columns. The second argument of the
+        callback is a <tt>string[]</tt> that will contain the data of the row's
+        columns. The callback must return an <tt>int</tt> or <tt>void</tt>. If the
+        callback returns an <tt>int</tt> that is not zero, the execution of the
+        query is aborted.</td></tr>
+</table><br>
+<b>See Also:</b><br>
 <a href="http://www.sqlite.org/c3ref/exec.html">http://www.sqlite.org/c3ref/exec.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
-db.<u>execute</u>(<font color=red>"VACUUM;"</font>);
+db.<u>execute</u>(<font color=red>"VACUUM"</font>);
 </pre>
 <br><br><b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>static</font> <font color=blue>int</font> printRows(string[] names, string[] texts)
 {
     <font color=green>// use names and texts
-</font>    <font color=blue>return</font> 0;
+</font>    <font color=green>// [...]
+</font>
+    <font color=blue>return</font> 0;
 }
 
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
-db.<u>execute</u>(<font color=red>"EXPLAIN VACUUM;"</font>, &amp;printRows);
+db.<u>execute</u>(<font color=red>"EXPLAIN VACUUM"</font>, &amp;printRows);
 </pre>
 <br><br>
 </dd>
@@ -202,7 +209,8 @@ db.<u>execute</u>(<font color=red>"EXPLAIN VACUUM;"</font>, &amp;printRows);
 </big></dt>
 <dd>Creates a query on the database and returns it.
 <br><br>
-The query becomes invalid if the Database goes out of scope and is destroyed.<br><br>
+The query becomes invalid if the Database goes out of scope and is
+    destroyed.<br><br>
 
 </dd>
 <dt><big><a name="Database.changes"></a>nothrow @property int <u>changes</u>();
@@ -231,23 +239,32 @@ The query becomes invalid if the Database goes out of scope and is destroyed.<br
 </big></dt>
 <dd>Creates and registers a simple function in the database.
 <br><br>
-The function <i>fun</i> must satisfy these criteria:
-    <ul>        <li>It must not be a variadic.</li>
-        <li>Its arguments must all have a type that is compatible with SQLite types:
-             boolean, integral, floating point, string, or array of bytes (BLOB types).</li>
-        <li>It can have only one parameter of type <tt>void*</tt> and it must be the last one.</li>
-        <li>Its return value must also be of a compatible type.</li>
-    </ul>
-    The function will have the name <i>name</i> in the database; this name defaults to
-    the identifier of the function fun.
-
-<br><br>
-<b>Parameters:</b><br>
-userData = A pointer to some user data, that will be passed to <i>fun</i>
-            as its last argument if its type is <tt>void*</tt>.
-<br><br>
-
-    See also: <a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
+<b>Params:</b><br>
+<table><tr><td>fun</td>
+<td>An alias to the D implementation of the function.
+            The function <i>fun</i> must satisfy these criteria:
+            <ul>                <li>It must not be a variadic.</li>
+                <li>Its arguments must all have a type that is compatible with
+                SQLite types: boolean, integral, floating point, string, or
+                array of bytes (BLOB types).</li>
+                <li>It can have only one parameter of type <tt>void*</tt> and it
+                must be the last one.</li>
+                <li>Its return value must also be of a compatible type.</li>
+            </ul></td></tr>
+<tr><td>name</td>
+<td>The name that the function will have in the database; this name
+        defaults to the identifier of <i>fun</i>.</td></tr>
+<tr><td>det</td>
+<td>Tells SQLite whether the result of the function is deterministic,
+        i.e. if the result is the same when called with the same parameters.
+        Recent versions of SQLite perform optimizations based on this. Set to
+        <tt>Deterministic.no</tt> otherwise.</td></tr>
+<tr><td>void* userData</td>
+<td>A pointer to some user data, that will be passed to
+        <i>fun</i> as its last argument if its type is <tt>void*</tt>.</td></tr>
+</table><br>
+<b>See Also:</b><br>
+<a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>static</font> string my_msg(string name)
@@ -281,11 +298,22 @@ db.<u>createFunction</u>!fun(&amp;value);
 </big></dt>
 <dd>Creates and registers a new aggregate function in the database.
 <br><br>
-The type Aggregate must be a <strong><tt>struct</tt></strong> that implements at least these
-    two methods: <tt>accumulate</tt> and <tt>result</tt>, and that must be default-constructible.
-<br><br>
-
-    See also: <a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
+<b>Params:</b><br>
+<table><tr><td>Aggregate</td>
+<td>The <tt>struct</tt> implementing the aggregate. Aggregate must
+        be a default-constructible <strong><tt>struct</tt></strong> that implements at least these
+        two methods: <tt>accumulate</tt> and <tt>result</tt>.</td></tr>
+<tr><td>name</td>
+<td>The name that the function will have in the database; this name
+        defaults to the identifier of <i>Aggregate</i>.</td></tr>
+<tr><td>det</td>
+<td>Tells SQLite whether the result of the function is deterministic,
+        i.e. if the result is the same when called with the same parameters.
+        Recent versions of SQLite perform optimizations based on this. Set to
+        <tt>Deterministic.no</tt> otherwise.</td></tr>
+</table><br>
+<b>See Also:</b><br>
+<a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>struct</font> weighted_average
@@ -309,11 +337,12 @@ The type Aggregate must be a <strong><tt>struct</tt></strong> that implements at
 db.execute(<font color=red>"CREATE TABLE test (value FLOAT, weight FLOAT)"</font>);
 db.<u>createAggregate</u>!(weighted_average, <font color=red>"w_avg"</font>)();
 
-<font color=blue>auto</font> query = db.query(<font color=red>"INSERT INTO test (value, weight) VALUES (:v, :w)"</font>);
+<font color=blue>auto</font> query = db.query(<font color=red>"INSERT INTO test (value, weight) VALUES (?1, ?2)"</font>);
 <font color=blue>double</font>[<font color=blue>double</font>] list = [11.5: 3, 14.8: 1.6, 19: 2.4];
-<font color=blue>foreach</font> (value, weight; list) {
-    query.bind(<font color=red>":v"</font>, value);
-    query.bind(<font color=red>":w"</font>, weight);
+<font color=blue>foreach</font> (value, weight; list)
+{
+    query.bind(1, value);
+    query.bind(2, weight);
     query.execute();
     query.reset();
 }
@@ -328,24 +357,26 @@ query = db.query(<font color=red>"SELECT w_avg(value, weight) FROM test"</font>)
 </big></dt>
 <dd>Creates and registers a collation function in the database.
 <br><br>
-The function <i>fun</i> must satisfy these criteria:
-    <ul>        <li>It must take two string arguments, e.g. s1 and s2.</li>
-        <li>Its return value <tt>ret</tt> must satisfy these criteria (when s3 is any other string):
+<b>Params:</b><br>
+<table><tr><td>fun</td>
+<td>An alias to the D implementation of the function.
+            The function <i>fun</i> must satisfy these criteria:
             <ul>                <li>If s1 is less than s2, <tt>ret &lt; 0</tt>.</li>
                 <li>If s1 is equal to s2, <tt>ret == 0</tt>.</li>
                 <li>If s1 is greater than s2, <tt>ret &gt; 0</tt>.</li>
                 <li>If s1 is equal to s2, then s2 is equal to s1.</li>
-                <li>If s1 is equal to s2 and s2 is equal to s3, then s1 is equal to s3.</li>
+                <li>If s1 is equal to s2 and s2 is equal to s3, then s1 is
+                equal to s3.</li>
                 <li>If s1 is less than s2, then s2 is greater than s1.</li>
-                <li>If s1 is less than s2 and s2 is less than s3, then s1 is less than s3.</li>
-            </ul>
-        </li>
-    </ul>
-    The function will have the name <i>name</i> in the database; this name defaults to
-    the identifier of the function fun.
-<br><br>
-
-    See also: <a href="http://www.sqlite.org/lang_aggfunc.html">http://www.sqlite.org/lang_aggfunc.html</a><br><br>
+                <li>If s1 is less than s2 and s2 is less than s3, then s1 is
+                less than s3.</li>
+            </ul></td></tr>
+<tr><td>name</td>
+<td>The name that the function will have in the database; this name
+        defaults to the identifier of <i>fun</i>.</td></tr>
+</table><br>
+<b>See Also:</b><br>
+<a href="http://www.sqlite.org/lang_aggfunc.html">http://www.sqlite.org/lang_aggfunc.html</a><br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>static</font> <font color=blue>int</font> my_collation(string s1, string s2)
@@ -358,10 +389,10 @@ The function <i>fun</i> must satisfy these criteria:
 db.<u>createCollation</u>!my_collation();
 db.execute(<font color=red>"CREATE TABLE test (word TEXT)"</font>);
 
-<font color=blue>auto</font> query = db.query(<font color=red>"INSERT INTO test (word) VALUES (:wd)"</font>);
+<font color=blue>auto</font> query = db.query(<font color=red>"INSERT INTO test (word) VALUES (?)"</font>);
 <font color=blue>foreach</font> (word; [<font color=red>"straße"</font>, <font color=red>"strasses"</font>])
 {
-    query.bind(<font color=red>":wd"</font>, word);
+    query.bind(1, word);
     query.execute();
     query.reset();
 }
@@ -375,52 +406,80 @@ query = db.query(<font color=red>"SELECT word FROM test ORDER BY word COLLATE my
 </dd>
 <dt><big><a name="Query"></a>struct <u>Query</u>;
 </big></dt>
-<dd>An interface to SQLite query execution.<br><br>
+<dd>An interface to SQLite query execution.
+<br><br>
+This struct is a wrapper around a <tt>sqlite3_stmt*</tt> pointer. Instances of this
+struct are typically returned by <tt>Database.query()</tt>.<br><br>
 
 <dl><dt><big><a name="Query.statement"></a>@property sqlite3_stmt* <u>statement</u>();
 </big></dt>
-<dd>Gets the SQLite internal handle of the query statement.<br><br>
+<dd>Gets the SQLite internal handle of the statement.<br><br>
 
 </dd>
 <dt><big><a name="Query.bind"></a>void <u>bind</u>(T)(int <i>index</i>, T <i>value</i>);
-<br><a name="Query.bind"></a>void <u>bind</u>(T)(string <i>name</i>, T <i>value</i>);
 </big></dt>
-<dd>Binds values to parameters in the query.
+<dd>Binds values to parameters in a prepared statement.
 <br><br>
-The index is the position of the parameter in the SQL query (starting from 0).
-    The name must include the ':', '@' or '$' that introduces it in the query.<br><br>
+<b>Params:</b><br>
+<table><tr><td>int index</td>
+<td>The index of the parameter (starting from 1).</td></tr>
+<tr><td>T value</td>
+<td>The bound value. The type of value must be compatible with the
+        SQLite types: it must be a boolean or numeric type, a string or an
+        array.</td></tr>
+</table><br>
+
+</dd>
+<dt><big><a name="Query.bind"></a>void <u>bind</u>(T)(string <i>name</i>, T <i>value</i>);
+</big></dt>
+<dd>Binds values to parameters in a prepared statement.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>string name</td>
+<td>The name of the parameter (starting from 0), include the ':',
+        '@' or '$' that introduces it.</td></tr>
+<tr><td>T value</td>
+<td>The bound value. The type of value must be compatible with the
+        SQLite types: it must be a boolean or numeric type, a string or an
+        array.</td></tr>
+</table><br>
+<b>Warning:</b><br>
+While convenient, this overload of <tt><u>bind</u></tt> is less performant,
+        because it has to retrieve the column index with a call to the SQLite
+        function <tt>sqlite3_bind_parameter_index</tt>.<br><br>
 
 </dd>
 <dt><big><a name="Query.clearBindings"></a>void <u>clearBindings</u>();
 </big></dt>
 <dd>Clears the bindings.
 <br><br>
-This does not reset the prepared statement. Use Query.reset() for this.<br><br>
+This does not reset the prepared statement. Use <tt>Query.reset()</tt> for this.<br><br>
 
 </dd>
 <dt><big><a name="Query.reset"></a>void <u>reset</u>();
 </big></dt>
 <dd>Resets a query's prepared statement before a new execution.
 <br><br>
-This does not clear the bindings. Use Query.clear() for this.<br><br>
+This does not clear the bindings. Use <tt>Query.clear()</tt> for this.<br><br>
 
 </dd>
 <dt><big><a name="Query.execute"></a>void <u>execute</u>();
 </big></dt>
 <dd>Executes the query.
 <br><br>
-If the query is expected to return rows, use the query's input range interface
-    to iterate over them.<br><br>
+If the query is expected to return rows, use the query's input range
+    interface to iterate over them.<br><br>
 
 </dd>
 <dt><big><a name="Query.empty"></a>@property bool <u>empty</u>();
 <br><a name="Query.front"></a>@property Row <u>front</u>();
 <br><a name="Query.popFront"></a>void <u>popFront</u>();
 </big></dt>
-<dd>Input range interface.
+<dd>Input range interface. A <tt>Query</tt> is an input range of <tt>Row</tt>s.
 <br><br>
-A <tt>Query</tt> is an input range of <tt>Row</tt>s. A Row becomes invalid
-    as soon as <tt>Query.popFront</tt> is called (it contains undefined data afterwards).<br><br>
+<b>Warning:</b><br>
+A Row becomes invalid as soon as <tt>Query.popFront</tt> is called (it
+    contains undefined data afterwards).<br><br>
 
 </dd>
 <dt><big><a name="Query.oneValue"></a>auto <u>oneValue</u>(T)();
@@ -442,94 +501,117 @@ db.execute(<font color=red>"CREATE TABLE test (val INTEGER)"</font>);
 <dd>A SQLite row, implemented as a random-access range of ColumnData.
 <br><br>
 <b>Warning:</b><br>
-A <u>Row</u> is just a view of the current row when iterating the results of a <tt>Query</tt>.
-    It becomes invalid as soon as <tt>Query.popFront</tt> is called. <u>Row</u> contains
-    undefined data afterwards.<br><br>
+A <u>Row</u> is just a view of the current row when iterating the results of
+a <tt>Query</tt>. It becomes invalid as soon as <tt>Query.popFront()</tt> is called. <u>Row</u>
+contains undefined data afterwards.<br><br>
 
 <dl><dt><big><a name="Row.empty"></a>pure nothrow @property @safe bool <u>empty</u>();
 <br><a name="Row.front"></a>nothrow @property ColumnData <u>front</u>();
 <br><a name="Row.popFront"></a>pure nothrow @safe void <u>popFront</u>();
-</big></dt>
-<dd>Input range primitives.<br><br>
-
-</dd>
-<dt><big><a name="Row.save"></a>pure nothrow @property @safe Row <u>save</u>();
-</big></dt>
-<dd>Forward range primitive.<br><br>
-
-</dd>
-<dt><big><a name="Row.back"></a>nothrow @property ColumnData <u>back</u>();
+<br><a name="Row.save"></a>pure nothrow @property @safe Row <u>save</u>();
+<br><a name="Row.back"></a>nothrow @property ColumnData <u>back</u>();
 <br><a name="Row.popBack"></a>pure nothrow @safe void <u>popBack</u>();
+<br><a name="Row.length"></a>pure nothrow @property @safe int <u>length</u>();
+<br><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(int <i>index</i>);
 </big></dt>
-<dd>Bidirectional range primitives.<br><br>
+<dd>Range interface.<br><br>
 
 </dd>
-<dt><big><a name="Row.length"></a>pure nothrow @property @safe int <u>length</u>();
+<dt><big><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(string <i>name</i>);
 </big></dt>
-<dd>Random access range primitives.<br><br>
+<dd>Returns the data of a column as a <tt>ColumnData</tt>.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>string <i>name</i></td>
+<td>The <i>name</i> of the column, as specified in the prepared statement
+        with an AS clause.</td></tr>
+</table><br>
 
 </dd>
 <dt><big><a name="Row.peek"></a>auto <u>peek</u>(T)(int <i>index</i>);
-<br><a name="Row.peek"></a>auto <u>peek</u>(T)(string <i>name</i>);
 </big></dt>
-<dd>Return the content of a column, automatically cast to T.
+<dd>Returns the data of a column.
 <br><br>
-T must be a boolean, a built-in numeric type, a string, an array or a Variant.
-<br><br>
-
-    If the column data is NULL, T.init is returned.
+Contraty to <tt>opIndex</tt>, the <tt><u>peek</u></tt> functions return the data directly,
+    automatically cast to T, without the overhead of using a wrapped <tt>    Variant</tt> (<tt>ColumnData</tt>).
 
 <br><br>
-<b>Warnings:</b><br>
-The result is undefined if then index is out of range.
-<br><br>
+<b>Params:</b><br>
+<table><tr><td>T</td>
+<td>The type of the returned data. T must be a boolean, a built-in
+        numeric type, a string, an array or a Variant.</td></tr>
+<tr><td>int index</td>
+<td>The index of the column in the prepared statement.</td></tr>
+</table><br>
+<b>Returns:</b><br>
+A value of type T, or T.init if the data is NULL.
 
-        If the column is specified by its name, the names of all the columns are tested
-        each time this function is called: use numeric indexing for better performance.<br><br>
+<br><br>
+<b>Warning:</b><br>
+The result is undefined if then index is out of range.<br><br>
 
 </dd>
-<dt><big><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(int <i>index</i>);
-<br><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(string <i>name</i>);
+<dt><big><a name="Row.peek"></a>auto <u>peek</u>(T)(string <i>name</i>);
 </big></dt>
-<dd>Returns the data of a given column as a ColumnData.<br><br>
+<dd>Returns the data of a column.
+<br><br>
+Contraty to <tt>opIndex</tt>, the <tt><u>peek</u></tt> functions return the data directly,
+    automatically cast to T, without the overhead of using a wrapped <tt>    Variant</tt> (<tt>ColumnData</tt>).
+
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>T</td>
+<td>The type of the returned data. T must be a boolean, a built-in
+        numeric type, a string, an array or a Variant.</td></tr>
+<tr><td>string name</td>
+<td>The name of the column, as specified in the prepared statement
+        with an AS clause.</td></tr>
+</table><br>
+<b>Returns:</b><br>
+A value of type T, or T.init if the data is NULL.
+
+<br><br>
+<b>Warning:</b><br>
+The names of all the columns are tested each time this function is
+<br><br>
+<b>called:</b><br>
+use numeric indexing for better performance.<br><br>
 
 </dd>
 </dl>
 </dd>
 <dt><big><a name="ColumnData"></a>struct <u>ColumnData</u>;
 </big></dt>
-<dd>Some column's data.
-<br><br>
-The data is stored internally as a Variant, which is accessible through "<tt>alias this</tt>".<br><br>
+<dd>The data retrived from a column, stored internally as a <tt>Variant</tt>, which is
+accessible through "<tt>alias this</tt>".<br><br>
 
 <dl><dt><big><a name="ColumnData.as"></a>auto <u>as</u>(T)(T <i>defaultValue</i> = T.init);
 </big></dt>
-<dd>Returns the data converted to T.
-<br><br>
-If the data is NULL, defaultValue is returned.<br><br>
+<dd>Returns the data converted to T. If the data is NULL, defaultValue is
+    returned.<br><br>
 
 </dd>
 </dl>
 </dd>
 <dt><big><a name="QueryCache"></a>struct <u>QueryCache</u>;
 </big></dt>
-<dd>Caches all the results of a Query in memory as ColumnData.
+<dd>Caches all the results of a <tt>Query</tt> in memory as <tt>ColumnData</tt>.
 <br><br>
 Allows to iterate on the rows and their columns with an array-like interface.
-The rows can be viewed as an array of ColumnData or as an associative array of
-ColumnData indexed by the column names.<br><br>
+The rows can be viewed as an array of <tt>ColumnData</tt> or as an associative
+array of <tt>ColumnData</tt> indexed by the column names.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
 db.execute(<font color=red>"CREATE TABLE test (msg TEXT, num FLOAT)"</font>);
 
-<font color=blue>auto</font> query = db.query(<font color=red>"INSERT INTO test (msg, num) VALUES (:msg, :num)"</font>);
-query.bind(<font color=red>":msg"</font>, <font color=red>"ABC"</font>);
-query.bind(<font color=red>":num"</font>, 123);
+<font color=blue>auto</font> query = db.query(<font color=red>"INSERT INTO test (msg, num) VALUES (?1, ?2)"</font>);
+query.bind(1, <font color=red>"ABC"</font>);
+query.bind(2, 123);
 query.execute();
 query.reset();
-query.bind(<font color=red>":msg"</font>, <font color=red>"DEF"</font>);
-query.bind(<font color=red>":num"</font>, 456);
+query.bind(1, <font color=red>"DEF"</font>);
+query.bind(2, 456);
 query.execute();
 
 query = db.query(<font color=red>"SELECT * FROM test"</font>);
@@ -547,14 +629,14 @@ query = db.query(<font color=red>"SELECT * FROM test"</font>);
 <br><br>
 <b>Warning:</b><br>
 The <i>query</i> will be reset once this constructor have populated the cache.
-        Don't call this constructor while using <i>query</i>'s range interface.<br><br>
+        Don't call this constructor while iterating the <i>query</i>'s range interface.<br><br>
 
 </dd>
 </dl>
 </dd>
 <dt><big><a name="literal"></a>string <u>literal</u>(T)(T <i>value</i>);
 </big></dt>
-<dd>Turns a value into a <u>literal</u> that can be used in an SQLite expression.<br><br>
+<dd>Turns <i>value</i> into a literal that can be used in an SQLite expression.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>assert</font>(<font color=blue>null</font>.<u>literal</u> == <font color=red>"NULL"</font>);

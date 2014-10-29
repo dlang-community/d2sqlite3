@@ -3,16 +3,9 @@
 Simple SQLite interface.
 
 This module provides a simple "object-oriented" interface to the SQLite
-database engine.
-
-Objects in this interface (Database and Query) automatically create the SQLite
-objects they need. They are reference-counted, so that when their last
-reference goes out of scope, the underlying SQLite objects are automatically
-closed and finalized. They are not thread-safe.
-
-See example in the documentation for the Database struct below.
-
-The C API is available through $(D etc.c.sqlite3).
+database engine. See example in the documentation for the Database struct
+below. The (hopefully) complete C API is available through the $(D sqlite3)
+module, which is publicly imported by this module.
 
 Copyright:
     Copyright Nicolas Sicard, 2011-2014.
@@ -49,7 +42,7 @@ Metadata from the SQLite library.
 struct Sqlite3
 {
     /++
-    Gets the library's version string (e.g. 3.8.7).
+    Gets the library's version string (e.g. "3.8.7").
     +/
     static @property string versionString() nothrow
     {
@@ -73,19 +66,27 @@ deprecated enum SharedCache : bool
 }
 
 
-///
+/// A caracteristic of user-defined functions or aggregates.
 enum Deterministic
 {
-    ///
+    /++
+    The returned value is the same if the function is called with the same
+    parameters.
+    +/
     yes = 0x800,
 
-    ///
+    /++
+    The returned value can vary even if the function is called with the same
+    parameters.
+    +/
     no = 0
 }
 
 
 /++
 An interface to a SQLite database connection.
+
+This struct is a reference-counted wrapper around a $(D sqlite3*) pointer.
 +/
 struct Database
 {
@@ -120,9 +121,15 @@ public:
     /++
     Opens a database connection.
 
-    The database is open using the sqlite3_open_v2 function.
-    See $(LINK http://www.sqlite.org/c3ref/open.html) to know how to use the flags
-    parameter or to use path as a file URI if the current configuration allows it.
+    Params:
+    path = The path to the database file. In recent versions of SQLite, the
+    path can be an URI with options.
+        
+    flags = Options flags.
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/open.html) to know how to use
+    the flags parameter or to use path as a file URI if the current
+    configuration allows it.
     +/
     this(string path, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
     {
@@ -157,10 +164,8 @@ public:
     /++
     Explicitly closes the database.
 
-    Throws an SqliteException if the database cannot be closed.
-
-    After this function has been called successfully, using this databse object
-    or a query depending on it is a programming error.
+    After this function has been called successfully, the result of using this
+    database object or a query depending on is undefined.
     +/
     void close()
     {
@@ -172,15 +177,18 @@ public:
     /++
     Executes the given SQL code.
 
-    Rows returned by any statements are ignored, unless a callback is given.
-    The callback will be called for each row returned by the query. The first argument
-    of the callback is a $(D string[]) containing the names of the row's columns;
-    the second argument of the callback is a $(D string[]) containing the data of the
-    row's columns. The callback must return an $(D int) or $(D void).
-    If the callback returns an $(D int) that is not zero, the execution of
-    the query is aborted.
+    Params:
+        sql = The SQL statements that should be executed.
+        
+        callback = A function that will be called on each row returned by the
+        excecution. The first argument of the callback is a $(D string[]) that
+        will contain the names of the row's columns. The second argument of the
+        callback is a $(D string[]) that will contain the data of the row's
+        columns. The callback must return an $(D int) or $(D void). If the
+        callback returns an $(D int) that is not zero, the execution of the
+        query is aborted.
 
-    See: $(LINK http://www.sqlite.org/c3ref/exec.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/exec.html).
     +/
     void execute(F = typeof(null))(string sql, F callback = null)
     {
@@ -241,6 +249,8 @@ public:
         static int printRows(string[] names, string[] texts)
         {
             // use names and texts
+            // [...]
+
             return 0;
         }
         
@@ -251,7 +261,8 @@ public:
     /++
     Creates a _query on the database and returns it.
 
-    The _query becomes invalid if the Database goes out of scope and is destroyed.
+    The _query becomes invalid if the Database goes out of scope and is
+    destroyed.
     +/
     Query query(string sql)
     {
@@ -295,8 +306,8 @@ public:
     }
 
     /+
-    Helper function to translate the arguments values of a D function
-    into Sqlite values.
+    Helper function to translate the arguments values of a D function into
+    Sqlite values.
     +/
     private static @property string block_read_values(size_t n, string name, PT...)()
     {
@@ -403,22 +414,31 @@ public:
     /++
     Creates and registers a simple function in the database.
 
-    The function $(D_PARAM fun) must satisfy these criteria:
-    $(UL
-        $(LI It must not be a variadic.)
-        $(LI Its arguments must all have a type that is compatible with SQLite types:
-             boolean, integral, floating point, string, or array of bytes (BLOB types).)
-        $(LI It can have only one parameter of type $(D void*) and it must be the last one.)
-        $(LI Its return value must also be of a compatible type.)
-    )
-    The function will have the name $(D_PARAM name) in the database; this name defaults to
-    the identifier of the function fun.
+    Params:
+        fun = An alias to the D implementation of the function.
+            The function $(D_PARAM fun) must satisfy these criteria:
+            $(UL
+                $(LI It must not be a variadic.)
+                $(LI Its arguments must all have a type that is compatible with
+                SQLite types: boolean, integral, floating point, string, or
+                array of bytes (BLOB types).)
+                $(LI It can have only one parameter of type $(D void*) and it
+                must be the last one.)
+                $(LI Its return value must also be of a compatible type.)
+            )
 
-    Parameters:
-        userData = A pointer to some user data, that will be passed to $(D_PARAM fun)
-            as its last argument if its type is $(D void*).
+        name = The name that the function will have in the database; this name
+        defaults to the identifier of $(D_PARAM fun).
 
-    See also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
+        det = Tells SQLite whether the result of the function is deterministic,
+        i.e. if the result is the same when called with the same parameters.
+        Recent versions of SQLite perform optimizations based on this. Set to
+        $(D Deterministic.no) otherwise.
+
+        userData = A pointer to some user data, that will be passed to
+        $(D_PARAM fun) as its last argument if its type is $(D void*).
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
     void createFunction(alias fun,
                         string name = __traits(identifier, fun),
@@ -519,10 +539,20 @@ public:
     /++
     Creates and registers a new aggregate function in the database.
 
-     The type Aggregate must be a $(DK struct) that implements at least these
-    two methods: $(D accumulate) and $(D result), and that must be default-constructible.
+    Params:
+        Aggregate = The $(D struct) implementing the aggregate. Aggregate must
+        be a default-constructible $(DK struct) that implements at least these
+        two methods: $(D accumulate) and $(D result).
+        
+        name = The name that the function will have in the database; this name
+        defaults to the identifier of $(D_PARAM Aggregate).
+        
+        det = Tells SQLite whether the result of the function is deterministic,
+        i.e. if the result is the same when called with the same parameters.
+        Recent versions of SQLite perform optimizations based on this. Set to
+        $(D Deterministic.no) otherwise.
 
-    See also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
     void createAggregate(Aggregate,
                          string name = __traits(identifier, Aggregate),
@@ -655,25 +685,25 @@ public:
     /++
     Creates and registers a collation function in the database.
 
-    The function $(D_PARAM fun) must satisfy these criteria:
-    $(UL
-        $(LI It must take two string arguments, e.g. s1 and s2.)
-        $(LI Its return value $(D ret) must satisfy these criteria (when s3 is any other string):
+    Params:
+        fun = An alias to the D implementation of the function.
+            The function $(D_PARAM fun) must satisfy these criteria:
             $(UL
                 $(LI If s1 is less than s2, $(D ret < 0).)
                 $(LI If s1 is equal to s2, $(D ret == 0).)
                 $(LI If s1 is greater than s2, $(D ret > 0).)
                 $(LI If s1 is equal to s2, then s2 is equal to s1.)
-                $(LI If s1 is equal to s2 and s2 is equal to s3, then s1 is equal to s3.)
+                $(LI If s1 is equal to s2 and s2 is equal to s3, then s1 is
+                equal to s3.)
                 $(LI If s1 is less than s2, then s2 is greater than s1.)
-                $(LI If s1 is less than s2 and s2 is less than s3, then s1 is less than s3.)
+                $(LI If s1 is less than s2 and s2 is less than s3, then s1 is
+                less than s3.)
             )
-        )
-    )
-    The function will have the name $(D_PARAM name) in the database; this name defaults to
-    the identifier of the function fun.
 
-    See also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
+        name = The name that the function will have in the database; this name
+        defaults to the identifier of $(D_PARAM fun).
+        
+    See_Also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
     +/
     void createCollation(alias fun, string name = __traits(identifier, fun))()
     {
@@ -856,6 +886,9 @@ private string errmsg(sqlite3* dbHandle)
 
 /++
 An interface to SQLite query execution.
+
+This struct is a wrapper around a $(D sqlite3_stmt*) pointer. Instances of this
+struct are typically returned by $(D Database.query()).
 +/
 struct Query
 {
@@ -906,7 +939,7 @@ private:
 
 public:
     /++
-    Gets the SQLite internal handle of the query _statement.
+    Gets the SQLite internal handle of the _statement.
     +/
     @property sqlite3_stmt* statement()
     {
@@ -920,10 +953,14 @@ public:
     }
 
     /++
-    Binds values to parameters in the query.
-
-    The index is the position of the parameter in the SQL query (starting from 0).
-    The name must include the ':', '@' or '$' that introduces it in the query.
+    Binds values to parameters in a prepared statement.
+    
+    Params:
+        index = The index of the parameter (starting from 1).
+        
+        value = The bound _value. The type of value must be compatible with the
+        SQLite types: it must be a boolean or numeric type, a string or an
+        array.
     +/
     void bind(T)(int index, T value)
     {
@@ -971,7 +1008,22 @@ public:
         enforce(result == SQLITE_OK, new SqliteException("Could not bind value", result));
     }
 
-    /// Ditto
+    /++
+    Binds values to parameters in a prepared statement.
+    
+    Params:
+        name = The name of the parameter (starting from 0), include the ':',
+        '@' or '$' that introduces it.
+        
+        value = The bound _value. The type of value must be compatible with the
+        SQLite types: it must be a boolean or numeric type, a string or an
+        array.
+        
+    Warning:
+        While convenient, this overload of $(D bind) is less performant,
+        because it has to retrieve the column index with a call to the SQLite
+        function $(D sqlite3_bind_parameter_index).
+    +/
     void bind(T)(string name, T value)
     {
         auto index = sqlite3_bind_parameter_index(core.statement, cast(char*) name.toStringz());
@@ -982,7 +1034,7 @@ public:
     /++
     Clears the bindings.
 
-    This does not reset the prepared statement. Use Query.reset() for this.
+    This does not reset the prepared statement. Use $(D Query.reset()) for this.
     +/
     void clearBindings()
     {
@@ -996,7 +1048,7 @@ public:
     /++
     Resets a query's prepared statement before a new execution.
 
-    This does not clear the bindings. Use Query.clear() for this.
+    This does not clear the bindings. Use $(D Query.clear()) for this.
     +/
     void reset()
     {
@@ -1011,8 +1063,8 @@ public:
     /++
     Executes the query.
 
-    If the query is expected to return rows, use the query's input range interface
-    to iterate over them.
+    If the query is expected to return rows, use the query's input range
+    interface to iterate over them.
     +/
     void execute()
     {
@@ -1025,10 +1077,10 @@ public:
     }
     
     /++
-    Input range interface.
-
-    A $(D Query) is an input range of $(D Row)s. A Row becomes invalid
-    as soon as $(D Query.popFront) is called (it contains undefined data afterwards).
+    Input range interface. A $(D Query) is an input range of $(D Row)s.
+        
+    Warning: A Row becomes invalid as soon as $(D Query.popFront) is called (it
+    contains undefined data afterwards).
     +/
     @property bool empty()
     {
@@ -1152,10 +1204,9 @@ unittest // Other Query tests
 /++
 A SQLite row, implemented as a random-access range of ColumnData.
 
-Warning:
-    A Row is just a view of the current row when iterating the results of a $(D Query). 
-    It becomes invalid as soon as $(D Query.popFront) is called. Row contains
-    undefined data afterwards.
+Warning: A Row is just a view of the current row when iterating the results of
+a $(D Query). It becomes invalid as soon as $(D Query.popFront()) is called. Row
+contains undefined data afterwards.
 +/
 struct Row
 {
@@ -1173,7 +1224,7 @@ struct Row
         backIndex = sqlite3_column_count(statement) - 1;
     }
 
-    /// Input range primitives.
+    /// Range interface.
     @property bool empty() @safe pure nothrow
     {
         return length == 0;
@@ -1191,7 +1242,7 @@ struct Row
         frontIndex++;
     }
    
-    /// Forward range primitive.
+    /// ditto
     @property Row save() @safe pure nothrow
     {
         Row ret;
@@ -1201,7 +1252,7 @@ struct Row
         return ret;
     }
     
-    /// Bidirectional range primitives.
+    /// ditto
     @property ColumnData back() nothrow
     {
         return ColumnData(peek!Variant(backIndex - frontIndex));
@@ -1213,24 +1264,49 @@ struct Row
         backIndex--;
     }
     
-    /// Random access range primitives.
+    /// ditto
     @property int length() @safe pure nothrow
     {
         return backIndex - frontIndex + 1;
     }
 
+    /// ditto
+    ColumnData opIndex(int index)
+    {
+        int i =  cast(int) index + frontIndex;
+        enforce(i >= 0 && i <= backIndex, new SqliteException(format("invalid column index: %d", i)));
+        return ColumnData(peek!Variant(index));
+    }
+    
     /++
-    Return the content of a column, automatically cast to T.
+    Returns the data of a column as a $(D ColumnData).
+        
+    Params:
+        name = The name of the column, as specified in the prepared statement
+        with an AS clause.
+    +/
+    ColumnData opIndex(string name)
+    {
+        return ColumnData(peek!Variant(name));
+    }
 
-    T must be a boolean, a built-in numeric type, a string, an array or a Variant.
+    /++
+    Returns the data of a column. 
+    
+    Contraty to $(D opIndex), the $(D peek) functions return the data directly,
+    automatically cast to T, without the overhead of using a wrapped $(D
+    Variant) ($(D ColumnData)).
+    
+    Params:
+        T = The type of the returned data. T must be a boolean, a built-in
+        numeric type, a string, an array or a Variant.
+        
+        index = The index of the column in the prepared statement.        
 
-    If the column data is NULL, T.init is returned.
+    Returns: A value of type T, or T.init if the data is NULL.
 
-    Warnings:
+    Warning:
         The result is undefined if then index is out of range.
-
-        If the column is specified by its name, the names of all the columns are tested
-        each time this function is called: use numeric indexing for better performance.
     +/
     auto peek(T)(int index)
     {
@@ -1284,7 +1360,26 @@ struct Row
             static assert(false, "value cannot be converted to type " ~ T.stringof);
     }
 
-    /// ditto
+    /++
+    Returns the data of a column. 
+    
+    Contraty to $(D opIndex), the $(D peek) functions return the data directly,
+    automatically cast to T, without the overhead of using a wrapped $(D
+    Variant) ($(D ColumnData)).
+    
+    Params:
+        T = The type of the returned data. T must be a boolean, a built-in
+        numeric type, a string, an array or a Variant.
+        
+        name = The name of the column, as specified in the prepared statement
+        with an AS clause.        
+
+    Returns: A value of type T, or T.init if the data is NULL.
+
+    Warning:
+        The names of all the columns are tested each time this function is
+        called: use numeric indexing for better performance.
+    +/
     auto peek(T)(string name)
     {
         foreach (i; frontIndex .. backIndex + 1)
@@ -1292,22 +1387,6 @@ struct Row
                 return peek!T(i);
         
         throw new SqliteException("invalid column name: '%s'".format(name));
-    }
-
-    /++
-    Returns the data of a given column as a ColumnData.
-    +/
-    ColumnData opIndex(int index)
-    {
-        int i =  cast(int) index + frontIndex;
-        enforce(i >= 0 && i <= backIndex, new SqliteException(format("invalid column index: %d", i)));
-        return ColumnData(peek!Variant(index));
-    }
-    
-    /// ditto
-    ColumnData opIndex(string name)
-    {
-        return ColumnData(peek!Variant(name));
     }
 }
 
@@ -1380,9 +1459,8 @@ unittest // Row random-access range interface
 
 
 /++
-Some column's data.
-
-The data is stored internally as a Variant, which is accessible through "$(D alias this)".
+The data retrived from a column, stored internally as a $(D Variant), which is
+accessible through "$(D alias this)".
 +/
 struct ColumnData
 {
@@ -1390,9 +1468,8 @@ struct ColumnData
     alias variant this;
     
     /++
-    Returns the data converted to T.
-
-    If the data is NULL, defaultValue is returned.
+    Returns the data converted to T. If the data is NULL, defaultValue is
+    returned.
     +/
     auto as(T)(T defaultValue = T.init)
     {
@@ -1522,11 +1599,11 @@ unittest // Getting null values
 
 
 /++
-Caches all the results of a Query in memory as ColumnData.
+Caches all the results of a $(D Query) in memory as $(D ColumnData).
 
 Allows to iterate on the rows and their columns with an array-like interface.
-The rows can be viewed as an array of ColumnData or as an associative array of
-ColumnData indexed by the column names.
+The rows can be viewed as an array of $(D ColumnData) or as an associative
+array of $(D ColumnData) indexed by the column names.
 +/
 struct QueryCache
 {
@@ -1570,7 +1647,7 @@ struct QueryCache
 
     Warning:
         The query will be reset once this constructor have populated the cache.
-        Don't call this constructor while using query's range interface.
+        Don't call this constructor while iterating the query's range interface.
     +/
     this(Query query)
     {
@@ -1639,7 +1716,7 @@ unittest // QueryCache copies
 
 
 /++
-Turns a value into a literal that can be used in an SQLite expression.
+Turns $(D_PARAM value) into a _literal that can be used in an SQLite expression.
 +/
 string literal(T)(T value)
 {
