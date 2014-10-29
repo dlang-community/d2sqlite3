@@ -158,6 +158,9 @@ void add()
 
         foreach (path; options.paths)
         {
+            enforce(!relativePath(path).startsWith(".."),
+                    "Path is not below the current directory: %s".format(path));
+
             auto de = DirEntry(path);
             if (de.isDir)
             {
@@ -256,6 +259,9 @@ void extract()
             auto data = row.peek!(ubyte[])(4);
 
             auto dir = path.dirName;
+            enforce(!relativePath(dir).startsWith(".."),
+                    "Path is not below the current directory: %s".format(dir));
+
             if (!dir.exists)
                 mkdirRecurse(dir);
 
