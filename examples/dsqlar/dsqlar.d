@@ -52,11 +52,11 @@ void error(string msg, bool showUsage = false)
 
     if (showUsage)
     {
-        stderr.writefln("Usage: %s [options] archive [files...]\n"
-                        "Options:\n"
-                        "   -l      List files in archive\n"
-                        "   -n      Do not compress files\n"
-                        "   -x      Extract files from archive\n"
+        stderr.writefln("Usage: %s [options] archive [files...]\n"~
+                        "Options:\n"~
+                        "   -l      List files in archive\n"~
+                        "   -n      Do not compress files\n"~
+                        "   -x      Extract files from archive\n"~
                         "   -v      Verbose output\n", Runtime.args[0]);
     }
 
@@ -153,7 +153,7 @@ void add()
         db.execute(sqlCreateSchema);
 
         auto query = db.query(
-            "REPLACE INTO sqlar(name,mode,mtime,sz,data)"
+            "REPLACE INTO sqlar(name,mode,mtime,sz,data) "~
             "VALUES(?1,?2,?3,?4,?5)");
 
         foreach (path; options.paths)
@@ -184,7 +184,7 @@ void list()
 
         if (options.verbose)
         {
-            auto query = db.query("SELECT name, sz, length(data), mode, datetime(mtime,'unixepoch')"
+            auto query = db.query("SELECT name, sz, length(data), mode, datetime(mtime,'unixepoch') "~
                                   "FROM sqlar ORDER BY name");
             while (!query.empty)
             {
@@ -234,7 +234,7 @@ void extract()
 
         Query query;
         if (options.paths.length)
-            query = db.query("SELECT name, mode, mtime, sz, data FROM sqlar "
+            query = db.query("SELECT name, mode, mtime, sz, data FROM sqlar "~
                              "WHERE name_on_list(name)");
         else
             query = db.query("SELECT name, mode, mtime, sz, data FROM sqlar");

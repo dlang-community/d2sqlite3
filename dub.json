@@ -17,7 +17,7 @@
 			"targetType": "executable",
 			"sourcePaths": ["examples/dsqlar"],
 			"dependencies": {
-				"sizefmt": ">=0.1.0"
+				"sizefmt": ">=0.2.0"
 			},
             "lflags": ["-L/usr/local/lib"]
 		}
