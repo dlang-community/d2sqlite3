@@ -22,6 +22,8 @@ import std.c.stdlib : exit;
 import core.stdc.time : time_t;
 import etc.c.zlib;
 
+alias Size = SizeBase!(config!`{ spacing: Spacing.tabular }`);
+
 enum sqlCreateSchema =
 `CREATE TABLE IF NOT EXISTS sqlar (
     name TEXT PRIMARY KEY,
@@ -298,8 +300,6 @@ void extract()
 
 void main(string[] args)
 {
-    Size.config.spacing = Spacing.tabular;
-
     processCmdLine(args);
 
     if (options.list)
