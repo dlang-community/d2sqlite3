@@ -1,9 +1,9 @@
 /++
-This is an application inspired by the proof-of-concept SQLAR archive utility.
+ This is an application inspired by the proof-of-concept SQLAR archive utility.
 
-See:
-    $(LINK http://www.sqlite.org/sqlar/doc/trunk/README.md).
-+/
+ See:
+ $(LINK http://www.sqlite.org/sqlar/doc/trunk/README.md).
+ +/
 module dsqlar;
 
 version (Windows)
@@ -22,10 +22,11 @@ import std.c.stdlib : exit;
 import core.stdc.time : time_t;
 import etc.c.zlib;
 
-alias Size = SizeBase!(config!`{ spacing: Spacing.tabular }`);
+enum Config config = { spacing: Spacing.tabular };
+alias Size = SizeBase!config;
 
 enum sqlCreateSchema =
-`CREATE TABLE IF NOT EXISTS sqlar (
+    `CREATE TABLE IF NOT EXISTS sqlar (
     name TEXT PRIMARY KEY,
     mode INT,
     mtime INT,
@@ -87,7 +88,7 @@ void processCmdLine(string[] args)
     options.paths = args;
 }
 
-void addFile(Query query, DirEntry de)
+void addFile(Statement statement, DirEntry de)
 {
     assert(de.isFile || de.isSymlink);
 
@@ -120,13 +121,13 @@ void addFile(Query query, DirEntry de)
     else
         usedData = sourceData;
 
-    query.bind(1, de.name);
-    query.bind(2, de.attributes);
-    query.bind(3, de.timeLastModified.toUnixTime);
-    query.bind(4, de.size);
-    query.bind(5, usedData);
-    query.execute();
-    query.reset();
+    statement.bind(1, de.name);
+    statement.bind(2, de.attributes);
+    statement.bind(3, de.timeLastModified.toUnixTime);
+    statement.bind(4, de.size);
+    statement.bind(5, usedData);
+    statement.execute();
+    statement.reset();
 
     if (options.verbose)
     {
@@ -148,13 +149,13 @@ void add()
     try
     {
         auto db = Database(options.archive);
-        db.execute("BEGIN");
-        scope (success) db.execute("COMMIT;");
-        scope (failure) db.execute("ROLLBACK");
+        db.begin();
+        scope (success) db.commit();
+        scope (failure) db.rollback();
 
         db.execute(sqlCreateSchema);
 
-        auto query = db.query(
+        auto statement = db.prepare(
             "REPLACE INTO sqlar(name,mode,mtime,sz,data) "~
             "VALUES(?1,?2,?3,?4,?5)");
 
@@ -168,10 +169,10 @@ void add()
             {
                 foreach (de2; dirEntries(de.name, SpanMode.depth))
                     if (de2.isFile || de2.isSymlink)
-                        addFile(query, de2);
+                        addFile(statement, de2);
             }
             else if (de.isFile || de.isSymlink)
-                addFile(query, de);
+                addFile(statement, de);
         }
     }
     catch (Exception e)
@@ -183,9 +184,9 @@ void list()
     try
     {
         auto db = Database(options.archive, SQLITE_OPEN_READONLY);
-        db.execute("BEGIN");
-        scope (success) db.execute("COMMIT;");
-        scope (failure) db.execute("ROLLBACK");
+        db.begin();
+        scope (success) db.commit();
+        scope (failure) db.rollback();
 
         if (options.verbose)
         {
@@ -196,27 +197,27 @@ void list()
                      "Date/Time",
                      "File");
 
-            auto query = db.query("SELECT name, sz, length(data), mode, datetime(mtime,'unixepoch') "~
-                                  "FROM sqlar ORDER BY name");
-            while (!query.empty)
+            auto results = db.execute("SELECT name, sz, length(data), mode, datetime(mtime,'unixepoch') "~
+                                      "FROM sqlar ORDER BY name");
+            while (!results.empty)
             {
-                auto row = query.front;
+                auto row = results.front;
                 writefln("%s %s  %4o  %s  %10s",
                          Size(row.peek!size_t(1)),
                          Size(row.peek!size_t(2)),
                          row.peek!uint(3) & octal!777,
                          row.peek!string(4),
                          row.peek!string(0));
-                query.popFront();
+                results.popFront();
             }
         }
         else
         {
-            auto query = db.query("SELECT name FROM sqlar ORDER BY name");
-            while (!query.empty)
+            auto results = db.execute("SELECT name FROM sqlar ORDER BY name");
+            while (!results.empty)
             {
-                writeln(query.front.peek!string(0));
-                query.popFront();
+                writeln(results.front.peek!string(0));
+                results.popFront();
             }
         }
     }
@@ -238,22 +239,22 @@ void extract()
     try
     {
         auto db = Database(options.archive, SQLITE_OPEN_READONLY);
-        db.execute("BEGIN");
-        scope (success) db.execute("COMMIT;");
-        scope (failure) db.execute("ROLLBACK");
+        db.begin();
+        scope (success) db.commit();
+        scope (failure) db.rollback();
 
         db.createFunction!(nameOnList, "name_on_list");
 
-        Query query;
+        ResultRange results;
         if (options.paths.length)
-            query = db.query("SELECT name, mode, mtime, sz, data FROM sqlar "~
-                             "WHERE name_on_list(name)");
+            results = db.execute("SELECT name, mode, mtime, sz, data FROM sqlar "~
+                                 "WHERE name_on_list(name)");
         else
-            query = db.query("SELECT name, mode, mtime, sz, data FROM sqlar");
+            results = db.execute("SELECT name, mode, mtime, sz, data FROM sqlar");
 
-        while (!query.empty)
+        while (!results.empty)
         {
-            auto row = query.front;
+            auto row = results.front;
             auto path = row.peek!string(0);
             auto mode = row.peek!uint(1);
             auto time = row.peek!time_t(2);
@@ -290,8 +291,8 @@ void extract()
             }
             version (Posix)
                 chmod(path.toStringz, cast(mode_t) mode);
-                
-            query.popFront();
+            
+            results.popFront();
         }
     }
     catch (Exception e)

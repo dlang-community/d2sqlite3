@@ -1,11 +1,8 @@
 // Written in the D programming language
 /++
-Simple SQLite interface.
-
-This module provides a simple "object-oriented" interface to the SQLite
-database engine. See example in the documentation for the Database struct
-below. The (hopefully) complete C API is available through the $(D sqlite3)
-module, which is publicly imported by this module.
+This module provides a simple "object-oriented" interface to the SQLite database engine.
+See example in the documentation for the Database struct below. The (hopefully) complete C
+API is available through the $(D sqlite3) module, which is publicly imported by this module.
 
 Copyright:
     Copyright Nicolas Sicard, 2011-2014.
@@ -35,6 +32,8 @@ import std.variant;
 import std.c.string : memcpy;
 public import sqlite3;
 
+// debug import std.stdio;
+
 
 /++
 Metadata from the SQLite library.
@@ -48,7 +47,7 @@ struct Sqlite3
     {
         return to!string(sqlite3_libversion());
     }
-    
+
     /++
     Gets the library's version number (e.g. 3008007).
     +/
@@ -59,32 +58,25 @@ struct Sqlite3
 }
 
 
-deprecated enum SharedCache : bool
-{
-    enabled = true, /// Shared cache is _enabled.
-    disabled = false /// Shared cache is _disabled (the default in SQLite).
-}
-
-
-/// A caracteristic of user-defined functions or aggregates.
+/++
+A caracteristic of user-defined functions or aggregates.
++/
 enum Deterministic
 {
     /++
-    The returned value is the same if the function is called with the same
-    parameters.
+    The returned value is the same if the function is called with the same parameters.
     +/
     yes = 0x800,
 
     /++
-    The returned value can vary even if the function is called with the same
-    parameters.
+    The returned value can vary even if the function is called with the same parameters.
     +/
     no = 0
 }
 
 
 /++
-An interface to a SQLite database connection.
+An SQLite database connection.
 
 This struct is a reference-counted wrapper around a $(D sqlite3*) pointer.
 +/
@@ -94,18 +86,18 @@ private:
     struct _Core
     {
         sqlite3* handle;
-        
+
         this(sqlite3* handle) @safe pure nothrow
         {
             this.handle = handle;
         }
-        
+
         ~this()
         {
             if (handle)
             {
                 auto result = sqlite3_close(handle);
-                enforce(result == SQLITE_OK, new SqliteException("Could not close the database", result));
+                enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
             }
             handle = null;
         }
@@ -113,7 +105,7 @@ private:
         @disable this(this);
         void opAssign(_Core) { assert(false); }
     }
-    
+
     alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
     Core core;
 
@@ -122,35 +114,23 @@ public:
     Opens a database connection.
 
     Params:
-    path = The path to the database file. In recent versions of SQLite, the
-    path can be an URI with options.
-        
-    flags = Options flags.
+        path = The path to the database file. In recent versions of SQLite, the path can be
+        an URI with options.
 
-    See_Also: $(LINK http://www.sqlite.org/c3ref/open.html) to know how to use
-    the flags parameter or to use path as a file URI if the current
-    configuration allows it.
+        flags = Options flags.
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/open.html) to know how to use the flags
+    parameter or to use path as a file URI if the current configuration allows it.
     +/
     this(string path, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
     {
         sqlite3* hdl;
         auto result = sqlite3_open_v2(cast(char*) path.toStringz, &hdl, flags, null);
         core = Core(hdl);
-        enforce(result == SQLITE_OK && core.handle, new SqliteException(errorMsg, result));
-    }
-
-    deprecated("Use the other constructor and set the flags to use shared cache")
-    this(string path, SharedCache sharedCache)
-    {
-        if (sharedCache)
-        {
-            auto result = sqlite3_enable_shared_cache(1);
-            enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
-        }
-        sqlite3* hdl;
-        auto result = sqlite3_open(cast(char*) path.toStringz(), &hdl);
-        core = Core(hdl);
-        enforce(result == SQLITE_OK && core.handle, new SqliteException(errorMsg, result));
+        enforce(result == SQLITE_OK,
+                new SqliteException(core.handle
+                            ? errmsg(core.handle)
+                            : "Error opening the database", result));
     }
 
     /++
@@ -160,82 +140,29 @@ public:
     {
         return core.handle;
     }
-    
+
     /++
     Explicitly closes the database.
 
-    After this function has been called successfully, the result of using this
-    database object or a query depending on is undefined.
+    After this function has been called successfully, using the database or one of its
+    prepared statement is an error.
     +/
     void close()
     {
         auto result = sqlite3_close(handle);
-        enforce(result == SQLITE_OK, new SqliteException("Could not close the database", result));
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
         core.handle = null;
     }
 
     /++
-    Executes the given SQL code.
+    Executes a single SQL statement and returns the results directly. It's the equivalent
+    of $(D prepare(sql).execute()).
 
-    Params:
-        sql = The SQL statements that should be executed.
-        
-        callback = A function that will be called on each row returned by the
-        excecution. The first argument of the callback is a $(D string[]) that
-        will contain the names of the row's columns. The second argument of the
-        callback is a $(D string[]) that will contain the data of the row's
-        columns. The callback must return an $(D int) or $(D void). If the
-        callback returns an $(D int) that is not zero, the execution of the
-        query is aborted.
-
-    See_Also: $(LINK http://www.sqlite.org/c3ref/exec.html).
+    The results become undefined when the Database goes out of scope and is destroyed.
     +/
-    void execute(F = typeof(null))(string sql, F callback = null)
+    ResultRange execute(string sql)
     {
-        static if (is(typeof({ F fun; int i = fun([""], [""]); })))
-            enum funType = "int";
-        else static if (is(typeof({ F fun; fun([""], [""]); })))
-            enum funType = "void";
-        else static if (is(F == typeof(null)))
-            enum funType = "null";
-        else
-            static assert(false, "Unexpected type of callback");
-
-        static string[] fromc(char** data, int len) pure nothrow
-        {
-            auto app = appender!(string[]);
-            foreach (i; 0 .. len)
-                app.put(data[i].to!string);
-            return app.data;
-        }
-
-        extern(C) static int callbackAdapter(void* callback, int nCol, char** texts, char** names)
-        {
-            auto fun = cast(int function(string[], string[])) callback;
-            static if (funType == "int")
-                return fun(fromc(names, nCol), fromc(texts, nCol));
-            else
-            {
-                fun(fromc(names, nCol), fromc(texts, nCol));
-                return 0;
-            }
-        }
-
-        assert(core.handle);
-
-        char* errmsg;
-        auto result = sqlite3_exec(core.handle,
-                                   cast(char*) sql.toStringz(),
-                                   callback ? &callbackAdapter : null,
-                                   callback,
-                                   &errmsg);
-
-        if (errmsg !is null)
-        {
-            auto msg = to!string(errmsg);
-            sqlite3_free(errmsg);
-            throw new SqliteException(msg, sql, result);
-        }
+        return prepare(sql).execute();
     }
     ///
     unittest
@@ -243,35 +170,66 @@ public:
         auto db = Database(":memory:");
         db.execute("VACUUM");
     }
+
+    /++
+    Runs an SQL script that can contain multiple statements.
+
+    Params:
+        sql = The code of the script.
+
+        dg = A delegate to call for each statement to handle the results. The passed
+        ResultRange will be empty if a statement doesn't return rows. If the delegate
+        return false, the execution is aborted.
+    +/
+    void run(string sql, scope bool delegate(ResultRange) dg = null)
+    {
+        do
+        {
+            auto stmt = prepare(sql);
+            auto results = stmt.execute();
+            if (dg && !dg(results))
+                return;
+            sql = stmt.core.next;
+        }
+        while (sql.length);
+    }
     ///
     unittest
     {
-        static int printRows(string[] names, string[] texts)
-        {
-            // use names and texts
-            // [...]
-
-            return 0;
-        }
-        
         auto db = Database(":memory:");
-        db.execute("EXPLAIN VACUUM", &printRows);
+        db.run(`CREATE TABLE test1 (val INTEGER);
+                CREATE TABLE test2 (val FLOAT);`);
     }
-    
-    /++
-    Creates a _query on the database and returns it.
 
-    The _query becomes invalid if the Database goes out of scope and is
-    destroyed.
-    +/
-    Query query(string sql)
-    {
-        return Query(core.handle, sql);
-    }
-    
     /++
-    Gets the number of database rows that were changed, inserted or deleted by
-    the most recently completed query.
+    Prepares (compiles) a single SQL statement and returngs it, so that it can be bound to
+    values before execution.
+
+    The statement becomes invalid if the Database goes out of scope and is destroyed.
+    +/
+    Statement prepare(string sql)
+    {
+        return Statement(core.handle, sql);
+    }
+
+    /// Convenience functions equivalent to an SQL statement.
+    void begin() { execute("BEGIN"); }
+    /// Ditto
+    void commit() { execute("COMMIT"); }
+    /// Ditto
+    void rollback() { execute("ROLLBACK"); }
+
+    /++
+    Returns the rowid of the last INSERT statement.
+    +/
+    long lastInsertRowid()
+    {
+        return sqlite3_last_insert_rowid(core.handle);
+    }
+
+    /++
+    Gets the number of database rows that were changed, inserted or deleted by the most
+    recently executed SQL statement.
     +/
     @property int changes() nothrow
     {
@@ -280,8 +238,8 @@ public:
     }
 
     /++
-    Gets the number of database rows that were changed, inserted or deleted
-    since the database was opened.
+    Gets the number of database rows that were changed, inserted or deleted since the
+    database was opened.
     +/
     @property int totalChanges() nothrow
     {
@@ -296,18 +254,9 @@ public:
     {
         return core.handle ? sqlite3_errcode(core.handle) : 0;
     }
-    
-    /++
-    Gets the SQLite error message of the last operation.
-    +/
-    @property string errorMsg() nothrow
-    {
-        return core.handle ? sqlite3_errmsg(core.handle).to!string : "Database is not open";
-    }
 
     /+
-    Helper function to translate the arguments values of a D function into
-    Sqlite values.
+    Helper function to translate the arguments values of a D function into Sqlite values.
     +/
     private static @property string block_read_values(size_t n, string name, PT...)()
     {
@@ -415,28 +364,27 @@ public:
     Creates and registers a simple function in the database.
 
     Params:
-        fun = An alias to the D implementation of the function.
-            The function $(D_PARAM fun) must satisfy these criteria:
+        fun = An alias to the D implementation of the function. The function $(D_PARAM fun)
+        must satisfy these criteria:
             $(UL
                 $(LI It must not be a variadic.)
-                $(LI Its arguments must all have a type that is compatible with
-                SQLite types: boolean, integral, floating point, string, or
-                array of bytes (BLOB types).)
-                $(LI It can have only one parameter of type $(D void*) and it
-                must be the last one.)
+                $(LI Its arguments must all have a type that is compatible with SQLite
+                types: boolean, integral, floating point, string, or array of bytes (BLOB
+                types).)
+                $(LI It can have only one parameter of type $(D void*) and it must be the
+                last one.)
                 $(LI Its return value must also be of a compatible type.)
             )
 
-        name = The name that the function will have in the database; this name
-        defaults to the identifier of $(D_PARAM fun).
+        name = The name that the function will have in the database; this name defaults to
+        the identifier of $(D_PARAM fun).
 
-        det = Tells SQLite whether the result of the function is deterministic,
-        i.e. if the result is the same when called with the same parameters.
-        Recent versions of SQLite perform optimizations based on this. Set to
-        $(D Deterministic.no) otherwise.
+        det = Tells SQLite whether the result of the function is deterministic, i.e. if the
+        result is the same when called with the same parameters. Recent versions of SQLite
+        perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
 
-        userData = A pointer to some user data, that will be passed to
-        $(D_PARAM fun) as its last argument if its type is $(D void*).
+        userData = A pointer to some user data, that will be passed to $(D_PARAM fun) as
+        its last argument if its type is $(D void*).
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
@@ -446,8 +394,10 @@ public:
         (void* userData = null)
     {
         static assert(isCallable!fun, "expecting a callable");
-        static assert(__traits(isStaticFunction, fun), "function with context pointers are not supported");
-        static assert(variadicFunctionStyle!(fun) == Variadic.no, "variadic functions are not supported");
+        static assert(__traits(isStaticFunction, fun),
+            "function with context pointers are not supported");
+        static assert(variadicFunctionStyle!(fun) == Variadic.no,
+            "variadic functions are not supported");
 
         enum funpointer = &fun;
 
@@ -504,7 +454,7 @@ public:
             null,
             null
         );
-        enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
     }
     ///
     unittest // Function creation
@@ -513,12 +463,13 @@ public:
         {
             return "Hello, %s!".format(name);
         }
-       
+
         auto db = Database(":memory:");
         db.createFunction!my_msg();
 
-        auto query = db.query("SELECT my_msg('John')");
-        assert(query.oneValue!string() == "Hello, John!");
+        auto msg = db.execute("SELECT my_msg('John')")
+                     .oneValue!string;
+        assert(msg == "Hello, John!");
     }
     ///
     unittest // Function creation with user data
@@ -532,25 +483,25 @@ public:
         int value = 42;
         auto db = Database(":memory:");
         db.createFunction!fun(&value);
-        auto query = db.query("SELECT fun('The number is')");
-        assert(query.oneValue!string() == "The number is 42");
+        auto msg = db.execute("SELECT fun('The number is')")
+                     .oneValue!string;
+        assert(msg == "The number is 42");
     }
 
     /++
     Creates and registers a new aggregate function in the database.
 
     Params:
-        Aggregate = The $(D struct) implementing the aggregate. Aggregate must
-        be a default-constructible $(DK struct) that implements at least these
-        two methods: $(D accumulate) and $(D result).
-        
-        name = The name that the function will have in the database; this name
-        defaults to the identifier of $(D_PARAM Aggregate).
-        
-        det = Tells SQLite whether the result of the function is deterministic,
-        i.e. if the result is the same when called with the same parameters.
-        Recent versions of SQLite perform optimizations based on this. Set to
-        $(D Deterministic.no) otherwise.
+        Aggregate = The $(D struct) implementing the aggregate. Aggregate must be a
+        default-constructible $(DK struct) that implements at least these two methods: $(D
+        accumulate) and $(D result).
+
+        name = The name that the function will have in the database; this name defaults to
+        the identifier of $(D_PARAM Aggregate).
+
+        det = Tells SQLite whether the result of the function is deterministic, i.e. if the
+        result is the same when called with the same parameters. Recent versions of SQLite
+        perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
@@ -558,31 +509,37 @@ public:
                          string name = __traits(identifier, Aggregate),
                          Deterministic det = Deterministic.yes)()
     {
-        static assert(is(Aggregate == struct), name ~ " shoud be a struct");
-        static assert(is(typeof(Aggregate.accumulate) == function), name ~ " shoud define accumulate()");
-        static assert(is(typeof(Aggregate.result) == function), name ~ " shoud define result()");
-        static assert(variadicFunctionStyle!(Aggregate.accumulate) == Variadic.no, "variadic functions are not supported");
-        static assert(variadicFunctionStyle!(Aggregate.result) == Variadic.no, "variadic functions are not supported");
-        
+        static assert(is(Aggregate == struct),
+            name ~ " shoud be a struct");
+        static assert(is(typeof(Aggregate.accumulate) == function),
+            name ~ " shoud define accumulate()");
+        static assert(is(typeof(Aggregate.result) == function),
+            name ~ " shoud define result()");
+        static assert(variadicFunctionStyle!(Aggregate.accumulate) == Variadic.no,
+            "variadic functions are not supported");
+        static assert(variadicFunctionStyle!(Aggregate.result) == Variadic.no,
+            "variadic functions are not supported");
+
         alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PT;
         alias ReturnType!(Aggregate.result) RT;
-        
+
         enum x_step = q{
-            extern(C) static void @{name}_step(sqlite3_context* context, int argc, sqlite3_value** argv)
+            extern(C) static
+            void @{name}_step(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
-                Aggregate* agg = cast(Aggregate*) sqlite3_aggregate_context(context, Aggregate.sizeof);
+                auto agg = cast(Aggregate*) sqlite3_aggregate_context(context, Aggregate.sizeof);
                 if (!agg)
                 {
                     sqlite3_result_error_nomem(context);
                     return;
                 }
-                
+
                 PT args;
                 int type;
                 @{blob}
-                
+
                 @{block_read_values}
-                
+
                 try
                 {
                     agg.accumulate(args);
@@ -599,9 +556,9 @@ public:
             "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
             "block_read_values": block_read_values!(PT.length, name, PT)
         ]);
-        
+
         mixin(x_step_mix);
-        
+
         enum x_final = q{
             extern(C) static void @{name}_final(sqlite3_context* context)
             {
@@ -611,7 +568,7 @@ public:
                     sqlite3_result_error_nomem(context);
                     return;
                 }
-                
+
                 try
                 {
                     auto tmp = agg.result();
@@ -627,9 +584,9 @@ public:
         enum x_final_mix = render(x_final, [
             "name": name
         ]);
-        
+
         mixin(x_final_mix);
-        
+
         assert(core.handle);
         auto result = sqlite3_create_function(
             core.handle,
@@ -641,7 +598,7 @@ public:
             mixin(format("&%s_step", name)),
             mixin(format("&%s_final", name))
             );
-        enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
     }
     ///
     unittest // Aggregate creation
@@ -650,72 +607,76 @@ public:
         {
             double total_value = 0.0;
             double total_weight = 0.0;
-            
+
             void accumulate(double value, double weight)
             {
                 total_value += value * weight;
                 total_weight += weight;
             }
-            
+
             double result()
             {
                 return total_value / total_weight;
             }
         }
-        
+
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
         db.createAggregate!(weighted_average, "w_avg")();
-        
-        auto query = db.query("INSERT INTO test (value, weight) VALUES (?1, ?2)");
+
+        auto statement = db.prepare("INSERT INTO test (value, weight) VALUES (?1, ?2)");
         double[double] list = [11.5: 3, 14.8: 1.6, 19: 2.4];
         foreach (value, weight; list)
         {
-            query.bind(1, value);
-            query.bind(2, weight);
-            query.execute();
-            query.reset();
+            statement.bind(1, value);
+            statement.bind(2, weight);
+            statement.execute();
+            statement.reset();
         }
-        
-        query = db.query("SELECT w_avg(value, weight) FROM test");
-        import std.math: approxEqual;        
-        assert(approxEqual(query.oneValue!double, (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
+
+        auto w_avg = db.execute("SELECT w_avg(value, weight) FROM test")
+                       .oneValue!double;
+        import std.math: approxEqual;
+        assert(approxEqual(w_avg, (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
     }
 
     /++
     Creates and registers a collation function in the database.
 
     Params:
-        fun = An alias to the D implementation of the function.
-            The function $(D_PARAM fun) must satisfy these criteria:
+        fun = An alias to the D implementation of the function. The function $(D_PARAM fun)
+        must satisfy these criteria:
             $(UL
                 $(LI If s1 is less than s2, $(D ret < 0).)
                 $(LI If s1 is equal to s2, $(D ret == 0).)
                 $(LI If s1 is greater than s2, $(D ret > 0).)
                 $(LI If s1 is equal to s2, then s2 is equal to s1.)
-                $(LI If s1 is equal to s2 and s2 is equal to s3, then s1 is
-                equal to s3.)
+                $(LI If s1 is equal to s2 and s2 is equal to s3, then s1 is equal to s3.)
                 $(LI If s1 is less than s2, then s2 is greater than s1.)
-                $(LI If s1 is less than s2 and s2 is less than s3, then s1 is
-                less than s3.)
+                $(LI If s1 is less than s2 and s2 is less than s3, then s1 is less than s3.)
             )
 
-        name = The name that the function will have in the database; this name
-        defaults to the identifier of $(D_PARAM fun).
-        
+        name = The name that the function will have in the database; this name defaults to
+        the identifier of $(D_PARAM fun).
+
     See_Also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
     +/
     void createCollation(alias fun, string name = __traits(identifier, fun))()
     {
         static assert(isCallable!fun, "expecting a callable");
-        static assert(__traits(isStaticFunction, fun), "function with context pointers are not supported");
-        static assert(variadicFunctionStyle!(fun) == Variadic.no, "variadic functions are not supported");
-        
+        static assert(__traits(isStaticFunction, fun),
+            "function with context pointers are not supported");
+        static assert(variadicFunctionStyle!(fun) == Variadic.no,
+            "variadic functions are not supported");
+
         alias ParameterTypeTuple!fun PT;
-        static assert(isSomeString!(PT[0]), "the first argument of function " ~ name ~ " should be a string");
-        static assert(isSomeString!(PT[1]), "the second argument of function " ~ name ~ " should be a string");
-        static assert(isImplicitlyConvertible!(ReturnType!fun, int), "function " ~ name ~ " should return a value convertible to an int");
-        
+        static assert(isSomeString!(PT[0]),
+            "the first argument of function " ~ name ~ " should be a string");
+        static assert(isSomeString!(PT[1]),
+            "the second argument of function " ~ name ~ " should be a string");
+        static assert(isImplicitlyConvertible!(ReturnType!fun, int),
+            "function " ~ name ~ " should return a value convertible to an int");
+
         enum x_compare = q{
             extern (C) static int @{name}(void*, int n1, const(void*) str1, int n2, const(void* )str2)
             {
@@ -728,7 +689,7 @@ public:
             }
         };
         mixin(render(x_compare, ["name": name]));
-        
+
         assert(core.handle);
         auto result = sqlite3_create_collation(
             core.handle,
@@ -737,7 +698,7 @@ public:
             null,
             mixin("&" ~ name)
             );
-        enforce(result == SQLITE_OK, new SqliteException(errorMsg, result));
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
     }
     ///
     unittest // Collation creation
@@ -747,24 +708,24 @@ public:
             import std.uni;
             return icmp(s1, s2);
         }
-        
+
         auto db = Database(":memory:");
         db.createCollation!my_collation();
         db.execute("CREATE TABLE test (word TEXT)");
-        
-        auto query = db.query("INSERT INTO test (word) VALUES (?)");
+
+        auto statement = db.prepare("INSERT INTO test (word) VALUES (?)");
         foreach (word; ["straße", "strasses"])
         {
-            query.bind(1, word);
-            query.execute();
-            query.reset();
+            statement.bind(1, word);
+            statement.execute();
+            statement.reset();
         }
-        
-        query = db.query("SELECT word FROM test ORDER BY word COLLATE my_collation");
-        assert(query.oneValue!string == "straße");
+
+        auto word = db.execute("SELECT word FROM test ORDER BY word COLLATE my_collation")
+                      .oneValue!string;
+        assert(word == "straße");
     }
 }
-
 ///
 unittest // Documentation example
 {
@@ -777,70 +738,69 @@ unittest // Documentation example
     db.execute(
         "CREATE TABLE person (
             id INTEGER PRIMARY KEY,
-            last_name TEXT NOT NULL,
-            first_name TEXT,
+            name TEXT NOT NULL,
             score FLOAT,
             photo BLOB
          )"
     );
 
-    // Populate the table.
-    auto query = db.query(
-        "INSERT INTO person (last_name, first_name, score, photo)
-         VALUES (:last_name, :first_name, :score, :photo)"
+    // Populate the table
+
+    // Prepare an INSERT statement
+    auto statement = db.prepare(
+        "INSERT INTO person (name, score, photo)
+         VALUES (:name, :score, :photo)"
     );
-    
-    // Bind values.
-    query.bind(":last_name", "Smith");
-    query.bind(":first_name", "John");
-    query.bind(":score", 77.5);
-    query.bind(":photo", [0xDE, 0xEA, 0xBE, 0xEF]);
-    query.execute();
-    
-    query.reset(); // Need to reset the query after execution.
-    query.bind(":last_name", "Doe");
-    query.bind(":first_name", "John");
-    query.bind(3, 46.8); // Use of index instead of name.
-    query.bind(":photo", null);
-    query.execute();
+
+    // Bind values one by one (by parameter name or index)
+    statement.bind(":name", "John");
+    statement.bind(":score", 77.5);
+    statement.bind(3, [0xDE, 0xEA, 0xBE, 0xEF]);
+    statement.execute();
+
+    statement.reset(); // Need to reset the statement after execution.
+
+    // Bind muliple values at once
+    statement.bindAll("John", 46.8, null);
+    statement.execute();
 
     // Count the changes
     assert(db.totalChanges == 2);
 
     // Count the Johns in the table.
-    query = db.query("SELECT count(*) FROM person WHERE first_name == 'John'");
-    assert(query.oneValue!long == 2);
+    auto count = db.execute("SELECT count(*) FROM person WHERE name == 'John'")
+                   .oneValue!long;
+    assert(count == 2);
 
     // Read the data from the table lazily
-    query = db.query("SELECT * FROM person");
-    foreach (row; query)
+    auto results = db.execute("SELECT * FROM person");
+    foreach (row; results)
     {
         // Retrieve "id", which is the column at index 0, and contains an int,
         // e.g. using the peek function (best performance).
         auto id = row.peek!long(0);
 
-        // Retrieve "last_name" and "first_name", e.g. using opIndex(string),
-        // which returns a ColumnData.
-        auto name = format("%s, %s", row["last_name"].as!string, row["first_name"].as!string);
+        // Retrieve "name", e.g. using opIndex(string), which returns a ColumnData.
+        auto name = row["name"].as!string;
 
         // Retrieve "score", which is at index 3, e.g. using the peek function.
         auto score = row.peek!double("score");
-        
+
         // Retrieve "photo", e.g. using opIndex(index),
         // which returns a ColumnData.
-        auto photo = row[4].as!(ubyte[]);
-        
+        auto photo = row[3].as!(ubyte[]);
+
         // ... and use all these data!
     }
 
     // Read all the table in memory at once
-    auto data = QueryCache(db.query("SELECT * FROM person"));
+    auto data = RowCache(db.execute("SELECT * FROM person"));
     foreach (row; data)
     {
         auto id = row[0].as!long;
-        auto name = format("%s, %s", row["last_name"], row["first_name"]);
+        auto last = row["name"];
         auto score = row["score"].as!double;
-        auto photo = row[4].as!(ubyte[]);
+        auto photo = row[3].as!(ubyte[]);
         // etc.
     }
 }
@@ -860,51 +820,69 @@ unittest // Database construction
 unittest // Execute an SQL statement
 {
     auto db = Database(":memory:");
-    db.execute(";");
-    db.execute("ANALYZE");
+    db.run("");
+    db.run("-- This is a comment!");
+    db.run(";");
+    db.run("ANALYZE; VACUUM;");
+    assertThrown!SqliteException(db.run("ANALYZE; WHAT;"));
 }
 
-unittest // Execute an SQL statement with call back
+unittest // Unexpected multiple statements
 {
-    import std.exception;
-
-    static void v(string[] names, string[] texts) { }
-    static int i0(string[] names, string[] texts) { return 0; }
-    static int i1(string[] names, string[] texts) { return 1; }
-    
     auto db = Database(":memory:");
-    db.execute("EXPLAIN VACUUM;", &v);
-    db.execute("EXPLAIN VACUUM;", &i0);
-    assertThrown!SqliteException(db.execute("EXPLAIN VACUUM;", &i1));
+    db.execute("BEGIN; CREATE TABLE test (val INTEGER); ROLLBACK;");
+    assertThrown(db.execute("DROP TABLE test"));
+
+    db.execute("CREATE TABLE test (val INTEGER); DROP TABLE test;");
+    assertNotThrown(db.execute("DROP TABLE test"));
+
+    db.execute("SELECT 1; CREATE TABLE test (val INTEGER); DROP TABLE test;");
+    assertThrown(db.execute("DROP TABLE test"));
 }
 
-
-private string errmsg(sqlite3* dbHandle)
+unittest // Multiple statements with callback
 {
-    return sqlite3_errmsg(dbHandle).to!string;
+    auto db = Database(":memory:");
+    RowCache[] rows;
+    db.run("SELECT 1, 2, 3; SELECT 'A', 'B', 'C';", (ResultRange r) {
+        rows ~= RowCache(r);
+        return true;
+    });
+    assert(equal(rows[0][0], [1, 2, 3]));
+    assert(equal(rows[1][0], ["A", "B", "C"]));
 }
+
+
+private string errmsg(sqlite3* db)
+{
+    return sqlite3_errmsg(db).to!string;
+}
+
+private string errmsg(sqlite3_stmt* stmt)
+{
+    return errmsg(sqlite3_db_handle(stmt));
+}
+
 
 /++
-An interface to SQLite query execution.
+An SQLite statement execution.
 
-This struct is a wrapper around a $(D sqlite3_stmt*) pointer. Instances of this
-struct are typically returned by $(D Database.query()).
+This struct is a reference-counted wrapper around a $(D sqlite3_stmt*) pointer. Instances
+of this struct are typically returned by $(D Database.prepare()).
 +/
-struct Query
+struct Statement
 {
 private:
     struct _Core
     {
-        string sql;
-        sqlite3* dbHandle;
-        sqlite3_stmt* statement; // null if error or empty statement
-        int state;
-        
+        sqlite3_stmt* handle; // null if error or empty statement
+        string next;
+
         ~this()
         {
-            auto result = sqlite3_finalize(statement);
-            enforce(result == SQLITE_OK, new SqliteException("Coud not destroy the query", result));
-            statement = null;
+            auto result = sqlite3_finalize(handle);
+            enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
+            handle = null;
         }
 
         @disable this(this);
@@ -912,77 +890,75 @@ private:
     }
     alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
     Core core;
-    
+
     this(sqlite3* dbHandle, string sql)
     {
-        sqlite3_stmt* statement;
+        sqlite3_stmt* handle;
+        const(char*) ptail;
         auto result = sqlite3_prepare_v2(
             dbHandle,
             cast(char*) sql.toStringz(),
             cast(int) sql.length,
-            &statement,
-            null
+            &handle,
+            &ptail
         );
         enforce(result == SQLITE_OK, new SqliteException(errmsg(dbHandle), result, sql));
-        core = Core(sql, dbHandle, statement);
-        if (statement is null)
-            core.state = SQLITE_DONE;
+        core = Core(handle);
+        if (ptail)
+        {
+            // Offset sometimes seems to be undefined if statement doesn't end with ";"
+            auto offset = min(ptail - sql.ptr, sql.length);
+            core.next = sql[offset .. $];
+        }
     }
 
     int parameterCount() nothrow
     {
-        if (core.statement)
-            return sqlite3_bind_parameter_count(core.statement);
+        if (core.handle)
+            return sqlite3_bind_parameter_count(core.handle);
         else
             return 0;
     }
 
 public:
     /++
-    Gets the SQLite internal handle of the _statement.
+    Gets the SQLite internal _handle of the statement.
     +/
-    @property sqlite3_stmt* statement()
+    @property sqlite3_stmt* handle()
     {
-        return core.statement;
-    }
-
-    // Kepts for compatibility
-    ref Query rows() @safe pure nothrow
-    {
-        return this;
+        return core.handle;
     }
 
     /++
-    Binds values to parameters in a prepared statement.
-    
+    Binds values to parameters of this statement.
+
     Params:
         index = The index of the parameter (starting from 1).
-        
-        value = The bound _value. The type of value must be compatible with the
-        SQLite types: it must be a boolean or numeric type, a string or an
-        array.
+
+        value = The bound _value. The type of value must be compatible with the SQLite
+        types: it must be a boolean or numeric type, a string or an array.
     +/
     void bind(T)(int index, T value)
     {
         alias Unqual!T U;
         int result;
-        
+
         static if (is(U == typeof(null)) || is(U == void*))
         {
-            result = sqlite3_bind_null(core.statement, index);
+            result = sqlite3_bind_null(core.handle, index);
         }
         else static if (isIntegral!U || isSomeChar!U)
         {
-            result = sqlite3_bind_int64(core.statement, index, cast(long) value);
+            result = sqlite3_bind_int64(core.handle, index, cast(long) value);
         }
         else static if (isFloatingPoint!U)
         {
-            result = sqlite3_bind_double(core.statement, index, value);
+            result = sqlite3_bind_double(core.handle, index, value);
         }
         else static if (isSomeString!U)
         {
             string utf8 = value.to!string;
-            result = sqlite3_bind_text(core.statement,
+            result = sqlite3_bind_text(core.handle,
                                        index,
                                        cast(char*) utf8.toStringz(),
                                        cast(int) utf8.length,
@@ -991,11 +967,11 @@ public:
         else static if (isArray!U)
         {
             if (!value.length)
-                result = sqlite3_bind_null(core.statement, index);
+                result = sqlite3_bind_null(core.handle, index);
             else
             {
                 auto bytes = cast(ubyte[]) value;
-                result = sqlite3_bind_blob(core.statement,
+                result = sqlite3_bind_blob(core.handle,
                                            index,
                                            cast(void*) bytes.ptr,
                                            cast(int) bytes.length,
@@ -1004,113 +980,208 @@ public:
         }
         else
             static assert(false, "cannot bind a value of type " ~ U.stringof);
-        
-        enforce(result == SQLITE_OK, new SqliteException("Could not bind value", result));
+
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
     }
 
     /++
-    Binds values to parameters in a prepared statement.
-    
+    Binds values to parameters of this statement.
+
     Params:
-        name = The name of the parameter (starting from 0), include the ':',
-        '@' or '$' that introduces it.
-        
-        value = The bound _value. The type of value must be compatible with the
-        SQLite types: it must be a boolean or numeric type, a string or an
-        array.
-        
+        name = The name of the parameter, including the ':', '@' or '$' that introduced it.
+
+        value = The bound _value. The type of value must be compatible with the SQLite
+        types: it must be a boolean or numeric type, a string or an array.
+
     Warning:
-        While convenient, this overload of $(D bind) is less performant,
-        because it has to retrieve the column index with a call to the SQLite
-        function $(D sqlite3_bind_parameter_index).
+        While convenient, this overload of $(D bind) is less performant, because it has to
+        retrieve the column index with a call to the SQLite function $(D
+        sqlite3_bind_parameter_index).
     +/
     void bind(T)(string name, T value)
     {
-        auto index = sqlite3_bind_parameter_index(core.statement, cast(char*) name.toStringz());
+        auto index = sqlite3_bind_parameter_index(core.handle, cast(char*) name.toStringz());
         enforce(index > 0, new SqliteException(format("no parameter named '%s'", name)));
         bind(index, value);
     }
 
     /++
+    Binds all the arguments at once in order.
+    +/
+    void bindAll(Args...)(Args args)
+    {
+        foreach (index, _; Args)
+            bind(index + 1, args[index]);
+    }
+
+    /++
     Clears the bindings.
 
-    This does not reset the prepared statement. Use $(D Query.reset()) for this.
+    This does not reset the statement. Use $(D Statement.reset()) for this.
     +/
     void clearBindings()
     {
-        if (core.statement)
+        if (core.handle)
         {
-            auto result = sqlite3_clear_bindings(core.statement);
-            enforce(result == SQLITE_OK, new SqliteException("Could not clear the bindings", result));
+            auto result = sqlite3_clear_bindings(core.handle);
+            enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
         }
     }
 
     /++
-    Resets a query's prepared statement before a new execution.
+    Executes the statement and return a (possibly empty) range of results.
+    +/
+    ResultRange execute()
+    {
+        return ResultRange(this);
+    }
 
-    This does not clear the bindings. Use $(D Query.clear()) for this.
+    /++
+    Resets a this statement before a new execution.
+
+    Calling this method invalidates any $(D ResultRange) struct returned by a previous call
+    to $(D Database.execute()) or $(D Statement.execute()).
+
+    This does not clear the bindings. Use $(D Statement.clear()) for this.
     +/
     void reset()
     {
-        if (core.statement)
+        if (core.handle)
         {
-            auto result = sqlite3_reset(core.statement);
-            enforce(result == SQLITE_OK, new SqliteException("Could not reset the statement", result));
-            core.state = 0;
+            auto result = sqlite3_reset(core.handle);
+            enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
         }
     }
-    
-    /++
-    Executes the query.
+}
 
-    If the query is expected to return rows, use the query's input range
-    interface to iterate over them.
-    +/
-    void execute()
+unittest // Simple parameters binding
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val INTEGER)");
+
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.bind(1, 42);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, 42);
+    statement.execute();
+
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+        assert(row.peek!int(0) == 42);
+}
+
+unittest // Multiple parameters binding
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
+    auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (:i, @f, $t)");
+    assert(statement.parameterCount == 3);
+    statement.bind("$t", "TEXT");
+    statement.bind(":i", 42);
+    statement.bind("@f", 3.14);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, 42);
+    statement.bind(2, 3.14);
+    statement.bind(3, "TEXT");
+    statement.execute();
+
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
     {
-        core.state = sqlite3_step(core.statement);
-        if (core.state != SQLITE_ROW && core.state != SQLITE_DONE)
-        {
-            reset(); // necessary to retrieve the error message.
-            throw new SqliteException(errmsg(core.dbHandle), core.state);
-        }
+        assert(row.length == 3);
+        assert(row.peek!int("i") == 42);
+        assert(row.peek!double("f") == 3.14);
+        assert(row.peek!string("t") == "TEXT");
     }
-    
+}
+
+unittest // Multiple parameters binding: tuples
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
+    auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (?, ?, ?)");
+    statement.bindAll(42, 3.14, "TEXT");
+    statement.execute();
+
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+    {
+        assert(row.length == 3);
+        assert(row.peek!int(0) == 42);
+        assert(row.peek!double(1) == 3.14);
+        assert(row.peek!string(2) == "TEXT");
+    }
+}
+
+
+/++
+An input range interface to access the results of the execution of a statement.
+
+The elements of the range are $(D Row) structs. A $(D Row) is just a view of the current
+row when iterating the results of a $(D ResultRange). It becomes invalid as soon as $(D
+ResultRange.popFront()) is called (it contains undefined data afterwards). Use $(D
+RowCache) to store the content of rows past the execution of the statement.
+
+Instances of this struct are typically returned by $(D Database.execute()) or $(D
+Statement.execute()).
++/
+struct ResultRange
+{
+private:
+    struct _Core
+    {
+        Statement statement;
+        int state;
+
+        @disable this(this);
+        void opAssign(_Core) { assert(false); }
+    }
+    alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
+    Core core;
+
+    this(Statement statement)
+    {
+        core = Core(statement);
+        if (core.statement.handle !is null)
+            core.state = sqlite3_step(core.statement.handle);
+        else
+            core.state = SQLITE_DONE;
+        enforce(core.state == SQLITE_ROW || core.state == SQLITE_DONE,
+                new SqliteException(errmsg(core.statement.handle), core.state));
+    }
+
+public:
     /++
-    Input range interface. A $(D Query) is an input range of $(D Row)s.
-        
-    Warning: A Row becomes invalid as soon as $(D Query.popFront) is called (it
-    contains undefined data afterwards).
+    Range primitives.
     +/
     @property bool empty()
     {
-        if (!core.state) execute();
         assert(core.state);
         return core.state == SQLITE_DONE;
     }
-    
+
     /// ditto
     @property Row front()
     {
-        if (!core.state) execute();
         assert(core.state);
         enforce(!empty, new SqliteException("No rows available"));
-        return Row(core.statement);
+        return Row(core.statement.handle);
     }
-    
+
     /// ditto
     void popFront()
     {
-        if (!core.state) execute();
         assert(core.state);
         enforce(!empty, new SqliteException("No rows available"));
-        core.state = sqlite3_step(core.statement);
+        core.state = sqlite3_step(core.statement.handle);
         enforce(core.state == SQLITE_DONE || core.state == SQLITE_ROW,
-                new SqliteException(errmsg(core.dbHandle), core.state));
+                new SqliteException(errmsg(core.statement.handle), core.state));
     }
 
     /++
-    Gets only the first value of the first row returned by a query.
+    Gets only the first value of the first row returned by the execution of the statement.
     +/
     auto oneValue(T)()
     {
@@ -1121,92 +1192,31 @@ public:
     {
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
-        auto query = db.query("SELECT count(*) FROM test");
-        assert(query.oneValue!long == 0);
+        auto count = db.execute("SELECT count(*) FROM test").oneValue!long;
+        assert(count == 0);
     }
 }
 
-unittest // Empty query
-{
-    auto db = Database(":memory:");
-    db.execute(";");
-    auto query = db.query("-- This is a comment !");
-    assert(query.empty);
-    assert(query.parameterCount == 0);
-    query.clearBindings();
-    query.reset();
-}
-
-unittest // Simple parameters binding
-{
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-    
-    auto query = db.query("INSERT INTO test (val) VALUES (?)");
-    query.bind(1, 42);
-    query.execute();
-    query.reset();
-    query.bind(1, 42);
-    query.execute();
-    
-    query = db.query("SELECT * FROM test");
-    foreach (row; query)
-        assert(row.peek!int(0) == 42);
-}
-
-unittest // Multiple parameters binding
-{
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
-    auto query = db.query("INSERT INTO test (i, f, t) VALUES (:i, @f, $t)");
-    assert(query.parameterCount == 3);
-    query.bind("$t", "TEXT");
-    query.bind(":i", 42);
-    query.bind("@f", 3.14);
-    query.execute();
-    query.reset();
-    query.bind(3, "TEXT");
-    query.bind(1, 42);
-    query.bind(2, 3.14);
-    query.execute();
-    
-    query = db.query("SELECT * FROM test");
-    foreach (row; query)
-    {
-        assert(row.length == 3);
-        assert(row.peek!int("i") == 42);
-        assert(row.peek!double("f") == 3.14);
-        assert(row.peek!string("t") == "TEXT");
-    }
-}
-
-unittest // Other Query tests
+unittest // Refcount tests
 {
     auto db = Database(":memory:");
     {
         db.execute("CREATE TABLE test (val INTEGER)");
-        auto tmp = db.query("INSERT INTO test (val) VALUES (?)");
+        auto tmp = db.prepare("INSERT INTO test (val) VALUES (?)");
         tmp.bind(1, 42);
         tmp.execute();
     }
-    
-    auto query = { return db.query("SELECT * FROM test"); }();
-    assert(!query.empty);
-    assert(query.front.peek!int(0) == 42);
-    query.popFront();
-    assert(query.empty);
 
-    query = db.query("SELECT * FROM test WHERE val=%s".format(43.literal));
-    assert(query.empty);
+    auto results = { return db.execute("SELECT * FROM test"); }();
+    assert(!results.empty);
+    assert(results.oneValue!int == 42);
+    results.popFront();
+    assert(results.empty);
 }
 
 
 /++
 A SQLite row, implemented as a random-access range of ColumnData.
-
-Warning: A Row is just a view of the current row when iterating the results of
-a $(D Query). It becomes invalid as soon as $(D Query.popFront()) is called. Row
-contains undefined data afterwards.
 +/
 struct Row
 {
@@ -1241,7 +1251,7 @@ struct Row
     {
         frontIndex++;
     }
-   
+
     /// ditto
     @property Row save() @safe pure nothrow
     {
@@ -1251,19 +1261,19 @@ struct Row
         ret.backIndex = backIndex;
         return ret;
     }
-    
+
     /// ditto
     @property ColumnData back() nothrow
     {
         return ColumnData(peek!Variant(backIndex - frontIndex));
     }
-    
+
     /// ditto
     void popBack() @safe pure nothrow
     {
         backIndex--;
     }
-    
+
     /// ditto
     @property int length() @safe pure nothrow
     {
@@ -1277,13 +1287,13 @@ struct Row
         enforce(i >= 0 && i <= backIndex, new SqliteException(format("invalid column index: %d", i)));
         return ColumnData(peek!Variant(index));
     }
-    
+
     /++
     Returns the data of a column as a $(D ColumnData).
-        
+
     Params:
-        name = The name of the column, as specified in the prepared statement
-        with an AS clause.
+        name = The name of the column, as specified in the prepared statement with an AS
+        clause.
     +/
     ColumnData opIndex(string name)
     {
@@ -1291,17 +1301,17 @@ struct Row
     }
 
     /++
-    Returns the data of a column. 
-    
+    Returns the data of a column.
+
     Contraty to $(D opIndex), the $(D peek) functions return the data directly,
-    automatically cast to T, without the overhead of using a wrapped $(D
-    Variant) ($(D ColumnData)).
-    
+    automatically cast to T, without the overhead of using a wrapped $(D Variant) ($(D
+    ColumnData)).
+
     Params:
-        T = The type of the returned data. T must be a boolean, a built-in
-        numeric type, a string, an array or a Variant.
-        
-        index = The index of the column in the prepared statement.        
+        T = The type of the returned data. T must be a boolean, a built-in numeric type, a
+        string, an array or a Variant.
+
+        index = The index of the column in the prepared statement.
 
     Returns: A value of type T, or T.init if the data is NULL.
 
@@ -1342,18 +1352,18 @@ struct Row
             {
                 case SQLITE_INTEGER:
                     return Variant(peek!long(index));
-                    
+
                 case SQLITE_FLOAT:
                     return Variant(peek!double(index));
-                    
+
                 case SQLITE3_TEXT:
                     return Variant(peek!string(index));
-                    
+
                 case SQLITE_BLOB:
                     return Variant(peek!(ubyte[])(index));
-                    
+
                 case SQLITE_NULL:
-                    return Variant();        
+                    return Variant();
             }
         }
         else
@@ -1361,31 +1371,31 @@ struct Row
     }
 
     /++
-    Returns the data of a column. 
-    
+    Returns the data of a column.
+
     Contraty to $(D opIndex), the $(D peek) functions return the data directly,
-    automatically cast to T, without the overhead of using a wrapped $(D
-    Variant) ($(D ColumnData)).
-    
+    automatically cast to T, without the overhead of using a wrapped $(D Variant) ($(D
+    ColumnData)).
+
     Params:
-        T = The type of the returned data. T must be a boolean, a built-in
-        numeric type, a string, an array or a Variant.
-        
-        name = The name of the column, as specified in the prepared statement
-        with an AS clause.        
+        T = The type of the returned data. T must be a boolean, a built-in numeric type, a
+        string, an array or a Variant.
+
+        name = The name of the column, as specified in the prepared statement with an AS
+        clause.
 
     Returns: A value of type T, or T.init if the data is NULL.
 
     Warning:
-        The names of all the columns are tested each time this function is
-        called: use numeric indexing for better performance.
+        The names of all the columns are tested each time this function is called: use
+        numeric indexing for better performance.
     +/
     auto peek(T)(string name)
     {
         foreach (i; frontIndex .. backIndex + 1)
             if (sqlite3_column_name(statement, i).to!string == name)
                 return peek!T(i);
-        
+
         throw new SqliteException("invalid column name: '%s'".format(name));
     }
 }
@@ -1402,24 +1412,24 @@ unittest // Row random-access range interface
 
     {
         db.execute("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER, d INTEGER)");
-        auto query = db.query("INSERT INTO test (a, b, c, d) VALUES (?, ?, ?, ?)");
-        query.bind(1, 1);
-        query.bind(2, 2);
-        query.bind(3, 3);
-        query.bind(4, 4);
-        query.execute();
-        query.reset();
-        query.bind(1, 5);
-        query.bind(2, 6);
-        query.bind(3, 7);
-        query.bind(4, 8);
-        query.execute();
+        auto statement = db.prepare("INSERT INTO test (a, b, c, d) VALUES (?, ?, ?, ?)");
+        statement.bind(1, 1);
+        statement.bind(2, 2);
+        statement.bind(3, 3);
+        statement.bind(4, 4);
+        statement.execute();
+        statement.reset();
+        statement.bind(1, 5);
+        statement.bind(2, 6);
+        statement.bind(3, 7);
+        statement.bind(4, 8);
+        statement.execute();
     }
 
     {
-        auto query = db.query("SELECT * FROM test");
+        auto results = db.execute("SELECT * FROM test");
         auto values = [1, 2, 3, 4, 5, 6, 7, 8];
-        foreach (row; query)
+        foreach (row; results)
         {
             while (!row.empty)
             {
@@ -1431,9 +1441,9 @@ unittest // Row random-access range interface
     }
 
     {
-        auto query = db.query("SELECT * FROM test");
+        auto results = db.execute("SELECT * FROM test");
         auto values = [4, 3, 2, 1, 8, 7, 6, 5];
-        foreach (row; query)
+        foreach (row; results)
         {
             while (!row.empty)
             {
@@ -1444,9 +1454,9 @@ unittest // Row random-access range interface
         }
     }
 
-    auto query = { return db.query("SELECT * FROM test"); }();
+    auto results = { return db.execute("SELECT * FROM test"); }();
     auto values = [1, 2, 3, 4, 5, 6, 7, 8];
-    foreach (row; query)
+    foreach (row; results)
     {
         while (!row.empty)
         {
@@ -1459,14 +1469,14 @@ unittest // Row random-access range interface
 
 
 /++
-The data retrived from a column, stored internally as a $(D Variant), which is
-accessible through "$(D alias this)".
+The data retrived from a column, stored internally as a $(D Variant), which is accessible
+through "$(D alias this)".
 +/
 struct ColumnData
 {
     Variant variant;
     alias variant this;
-    
+
     /++
     Returns the data converted to T. If the data is NULL, defaultValue is
     returned.
@@ -1475,7 +1485,7 @@ struct ColumnData
     {
         if (!variant.hasValue)
             return defaultValue;
-        
+
         static if (isBoolean!T || isNumeric!T || isSomeChar!T || isSomeString!T)
         {
             return variant.coerce!T;
@@ -1504,21 +1514,21 @@ unittest // Getting integral values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (?)");
-    query.bind(1, cast(byte) 42);
-    query.execute();
-    query.reset();
-    query.bind(1, 42U);
-    query.execute();
-    query.reset();
-    query.bind(1, 42UL);
-    query.execute();
-    query.reset();
-    query.bind(1, '\x2A');
-    query.execute();
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.bind(1, cast(byte) 42);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, 42U);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, 42UL);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, '\x2A');
+    statement.execute();
 
-    query = db.query("SELECT * FROM test");
-    foreach (row; query)
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
         assert(row.peek!long(0) == 42);
 }
 
@@ -1527,21 +1537,21 @@ unittest // Getting floating point values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val FLOAT)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (?)");
-    query.bind(1, 42.0F);
-    query.execute();
-    query.reset();
-    query.bind(1, 42.0);
-    query.execute();
-    query.reset();
-    query.bind(1, 42.0L);
-    query.execute();
-    query.reset();
-    query.bind(1, "42");
-    query.execute();
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.bind(1, 42.0F);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, 42.0);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, 42.0L);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, "42");
+    statement.execute();
 
-    query = db.query("SELECT * FROM test");
-    foreach (row; query)
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
         assert(row.peek!double(0) == 42.0);
 }
 
@@ -1550,12 +1560,12 @@ unittest // Getting text values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (?)");
-    query.bind(1, "I am a text.");
-    query.execute();
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.bind(1, "I am a text.");
+    statement.execute();
 
-    query = db.query("SELECT * FROM test");
-    assert(query.front.peek!string(0) == "I am a text.");
+    auto results = db.execute("SELECT * FROM test");
+    assert(results.front.peek!string(0) == "I am a text.");
 }
 
 unittest // Getting blob values
@@ -1563,13 +1573,13 @@ unittest // Getting blob values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val BLOB)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (?)");
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
     ubyte[] array = [1, 2, 3];
-    query.bind(1, array);
-    query.execute();
+    statement.bind(1, array);
+    statement.execute();
 
-    query = db.query("SELECT * FROM test");
-    foreach (row; query)
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
         assert(row.peek!(ubyte[])(0) ==  [1, 2, 3]);
 }
 
@@ -1580,32 +1590,32 @@ unittest // Getting null values
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
-    auto query = db.query("INSERT INTO test (val) VALUES (?)");
-    query.bind(1, null);
-    query.execute();
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.bind(1, null);
+    statement.execute();
 
-    query = db.query("SELECT * FROM test");
-    assert(query.front.peek!bool(0) == false);
-    assert(query.front.peek!long(0) == 0);
-    assert(query.front.peek!double(0).isnan);
-    assert(query.front.peek!string(0) is null);
-    assert(query.front.peek!(ubyte[])(0) is null);
-    assert(query.front[0].as!bool == false);
-    assert(query.front[0].as!long == 0);
-    assert(query.front[0].as!double.isnan);
-    assert(query.front[0].as!string is null);
-    assert(query.front[0].as!(ubyte[]) is null);
+    auto results = db.execute("SELECT * FROM test");
+    assert(results.front.peek!bool(0) == false);
+    assert(results.front.peek!long(0) == 0);
+    assert(results.front.peek!double(0).isnan);
+    assert(results.front.peek!string(0) is null);
+    assert(results.front.peek!(ubyte[])(0) is null);
+    assert(results.front[0].as!bool == false);
+    assert(results.front[0].as!long == 0);
+    assert(results.front[0].as!double.isnan);
+    assert(results.front[0].as!string is null);
+    assert(results.front[0].as!(ubyte[]) is null);
 }
 
 
 /++
-Caches all the results of a $(D Query) in memory as $(D ColumnData).
+Caches all the results of a $(D Statement) in memory as $(D ColumnData).
 
-Allows to iterate on the rows and their columns with an array-like interface.
-The rows can be viewed as an array of $(D ColumnData) or as an associative
-array of $(D ColumnData) indexed by the column names.
+Allows to iterate on the rows and their columns with an array-like interface. The rows can
+be viewed as an array of $(D ColumnData) or as an associative array of $(D ColumnData)
+indexed by the column names.
 +/
-struct QueryCache
+struct RowCache
 {
     struct CachedRow
     {
@@ -1643,17 +1653,13 @@ struct QueryCache
     private int[string] columnIndexes;
 
     /++
-    Creates and populates the cache from the results of the query.
-
-    Warning:
-        The query will be reset once this constructor have populated the cache.
-        Don't call this constructor while iterating the query's range interface.
+    Creates and populates the cache from the results of the statement.
     +/
-    this(Query query)
+    this(ResultRange results)
     {
-        if (!query.empty)
+        if (!results.empty)
         {
-            auto first = query.front;
+            auto first = results.front;
             foreach (i; 0 .. first.length)
             {
                 auto name = sqlite3_column_name(first.statement, i).to!string;
@@ -1661,14 +1667,13 @@ struct QueryCache
             }
         }
 
-        auto rowapp = appender!(CachedRow[]);        
-        while (!query.empty)
+        auto rowapp = appender!(CachedRow[]);
+        while (!results.empty)
         {
-            rowapp.put(CachedRow(query.front, columnIndexes));
-            query.popFront();
+            rowapp.put(CachedRow(results.front, columnIndexes));
+            results.popFront();
         }
         rows = rowapp.data;
-        query.reset();
     }
 }
 ///
@@ -1676,18 +1681,18 @@ unittest
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (msg TEXT, num FLOAT)");
-    
-    auto query = db.query("INSERT INTO test (msg, num) VALUES (?1, ?2)");
-    query.bind(1, "ABC");
-    query.bind(2, 123);
-    query.execute();
-    query.reset();
-    query.bind(1, "DEF");
-    query.bind(2, 456);
-    query.execute();
-    
-    query = db.query("SELECT * FROM test");
-    auto data = QueryCache(query);
+
+    auto statement = db.prepare("INSERT INTO test (msg, num) VALUES (?1, ?2)");
+    statement.bind(1, "ABC");
+    statement.bind(2, 123);
+    statement.execute();
+    statement.reset();
+    statement.bind(1, "DEF");
+    statement.bind(2, 456);
+    statement.execute();
+
+    auto results = db.execute("SELECT * FROM test");
+    auto data = RowCache(results);
     assert(data.length == 2);
     assert(data[0].front.as!string == "ABC");
     assert(data[0][1].as!int == 123);
@@ -1695,18 +1700,17 @@ unittest
     assert(data[1]["num"].as!int == 456);
 }
 
-unittest // QueryCache copies
+unittest // RowCache copies
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (msg TEXT)");
-    auto query = db.query("INSERT INTO test (msg) VALUES (?)");
-    query.bind(1, "ABC");
-    query.execute();
+    auto statement = db.prepare("INSERT INTO test (msg) VALUES (?)");
+    statement.bind(1, "ABC");
+    statement.execute();
 
     static getdata(Database db)
     {
-        auto query = db.query("SELECT * FROM test");
-        return QueryCache(query);
+        return RowCache(db.execute("SELECT * FROM test"));
     }
 
     auto data = getdata(db);
@@ -1752,7 +1756,7 @@ Exception thrown when SQLite functions return an error.
 +/
 class SqliteException : Exception
 {
-    /++ 
+    /++
     The _code of the error that raised the exception, or 0 if this _code is not known.
     +/
     int code;
