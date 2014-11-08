@@ -32,7 +32,7 @@ import std.variant;
 import std.c.string : memcpy;
 public import sqlite3;
 
-// debug import std.stdio;
+debug import std.stdio;
 
 
 /++
@@ -368,9 +368,8 @@ public:
         must satisfy these criteria:
             $(UL
                 $(LI It must not be a variadic.)
-                $(LI Its arguments must all have a type that is compatible with SQLite
-                types: boolean, integral, floating point, string, or array of bytes (BLOB
-                types).)
+                $(LI Its arguments must all have a type that is compatible with SQLite types:
+                boolean, integral, floating point, string, or array of bytes (BLOB types).)
                 $(LI It can have only one parameter of type $(D void*) and it must be the
                 last one.)
                 $(LI Its return value must also be of a compatible type.)
@@ -725,6 +724,115 @@ public:
                       .oneValue!string;
         assert(word == "straße");
     }
+
+    /++
+    Registers an update _hook.
+
+    See_Also: $(LINK https://www.sqlite.org/c3ref/commit_hook.html).
+    +/
+    void setUpdateHook(scope void delegate(int type, string dbName, string tableName, long rowid) hook)
+    {
+        alias HookFun = void function(int type, string dbName, string tableName, long rowid);
+
+        struct del
+        {
+            HookFun funcptr;
+            void* ptr;
+        }
+        
+        extern(C) static void callback(void* ptr, int type,
+                                       char* dbName, char* tableName,
+                                       sqlite3_int64 rowid)
+        {
+            auto d = *(cast(del*) ptr);
+            void delegate(int type, string dbName, string tableName, long rowid) dg;
+            dg.ptr = d.ptr;
+            dg.funcptr = d.funcptr;
+            return dg(type, dbName.to!string, tableName.to!string, rowid);
+        }
+        
+        sqlite3_update_hook(core.handle, &callback,
+                            cast(void*) new del(hook.funcptr, hook.ptr));
+    }
+    ///
+    unittest
+    {
+        int i;
+        auto db = Database(":memory:");
+        db.setUpdateHook((int type, string dbName, string tableName, long rowid) {
+            assert(type == SQLITE_INSERT);
+            assert(dbName == "main");
+            assert(tableName == "test");
+            assert(rowid == 1);
+            i = 42;
+        });
+        db.execute("CREATE TABLE test (val INTEGER)");
+        db.execute("INSERT INTO test VALUES (100)");
+        assert(i == 42);
+    }
+
+    /++
+    Registers a commit _hook or a rollback _hook.
+
+    See_Also: $(LINK https://www.sqlite.org/c3ref/commit_hook.html).
+    +/
+    void setCommitHook(int delegate() hook)
+    {
+        struct del
+        {
+            int function() funcptr;
+            void* ptr;
+        }
+
+        extern(C) static int callback(void* ptr)
+        {
+            auto d = *(cast(del*) ptr);
+            int delegate() dg;
+            dg.ptr = d.ptr;
+            dg.funcptr = d.funcptr;
+            return dg();
+        }
+
+        sqlite3_commit_hook(core.handle, &callback,
+                            cast(void*) new del(hook.funcptr, hook.ptr));
+    }
+    /// Ditto
+    void setRollbackHook(void delegate() hook)
+    {
+        struct del
+        {
+            void function() funcptr;
+            void* ptr;
+        }
+        
+        extern(C) static void callback(void* ptr)
+        {
+            auto d = *(cast(del*) ptr);
+            void delegate() dg;
+            dg.ptr = d.ptr;
+            dg.funcptr = d.funcptr;
+            dg();
+        }
+        
+        sqlite3_rollback_hook(core.handle, &callback,
+                              cast(void*) new del(hook.funcptr, hook.ptr));
+    }
+    ///
+    unittest
+    {
+        int i;
+        auto db = Database(":memory:");
+        db.setCommitHook({ i = 42; return 0; });
+        db.setRollbackHook({ i = 666; });
+        db.begin();
+        db.execute("CREATE TABLE test (val INTEGER)");
+        db.rollback();
+        assert(i == 666);
+        db.begin();
+        db.execute("CREATE TABLE test (val INTEGER)");
+        db.commit();
+        assert(i == 42);
+    }
 }
 ///
 unittest // Documentation example
@@ -824,7 +932,6 @@ unittest // Execute an SQL statement
     db.run("-- This is a comment!");
     db.run(";");
     db.run("ANALYZE; VACUUM;");
-    assertThrown!SqliteException(db.run("ANALYZE; WHAT;"));
 }
 
 unittest // Unexpected multiple statements
