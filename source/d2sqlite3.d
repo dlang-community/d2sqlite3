@@ -147,7 +147,7 @@ This struct is a reference-counted wrapper around a $(D sqlite3*) pointer.
 struct Database
 {
 private:
-    struct _Core
+    struct _Payload
     {
         sqlite3* handle;
 
@@ -167,11 +167,11 @@ private:
         }
 
         @disable this(this);
-        void opAssign(_Core) { assert(false); }
+        void opAssign(_Payload) { assert(false); }
     }
 
-    alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
-    Core core;
+    alias RefCounted!(_Payload, RefCountedAutoInitialize.no) Payload;
+    Payload p;
 
 public:
     /++
@@ -190,10 +190,10 @@ public:
     {
         sqlite3* hdl;
         auto result = sqlite3_open_v2(cast(char*) path.toStringz, &hdl, flags, null);
-        core = Core(hdl);
+        p = Payload(hdl);
         enforce(result == SQLITE_OK,
-                new SqliteException(core.handle
-                            ? errmsg(core.handle)
+                new SqliteException(p.handle
+                            ? errmsg(p.handle)
                             : "Error opening the database", result));
     }
 
@@ -202,7 +202,7 @@ public:
     +/
     @property sqlite3* handle() @safe pure nothrow
     {
-        return core.handle;
+        return p.handle;
     }
 
     /++
@@ -214,8 +214,8 @@ public:
     void close()
     {
         auto result = sqlite3_close(handle);
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
-        core.handle = null;
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+        p.handle = null;
     }
 
     /++
@@ -253,7 +253,7 @@ public:
             auto results = stmt.execute();
             if (dg && !dg(results))
                 return;
-            sql = stmt.core.next;
+            sql = stmt.p.next;
         }
         while (sql.length);
     }
@@ -273,7 +273,7 @@ public:
     +/
     Statement prepare(string sql)
     {
-        return Statement(core.handle, sql);
+        return Statement(p.handle, sql);
     }
 
     /// Convenience functions equivalent to an SQL statement.
@@ -288,7 +288,7 @@ public:
     +/
     long lastInsertRowid()
     {
-        return sqlite3_last_insert_rowid(core.handle);
+        return sqlite3_last_insert_rowid(p.handle);
     }
 
     /++
@@ -297,8 +297,8 @@ public:
     +/
     @property int changes() nothrow
     {
-        assert(core.handle);
-        return sqlite3_changes(core.handle);
+        assert(p.handle);
+        return sqlite3_changes(p.handle);
     }
 
     /++
@@ -307,8 +307,8 @@ public:
     +/
     @property int totalChanges() nothrow
     {
-        assert(core.handle);
-        return sqlite3_total_changes(core.handle);
+        assert(p.handle);
+        return sqlite3_total_changes(p.handle);
     }
 
     /++
@@ -316,119 +316,23 @@ public:
     +/
     @property int errorCode() nothrow
     {
-        return core.handle ? sqlite3_errcode(core.handle) : 0;
-    }
-
-    /+
-    Helper function to translate the arguments values of a D function into Sqlite values.
-    +/
-    private static @property string block_read_values(size_t n, string name, PT...)()
-    {
-        static if (n == 0)
-            return null;
-        else
-        {
-            enum index = n - 1;
-            alias Unqual!(PT[index]) UT;
-            static if (isBoolean!UT)
-                enum templ = q{
-                    @{previous_block}
-                    type = sqlite3_value_numeric_type(argv[@{index}]);
-                    enforce(type == SQLITE_INTEGER, new SqliteException(
-                        "argument @{n} of function @{name}() should be a boolean"));
-                    args[@{index}] = sqlite3_value_int64(argv[@{index}]) != 0;
-                };
-            else static if (isIntegral!UT)
-                enum templ = q{
-                    @{previous_block}
-                    type = sqlite3_value_numeric_type(argv[@{index}]);
-                    enforce(type == SQLITE_INTEGER, new SqliteException(
-                        "argument @{n} of function @{name}() should be of an integral type"));
-                    args[@{index}] = to!(PT[@{index}])(sqlite3_value_int64(argv[@{index}]));
-                };
-            else static if (isFloatingPoint!UT)
-                enum templ = q{
-                    @{previous_block}
-                    type = sqlite3_value_numeric_type(argv[@{index}]);
-                    enforce(type == SQLITE_FLOAT, new SqliteException(
-                        "argument @{n} of function @{name}() should be a floating point"));
-                    args[@{index}] = to!(PT[@{index}])(sqlite3_value_double(argv[@{index}]));
-                };
-            else static if (isSomeString!UT)
-                enum templ = q{
-                    @{previous_block}
-                    type = sqlite3_value_type(argv[@{index}]);
-                    enforce(type == SQLITE3_TEXT, new SqliteException(
-                        "argument @{n} of function @{name}() should be a string"));
-                    args[@{index}] = to!(PT[@{index}])(sqlite3_value_text(argv[@{index}]));
-                };
-            else static if (isArray!UT && is(Unqual!(ElementType!UT) : ubyte))
-                enum templ = q{
-                    @{previous_block}
-                    type = sqlite3_value_type(argv[@{index}]);
-                    enforce(type == SQLITE_BLOB, new SqliteException(
-                        "argument @{n} of function @{name}() should be of an array of bytes (BLOB)"));
-                    n = sqlite3_value_bytes(argv[@{index}]);
-                    blob.length = n;
-                    memcpy(blob.ptr, sqlite3_value_blob(argv[@{index}]), n);
-                    args[@{index}] = to!(PT[@{index}])(blob.dup);
-                };
-            else static if (is(UT == void*))
-                enum templ = q{
-                    @{previous_block}
-                };
-            else
-                static assert(false, PT[index].stringof ~ " is not a compatible argument type");
-
-            return render(templ, [
-                "previous_block": block_read_values!(n - 1, name, PT),
-                "index":  to!string(index),
-                "n": to!string(n),
-                "name": name
-            ]);
-        }
-    }
-
-    /+
-    Helper function to translate the return of a function into a Sqlite value.
-    +/
-    private static @property string block_return_result(RT...)()
-    {
-        static if (isIntegral!RT || isBoolean!RT)
-            return q{
-                auto result = to!long(tmp);
-                sqlite3_result_int64(context, result);
-            };
-        else static if (isFloatingPoint!RT)
-            return q{
-                auto result = to!double(tmp);
-                sqlite3_result_double(context, result);
-            };
-        else static if (isSomeString!RT)
-            return q{
-                auto result = to!string(tmp);
-                if (result)
-                    sqlite3_result_text(context, cast(char*) result.toStringz(), -1, null);
-                else
-                    sqlite3_result_null(context);
-            };
-        else static if (isArray!RT && is(Unqual!(ElementType!RT) == ubyte))
-            return q{
-                auto result = to!(ubyte[])(tmp);
-                if (result)
-                    sqlite3_result_blob(context, cast(void*) result.ptr, cast(int) result.length, null);
-                else
-                    sqlite3_result_null(context);
-            };
-        else
-            static assert(false, RT.stringof ~ " is not a compatible return type");
+        return p.handle ? sqlite3_errcode(p.handle) : 0;
     }
 
     /++
-    Creates and registers a simple function in the database.
+    Creates and registers a new function in the database.
+
+    If a function with the same name and the same arguments already exists, it is replaced
+    by the new one.
+
+    The memory associated with the function will be released when the database connection
+    is closed.
 
     Params:
-        fun = An alias to the D implementation of the function. The function $(D_PARAM fun)
+        name = The name that the function will have in the database; this name defaults to
+        the identifier of $(D_PARAM fun).
+
+        fun = a $(D delegate) or $(D function) that implements the function. $(D_PARAM fun)
         must satisfy these criteria:
             $(UL
                 $(LI It must not be a variadic.)
@@ -439,40 +343,26 @@ public:
                 $(LI Its return value must also be of a compatible type.)
             )
 
-        name = The name that the function will have in the database; this name defaults to
-        the identifier of $(D_PARAM fun).
-
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
         perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
 
-        userData = A pointer to some user data, that will be passed to $(D_PARAM fun) as
-        its last argument if its type is $(D void*).
-
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
-    void createFunction(alias fun,
-                        string name = __traits(identifier, fun),
-                        Deterministic det = Deterministic.yes)
-        (void* userData = null)
+    void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
     {
         static assert(isCallable!fun, "expecting a callable");
-        static assert(__traits(isStaticFunction, fun),
-            "function with context pointers are not supported");
         static assert(variadicFunctionStyle!(fun) == Variadic.no,
             "variadic functions are not supported");
 
-        enum funpointer = &fun;
-
-        alias PTorig = staticMap!(Unqual, ParameterTypeTuple!fun);
-        static assert(staticIndexOf!(void*, PTorig).among(-1, PTorig.length - 1),
-                      "The paramater of type void* must be the last one");
-        enum hasVoid = staticIndexOf!(void*, PTorig) >= 0;
-        alias PT = Erase!(void*, PTorig);
         alias ReturnType!fun RT;
+        static assert(!is(RT == void), "function must not return void");
+
+        alias PT = staticMap!(Unqual, ParameterTypeTuple!fun);
 
         enum x_func = q{
-            extern(C) static void @{name}(sqlite3_context* context, int argc, sqlite3_value** argv)
+            extern(C) static
+            void @{name}_x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
                 PT args;
                 int type, n;
@@ -480,15 +370,11 @@ public:
 
                 @{block_read_values}
 
-                static if (hasVoid)
-                    auto userData = sqlite3_user_data(context);
+                auto ptr = sqlite3_user_data(context);
 
                 try
                 {
-                    static if (hasVoid)
-                        auto tmp = funpointer(args, userData);
-                    else
-                        auto tmp = funpointer(args);
+                    auto tmp = delegateUnwrap!T(ptr)(args);
                     mixin(block_return_result!RT);
                 }
                 catch (Exception e)
@@ -503,64 +389,44 @@ public:
             "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
             "block_read_values": block_read_values!(PT.length, name, PT)
         ]);
-
         mixin(x_func_mix);
 
-        assert(core.handle);
-        auto result = sqlite3_create_function(
-            core.handle,
+        assert(p.handle);
+        auto result = sqlite3_create_function_v2(
+            p.handle,
             name.toStringz(),
             PT.length,
             SQLITE_UTF8 | det,
-            userData,
-            mixin(format("&%s", name)),
+            delegateWrap(fun),
+            mixin("&%s_x_func".format(name)),
             null,
-            null
+            null,
+            &ptrFree
         );
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
     ///
-    unittest // Function creation
+    unittest
     {
-        static string my_msg(string name)
+        string fmt = "Hello, %s!";
+        string my_msg(string name)
         {
-            return "Hello, %s!".format(name);
+            return fmt.format(name);
         }
-
         auto db = Database(":memory:");
-        db.createFunction!my_msg();
-
-        auto msg = db.execute("SELECT my_msg('John')")
-                     .oneValue!string;
+        db.createFunction!"msg"(&my_msg);
+        auto msg = db.execute("SELECT msg('John')").oneValue!string;
         assert(msg == "Hello, John!");
-    }
-    ///
-    unittest // Function creation with user data
-    {
-        static string fun(string msg, void* data)
-        {
-            auto ptr = cast(int*) data;
-            return "%s %d".format(msg, *ptr);
-        }
-
-        int value = 42;
-        auto db = Database(":memory:");
-        db.createFunction!fun(&value);
-        auto msg = db.execute("SELECT fun('The number is')")
-                     .oneValue!string;
-        assert(msg == "The number is 42");
     }
 
     /++
     Creates and registers a new aggregate function in the database.
 
     Params:
-        Aggregate = The $(D struct) implementing the aggregate. Aggregate must be a
-        default-constructible $(DK struct) that implements at least these two methods: $(D
-        accumulate) and $(D result).
+        name = The name that the aggregate function will have in the database.
 
-        name = The name that the function will have in the database; this name defaults to
-        the identifier of $(D_PARAM Aggregate).
+        agg = The $(D struct) implementing the aggregate. agg must implement at least these
+        two methods: $(D accumulate) and $(D result).
 
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
@@ -568,34 +434,27 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
-    void createAggregate(Aggregate,
-                         string name = __traits(identifier, Aggregate),
-                         Deterministic det = Deterministic.yes)()
+    void createAggregate(string name, T)(T agg, Deterministic det = Deterministic.yes)
     {
-        static assert(is(Aggregate == struct),
-            name ~ " shoud be a struct");
-        static assert(is(typeof(Aggregate.accumulate) == function),
-            name ~ " shoud define accumulate()");
-        static assert(is(typeof(Aggregate.result) == function),
-            name ~ " shoud define result()");
-        static assert(variadicFunctionStyle!(Aggregate.accumulate) == Variadic.no,
+        static assert(isAggregateType!T,
+            name ~ " should be an aggregate type");
+        static assert(is(typeof(T.accumulate) == function),
+            name ~ " shoud have a method named accumulate");
+        static assert(is(typeof(T.result) == function),
+            name ~ " shoud have a method named result");
+        static assert(variadicFunctionStyle!(T.accumulate) == Variadic.no,
             "variadic functions are not supported");
-        static assert(variadicFunctionStyle!(Aggregate.result) == Variadic.no,
+        static assert(variadicFunctionStyle!(T.result) == Variadic.no,
             "variadic functions are not supported");
 
-        alias staticMap!(Unqual, ParameterTypeTuple!(Aggregate.accumulate)) PT;
-        alias ReturnType!(Aggregate.result) RT;
+        alias staticMap!(Unqual, ParameterTypeTuple!(T.accumulate)) PT;
+        alias ReturnType!(T.result) RT;
 
         enum x_step = q{
             extern(C) static
             void @{name}_step(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
-                auto agg = cast(Aggregate*) sqlite3_aggregate_context(context, Aggregate.sizeof);
-                if (!agg)
-                {
-                    sqlite3_result_error_nomem(context);
-                    return;
-                }
+                auto agg = cast(T*) sqlite3_user_data(context);
 
                 PT args;
                 int type;
@@ -619,18 +478,12 @@ public:
             "blob": staticIndexOf!(ubyte[], PT) >= 0 ? q{ubyte[] blob;} : "",
             "block_read_values": block_read_values!(PT.length, name, PT)
         ]);
-
         mixin(x_step_mix);
 
         enum x_final = q{
             extern(C) static void @{name}_final(sqlite3_context* context)
             {
-                Aggregate* agg = cast(Aggregate*) sqlite3_aggregate_context(context, Aggregate.sizeof);
-                if (!agg)
-                {
-                    sqlite3_result_error_nomem(context);
-                    return;
-                }
+                auto agg = cast(T*) sqlite3_user_data(context);
 
                 try
                 {
@@ -644,63 +497,68 @@ public:
                 }
             }
         };
-        enum x_final_mix = render(x_final, [
-            "name": name
-        ]);
-
+        enum x_final_mix = render(x_final, ["name": name]);
         mixin(x_final_mix);
 
-        assert(core.handle);
-        auto result = sqlite3_create_function(
-            core.handle,
+        import core.stdc.stdlib;
+        auto ptr = cast(T*) malloc(T.sizeof);
+        *ptr = agg;
+
+        assert(p.handle);
+        auto result = sqlite3_create_function_v2(
+            p.handle,
             name.toStringz(),
             PT.length,
             SQLITE_UTF8 | det,
-            null,
+            ptr,
             null,
             mixin(format("&%s_step", name)),
-            mixin(format("&%s_final", name))
-            );
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
+            mixin(format("&%s_final", name)),
+            &ptrFree
+        );
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
     ///
     unittest // Aggregate creation
     {
-        struct weighted_average
-        {
-            double total_value = 0.0;
-            double total_weight = 0.0;
+        import std.array : appender, join;
 
-            void accumulate(double value, double weight)
+        struct Joiner
+        {
+            string sep;
+            Appender!(string[]) app;
+
+            this(string sep)
             {
-                total_value += value * weight;
-                total_weight += weight;
+                this.sep = sep;
             }
 
-            double result()
+            void accumulate(string word)
             {
-                return total_value / total_weight;
+                app.put(word);
+            }
+
+            string result()
+            {
+                return join(app.data, sep);
             }
         }
 
         auto db = Database(":memory:");
-        db.execute("CREATE TABLE test (value FLOAT, weight FLOAT)");
-        db.createAggregate!(weighted_average, "w_avg")();
+        db.execute("CREATE TABLE test (word TEXT)");
+        db.createAggregate!"dash"(Joiner("-"));
 
-        auto statement = db.prepare("INSERT INTO test (value, weight) VALUES (?1, ?2)");
-        double[double] list = [11.5: 3, 14.8: 1.6, 19: 2.4];
-        foreach (value, weight; list)
+        auto statement = db.prepare("INSERT INTO test VALUES (?)");
+        auto list = ["My", "cat", "is", "black"];
+        foreach (word; list)
         {
-            statement.bind(1, value);
-            statement.bind(2, weight);
+            statement.bind(1, word);
             statement.execute();
             statement.reset();
         }
 
-        auto w_avg = db.execute("SELECT w_avg(value, weight) FROM test")
-                       .oneValue!double;
-        import std.math: approxEqual;
-        assert(approxEqual(w_avg, (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
+        auto text = db.execute("SELECT dash(word) FROM test").oneValue!string;
+        assert(text == "My-cat-is-black");
     }
 
     /++
@@ -724,11 +582,9 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
     +/
-    void createCollation(alias fun, string name = __traits(identifier, fun))()
+    void createCollation(string name, T)(T fun)
     {
         static assert(isCallable!fun, "expecting a callable");
-        static assert(__traits(isStaticFunction, fun),
-            "function with context pointers are not supported");
         static assert(variadicFunctionStyle!(fun) == Variadic.no,
             "variadic functions are not supported");
 
@@ -741,27 +597,32 @@ public:
             "function " ~ name ~ " should return a value convertible to an int");
 
         enum x_compare = q{
-            extern (C) static int @{name}(void*, int n1, const(void*) str1, int n2, const(void* )str2)
+            extern (C) static
+            int @{name}_x_compare(void* ptr,
+                                  int n1, const(void*) str1,
+                                  int n2, const(void* )str2)
             {
+                auto dg = delegateUnwrap!T(ptr);
                 char[] s1, s2;
                 s1.length = n1;
                 s2.length = n2;
                 memcpy(s1.ptr, str1, n1);
                 memcpy(s2.ptr, str2, n2);
-                return fun(cast(immutable) s1, cast(immutable) s2);
+                return dg(cast(immutable) s1, cast(immutable) s2);
             }
         };
         mixin(render(x_compare, ["name": name]));
 
-        assert(core.handle);
-        auto result = sqlite3_create_collation(
-            core.handle,
+        assert(p.handle);
+        auto result = sqlite3_create_collation_v2(
+            p.handle,
             name.toStringz(),
             SQLITE_UTF8,
-            null,
-            mixin("&" ~ name)
-            );
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
+            delegateWrap(fun),
+            mixin("&%s_x_compare".format(name)),
+            &ptrFree
+        );
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
     ///
     unittest // Collation creation
@@ -773,7 +634,7 @@ public:
         }
 
         auto db = Database(":memory:");
-        db.createCollation!my_collation();
+        db.createCollation!"my_coll"(&my_collation);
         db.execute("CREATE TABLE test (word TEXT)");
 
         auto statement = db.prepare("INSERT INTO test (word) VALUES (?)");
@@ -784,39 +645,28 @@ public:
             statement.reset();
         }
 
-        auto word = db.execute("SELECT word FROM test ORDER BY word COLLATE my_collation")
+        auto word = db.execute("SELECT word FROM test ORDER BY word COLLATE my_coll")
                       .oneValue!string;
         assert(word == "straße");
     }
 
     /++
-    Registers an update _hook.
+    Registers a delegate as the database's update hook. Any previously set hook is released.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
     void setUpdateHook(scope void delegate(int type, string dbName, string tableName, long rowid) hook)
     {
-        alias HookFun = void function(int type, string dbName, string tableName, long rowid);
+        extern(C) static
+        void callback(void* ptr, int type, char* dbName, char* tableName, long rowid)
+        {
+            return delegateUnwrap!(void delegate(int, string, string, long))(ptr)(
+                type, dbName.to!string, tableName.to!string, rowid);
+        }
 
-        struct del
-        {
-            HookFun funcptr;
-            void* ptr;
-        }
-        
-        extern(C) static void callback(void* ptr, int type,
-                                       char* dbName, char* tableName,
-                                       sqlite3_int64 rowid)
-        {
-            auto d = *(cast(del*) ptr);
-            void delegate(int type, string dbName, string tableName, long rowid) dg;
-            dg.ptr = d.ptr;
-            dg.funcptr = d.funcptr;
-            return dg(type, dbName.to!string, tableName.to!string, rowid);
-        }
-        
-        sqlite3_update_hook(core.handle, &callback,
-                            cast(void*) new del(hook.funcptr, hook.ptr));
+        auto ptr = delegateWrap(hook);
+        auto prev = sqlite3_update_hook(p.handle, &callback, ptr);
+        ptrFree(prev);
     }
     ///
     unittest
@@ -836,8 +686,9 @@ public:
     }
 
     /++
-    Registers a commit _hook or a rollback _hook.
-    
+    Registers a delegate as the database's commit or rollback hook.
+    Any previously set hook is released.
+
     Params:        
         hook = For the commit hook, a delegate that should return 0 if the operation must be
         aborted or another value if it can continue.
@@ -846,44 +697,26 @@ public:
     +/
     void setCommitHook(int delegate() hook)
     {
-        struct del
-        {
-            int function() funcptr;
-            void* ptr;
-        }
-
         extern(C) static int callback(void* ptr)
         {
-            auto d = *(cast(del*) ptr);
-            int delegate() dg;
-            dg.ptr = d.ptr;
-            dg.funcptr = d.funcptr;
-            return dg();
+            return delegateUnwrap!(int delegate())(ptr)();
         }
 
-        sqlite3_commit_hook(core.handle, &callback,
-                            cast(void*) new del(hook.funcptr, hook.ptr));
+        auto ptr = delegateWrap(hook);
+        auto prev = sqlite3_commit_hook(p.handle, &callback, ptr);
+        ptrFree(prev);
     }
     /// Ditto
     void setRollbackHook(void delegate() hook)
     {
-        struct del
-        {
-            void function() funcptr;
-            void* ptr;
-        }
-        
         extern(C) static void callback(void* ptr)
         {
-            auto d = *(cast(del*) ptr);
-            void delegate() dg;
-            dg.ptr = d.ptr;
-            dg.funcptr = d.funcptr;
-            dg();
+            delegateUnwrap!(void delegate())(ptr)();
         }
-        
-        sqlite3_rollback_hook(core.handle, &callback,
-                              cast(void*) new del(hook.funcptr, hook.ptr));
+
+        auto ptr = delegateWrap(hook);
+        auto prev = sqlite3_rollback_hook(p.handle, &callback, ptr);
+        ptrFree(prev);
     }
     ///
     unittest
@@ -896,49 +729,6 @@ public:
         db.execute("CREATE TABLE test (val INTEGER)");
         db.rollback();
         assert(i == 666);
-        db.begin();
-        db.execute("CREATE TABLE test (val INTEGER)");
-        db.commit();
-        assert(i == 42);
-    }
-    
-    /++
-    Registers a progress handler _hook.
-        
-    Params:
-        pace = The approximate number of virtual machine instructions that are evaluated
-        between successive invocations of the hook.
-        
-        hook = A delegate that should return 0 if the operation must be aborted or another
-        value if it can continue.
-        
-    See_Also: $(LINK http://www.sqlite.org/c3ref/progress_handler.html)
-    +/
-    void setProgressHandler(int pace, int delegate() hook)
-    {
-        struct del
-        {
-            int function() funcptr;
-            void* ptr;
-        }
-
-        extern(C) static int callback(void* ptr)
-        {
-            auto d = *(cast(del*) ptr);
-            int delegate() dg;
-            dg.ptr = d.ptr;
-            dg.funcptr = d.funcptr;
-            return dg();
-        }
-
-        sqlite3_progress_handler(core.handle, pace, &callback,
-                                 cast(void*) new del(hook.funcptr, hook.ptr));
-    }
-    unittest
-    {
-        int i;
-        auto db = Database(":memory:");
-        db.setProgressHandler(1, { i = 42; return SQLITE_OK; });
         db.begin();
         db.execute("CREATE TABLE test (val INTEGER)");
         db.commit();
@@ -1032,8 +822,8 @@ unittest // Database construction
     db2 = Database("");
     auto db3 = Database(null);
     db1 = db2;
-    assert(db2.core.refCountedStore.refCount == 2);
-    assert(db1.core.refCountedStore.refCount == 2);
+    assert(db2.p.refCountedStore.refCount == 2);
+    assert(db1.p.refCountedStore.refCount == 2);
 }
 
 unittest // Execute an SQL statement
@@ -1091,7 +881,7 @@ of this struct are typically returned by $(D Database.prepare()).
 struct Statement
 {
 private:
-    struct _Core
+    struct _Payload
     {
         sqlite3_stmt* handle; // null if error or empty statement
         string next;
@@ -1104,10 +894,10 @@ private:
         }
 
         @disable this(this);
-        void opAssign(_Core) { assert(false); }
+        void opAssign(_Payload) { assert(false); }
     }
-    alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
-    Core core;
+    alias RefCounted!(_Payload, RefCountedAutoInitialize.no) Payload;
+    Payload p;
 
     this(sqlite3* dbHandle, string sql)
     {
@@ -1121,19 +911,19 @@ private:
             &ptail
         );
         enforce(result == SQLITE_OK, new SqliteException(errmsg(dbHandle), result, sql));
-        core = Core(handle);
+        p = Payload(handle);
         if (ptail)
         {
             // Offset sometimes seems to be undefined if statement doesn't end with ";"
             auto offset = min(ptail - sql.ptr, sql.length);
-            core.next = sql[offset .. $];
+            p.next = sql[offset .. $];
         }
     }
 
     int parameterCount() nothrow
     {
-        if (core.handle)
-            return sqlite3_bind_parameter_count(core.handle);
+        if (p.handle)
+            return sqlite3_bind_parameter_count(p.handle);
         else
             return 0;
     }
@@ -1144,7 +934,7 @@ public:
     +/
     @property sqlite3_stmt* handle()
     {
-        return core.handle;
+        return p.handle;
     }
 
     /++
@@ -1163,20 +953,20 @@ public:
 
         static if (is(U == typeof(null)) || is(U == void*))
         {
-            result = sqlite3_bind_null(core.handle, index);
+            result = sqlite3_bind_null(p.handle, index);
         }
         else static if (isIntegral!U || isSomeChar!U)
         {
-            result = sqlite3_bind_int64(core.handle, index, cast(long) value);
+            result = sqlite3_bind_int64(p.handle, index, cast(long) value);
         }
         else static if (isFloatingPoint!U)
         {
-            result = sqlite3_bind_double(core.handle, index, value);
+            result = sqlite3_bind_double(p.handle, index, value);
         }
         else static if (isSomeString!U)
         {
             string utf8 = value.to!string;
-            result = sqlite3_bind_text(core.handle,
+            result = sqlite3_bind_text(p.handle,
                                        index,
                                        cast(char*) utf8.toStringz(),
                                        cast(int) utf8.length,
@@ -1185,11 +975,11 @@ public:
         else static if (isArray!U)
         {
             if (!value.length)
-                result = sqlite3_bind_null(core.handle, index);
+                result = sqlite3_bind_null(p.handle, index);
             else
             {
                 auto bytes = cast(ubyte[]) value;
-                result = sqlite3_bind_blob(core.handle,
+                result = sqlite3_bind_blob(p.handle,
                                            index,
                                            cast(void*) bytes.ptr,
                                            cast(int) bytes.length,
@@ -1199,7 +989,7 @@ public:
         else
             static assert(false, "cannot bind a value of type " ~ U.stringof);
 
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
 
     /++
@@ -1218,7 +1008,7 @@ public:
     +/
     void bind(T)(string name, T value)
     {
-        auto index = sqlite3_bind_parameter_index(core.handle, cast(char*) name.toStringz());
+        auto index = sqlite3_bind_parameter_index(p.handle, cast(char*) name.toStringz());
         enforce(index > 0, new SqliteException(format("no parameter named '%s'", name)));
         bind(index, value);
     }
@@ -1239,10 +1029,10 @@ public:
     +/
     void clearBindings()
     {
-        if (core.handle)
+        if (p.handle)
         {
-            auto result = sqlite3_clear_bindings(core.handle);
-            enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
+            auto result = sqlite3_clear_bindings(p.handle);
+            enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
         }
     }
 
@@ -1264,10 +1054,10 @@ public:
     +/
     void reset()
     {
-        if (core.handle)
+        if (p.handle)
         {
-            auto result = sqlite3_reset(core.handle);
-            enforce(result == SQLITE_OK, new SqliteException(errmsg(core.handle), result));
+            auto result = sqlite3_reset(p.handle);
+            enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
         }
     }
 }
@@ -1348,26 +1138,26 @@ Statement.execute()).
 struct ResultRange
 {
 private:
-    struct _Core
+    struct _Payload
     {
         Statement statement;
         int state;
 
         @disable this(this);
-        void opAssign(_Core) { assert(false); }
+        void opAssign(_Payload) { assert(false); }
     }
-    alias RefCounted!(_Core, RefCountedAutoInitialize.no) Core;
-    Core core;
+    alias RefCounted!(_Payload, RefCountedAutoInitialize.no) Payload;
+    Payload p;
 
     this(Statement statement)
     {
-        core = Core(statement);
-        if (core.statement.handle !is null)
-            core.state = sqlite3_step(core.statement.handle);
+        p = Payload(statement);
+        if (p.statement.handle !is null)
+            p.state = sqlite3_step(p.statement.handle);
         else
-            core.state = SQLITE_DONE;
-        enforce(core.state == SQLITE_ROW || core.state == SQLITE_DONE,
-                new SqliteException(errmsg(core.statement.handle), core.state));
+            p.state = SQLITE_DONE;
+        enforce(p.state == SQLITE_ROW || p.state == SQLITE_DONE,
+                new SqliteException(errmsg(p.statement.handle), p.state));
     }
 
 public:
@@ -1376,26 +1166,26 @@ public:
     +/
     @property bool empty()
     {
-        assert(core.state);
-        return core.state == SQLITE_DONE;
+        assert(p.state);
+        return p.state == SQLITE_DONE;
     }
 
     /// ditto
     @property Row front()
     {
-        assert(core.state);
+        assert(p.state);
         enforce(!empty, new SqliteException("No rows available"));
-        return Row(core.statement.handle);
+        return Row(p.statement.handle);
     }
 
     /// ditto
     void popFront()
     {
-        assert(core.state);
+        assert(p.state);
         enforce(!empty, new SqliteException("No rows available"));
-        core.state = sqlite3_step(core.statement.handle);
-        enforce(core.state == SQLITE_DONE || core.state == SQLITE_ROW,
-                new SqliteException(errmsg(core.statement.handle), core.state));
+        p.state = sqlite3_step(p.statement.handle);
+        enforce(p.state == SQLITE_DONE || p.state == SQLITE_ROW,
+                new SqliteException(errmsg(p.statement.handle), p.state));
     }
 
     /++
@@ -2005,8 +1795,39 @@ class SqliteException : Exception
     }
 }
 
+
+private:
+
+struct DelegateWrapper(T)
+{
+    T dlg; 
+}
+
+void* delegateWrap(T)(T dlg)
+    if (isCallable!T)
+{
+    import std.functional, core.stdc.stdlib;
+    alias D = typeof(toDelegate(dlg));
+    auto d = cast(DelegateWrapper!D*) malloc(DelegateWrapper!D.sizeof);
+    d.dlg = toDelegate(dlg);
+    return cast(void*) d;
+}
+
+auto delegateUnwrap(T)(void* ptr)
+    if (isCallable!T)
+{
+    return (cast(DelegateWrapper!T*) ptr).dlg;
+}
+
+extern(C) void ptrFree(void* ptr)
+{
+    import core.stdc.stdlib;
+    if (ptr)
+        free(ptr);
+}
+
 // Compile-time rendering of code templates.
-private string render(string templ, string[string] args)
+string render(string templ, string[string] args)
 {
     string markupStart = "@{";
     string markupEnd = "}";
@@ -2053,3 +1874,109 @@ unittest // Code templates
     mixin(render(tpl, ["function_name": "hello_world"]));
     static assert(hello_world() == "Hello world!");
 }
+
+/+
+Helper function to translate the arguments values of a D function into Sqlite values.
++/
+private static @property string block_read_values(size_t n, string name, PT...)()
+{
+    static if (n == 0)
+        return null;
+    else
+    {
+        enum index = n - 1;
+        alias Unqual!(PT[index]) UT;
+        static if (isBoolean!UT)
+            enum templ = q{
+                @{previous_block}
+                type = sqlite3_value_numeric_type(argv[@{index}]);
+                enforce(type == SQLITE_INTEGER, new SqliteException(
+                    "argument @{n} of function @{name}() should be a boolean"));
+                args[@{index}] = sqlite3_value_int64(argv[@{index}]) != 0;
+            };
+        else static if (isIntegral!UT)
+            enum templ = q{
+                @{previous_block}
+                type = sqlite3_value_numeric_type(argv[@{index}]);
+                enforce(type == SQLITE_INTEGER, new SqliteException(
+                    "argument @{n} of function @{name}() should be of an integral type"));
+                args[@{index}] = to!(PT[@{index}])(sqlite3_value_int64(argv[@{index}]));
+            };
+        else static if (isFloatingPoint!UT)
+            enum templ = q{
+                @{previous_block}
+                type = sqlite3_value_numeric_type(argv[@{index}]);
+                enforce(type == SQLITE_FLOAT, new SqliteException(
+                    "argument @{n} of function @{name}() should be a floating point"));
+                args[@{index}] = to!(PT[@{index}])(sqlite3_value_double(argv[@{index}]));
+            };
+        else static if (isSomeString!UT)
+            enum templ = q{
+                @{previous_block}
+                type = sqlite3_value_type(argv[@{index}]);
+                enforce(type == SQLITE3_TEXT, new SqliteException(
+                    "argument @{n} of function @{name}() should be a string"));
+                args[@{index}] = to!(PT[@{index}])(sqlite3_value_text(argv[@{index}]));
+            };
+        else static if (isArray!UT && is(Unqual!(ElementType!UT) : ubyte))
+            enum templ = q{
+                @{previous_block}
+                type = sqlite3_value_type(argv[@{index}]);
+                enforce(type == SQLITE_BLOB, new SqliteException(
+                    "argument @{n} of function @{name}() should be of an array of bytes (BLOB)"));
+                n = sqlite3_value_bytes(argv[@{index}]);
+                blob.length = n;
+                memcpy(blob.ptr, sqlite3_value_blob(argv[@{index}]), n);
+                args[@{index}] = to!(PT[@{index}])(blob.dup);
+            };
+        else static if (is(UT == void*))
+            enum templ = q{
+                @{previous_block}
+            };
+        else
+            static assert(false, PT[index].stringof ~ " is not a compatible argument type");
+
+        return render(templ, [
+            "previous_block": block_read_values!(n - 1, name, PT),
+            "index":  to!string(index),
+            "n": to!string(n),
+            "name": name
+        ]);
+    }
+}
+
+/+
+Helper function to translate the return of a function into a Sqlite value.
++/
+private static @property string block_return_result(RT...)()
+{
+    static if (isIntegral!RT || isBoolean!RT)
+        return q{
+            auto result = to!long(tmp);
+            sqlite3_result_int64(context, result);
+        };
+    else static if (isFloatingPoint!RT)
+        return q{
+            auto result = to!double(tmp);
+            sqlite3_result_double(context, result);
+        };
+    else static if (isSomeString!RT)
+        return q{
+            auto result = to!string(tmp);
+            if (result)
+                sqlite3_result_text(context, cast(char*) result.toStringz(), -1, null);
+            else
+                sqlite3_result_null(context);
+        };
+    else static if (isArray!RT && is(Unqual!(ElementType!RT) == ubyte))
+        return q{
+            auto result = to!(ubyte[])(tmp);
+            if (result)
+                sqlite3_result_blob(context, cast(void*) result.ptr, cast(int) result.length, null);
+            else
+                sqlite3_result_null(context);
+        };
+    else
+        static assert(false, RT.stringof ~ " is not a compatible return type");
+}
+

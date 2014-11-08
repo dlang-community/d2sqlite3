@@ -264,13 +264,24 @@ The statement becomes invalid if the Database goes out of scope and is destroyed
 <dd>Gets the SQLite error code of the last operation.<br><br>
 
 </dd>
-<dt><big><a name="Database.createFunction"></a>void <u>createFunction</u>(alias fun, string name = __traits(identifier, fun), Deterministic det = Deterministic.yes)(void* <i>userData</i> = null);
+<dt><big><a name="Database.createFunction"></a>void <u>createFunction</u>(string name, T)(T <i>fun</i>, Deterministic <i>det</i> = Deterministic.yes);
 </big></dt>
-<dd>Creates and registers a simple function in the database.
+<dd>Creates and registers a new function in the database.
+<br><br>
+If a function with the same name and the same arguments already exists, it is replaced
+    by the new one.
+<br><br>
+
+    The memory associated with the function will be released when the database connection
+    is closed.
+
 <br><br>
 <b>Params:</b><br>
-<table><tr><td>fun</td>
-<td>An alias to the D implementation of the function. The function <i>fun</i>
+<table><tr><td>name</td>
+<td>The name that the function will have in the database; this name defaults to
+        the identifier of <i>fun</i>.</td></tr>
+<tr><td>T fun</td>
+<td>a <tt>delegate</tt> or <tt>function</tt> that implements the function. <i>fun</i>
         must satisfy these criteria:
             <ul>                <li>It must not be a variadic.</li>
                 <li>Its arguments must all have a type that is compatible with SQLite types:
@@ -279,62 +290,38 @@ The statement becomes invalid if the Database goes out of scope and is destroyed
                 last one.</li>
                 <li>Its return value must also be of a compatible type.</li>
             </ul></td></tr>
-<tr><td>name</td>
-<td>The name that the function will have in the database; this name defaults to
-        the identifier of <i>fun</i>.</td></tr>
-<tr><td>det</td>
+<tr><td>Deterministic det</td>
 <td>Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
         perform optimizations based on this. Set to <tt>Deterministic.no</tt> otherwise.</td></tr>
-<tr><td>void* userData</td>
-<td>A pointer to some user data, that will be passed to <i>fun</i> as
-        its last argument if its type is <tt>void*</tt>.</td></tr>
 </table><br>
 <b>See Also:</b><br>
 <a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
-<font color=blue>static</font> string my_msg(string name)
+string fmt = <font color=red>"Hello, %s!"</font>;
+string my_msg(string name)
 {
-    <font color=blue>return</font> <font color=red>"Hello, %s!"</font>.format(name);
+    <font color=blue>return</font> fmt.format(name);
 }
-
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
-db.<u>createFunction</u>!my_msg();
-
-<font color=blue>auto</font> msg = db.execute(<font color=red>"SELECT my_msg('John')"</font>)
-             .oneValue!string;
+db.<u>createFunction</u>!<font color=red>"msg"</font>(&amp;my_msg);
+<font color=blue>auto</font> msg = db.execute(<font color=red>"SELECT msg('John')"</font>).oneValue!string;
 <font color=blue>assert</font>(msg == <font color=red>"Hello, John!"</font>);
-</pre>
-<br><br><b>Examples:</b><br>
-<pre class="d_code">
-<font color=blue>static</font> string fun(string msg, <font color=blue>void</font>* data)
-{
-    <font color=blue>auto</font> ptr = <font color=blue>cast</font>(<font color=blue>int</font>*) data;
-    <font color=blue>return</font> <font color=red>"%s %d"</font>.format(msg, *ptr);
-}
-
-<font color=blue>int</font> value = 42;
-<font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
-db.<u>createFunction</u>!fun(&amp;value);
-<font color=blue>auto</font> msg = db.execute(<font color=red>"SELECT fun('The number is')"</font>)
-             .oneValue!string;
-<font color=blue>assert</font>(msg == <font color=red>"The number is 42"</font>);
 </pre>
 <br><br>
 </dd>
-<dt><big><a name="Database.createAggregate"></a>void <u>createAggregate</u>(Aggregate, string name = __traits(identifier, Aggregate), Deterministic det = Deterministic.yes)();
+<dt><big><a name="Database.createAggregate"></a>void <u>createAggregate</u>(string name, T)(T <i>agg</i>, Deterministic <i>det</i> = Deterministic.yes);
 </big></dt>
 <dd>Creates and registers a new aggregate function in the database.
 <br><br>
 <b>Params:</b><br>
-<table><tr><td>Aggregate</td>
-<td>The <tt>struct</tt> implementing the aggregate. Aggregate must be a
-        default-constructible <strong><tt>struct</tt></strong> that implements at least these two methods: <tt>        accumulate</tt> and <tt>result</tt>.</td></tr>
-<tr><td>name</td>
-<td>The name that the function will have in the database; this name defaults to
-        the identifier of <i>Aggregate</i>.</td></tr>
-<tr><td>det</td>
+<table><tr><td>name</td>
+<td>The name that the aggregate function will have in the database.</td></tr>
+<tr><td>T agg</td>
+<td>The <tt>struct</tt> implementing the aggregate. agg must implement at least these
+        two methods: <tt>accumulate</tt> and <tt>result</tt>.</td></tr>
+<tr><td>Deterministic det</td>
 <td>Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
         perform optimizations based on this. Set to <tt>Deterministic.no</tt> otherwise.</td></tr>
@@ -343,50 +330,53 @@ db.<u>createFunction</u>!fun(&amp;value);
 <a href="http://www.sqlite.org/c3ref/create_function.html">http://www.sqlite.org/c3ref/create_function.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
-<font color=blue>struct</font> weighted_average
-{
-    <font color=blue>double</font> total_value = 0.0;
-    <font color=blue>double</font> total_weight = 0.0;
+<font color=blue>import</font> std.array : appender, join;
 
-    <font color=blue>void</font> accumulate(<font color=blue>double</font> value, <font color=blue>double</font> weight)
+<font color=blue>struct</font> Joiner
+{
+    string sep;
+    Appender!(string[]) app;
+
+    <font color=blue>this</font>(string sep)
     {
-        total_value += value * weight;
-        total_weight += weight;
+        <font color=blue>this</font>.sep = sep;
     }
 
-    <font color=blue>double</font> result()
+    <font color=blue>void</font> accumulate(string word)
     {
-        <font color=blue>return</font> total_value / total_weight;
+        app.put(word);
+    }
+
+    string result()
+    {
+        <font color=blue>return</font> join(app.data, sep);
     }
 }
 
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
-db.execute(<font color=red>"CREATE TABLE test (value FLOAT, weight FLOAT)"</font>);
-db.<u>createAggregate</u>!(weighted_average, <font color=red>"w_avg"</font>)();
+db.execute(<font color=red>"CREATE TABLE test (word TEXT)"</font>);
+db.<u>createAggregate</u>!<font color=red>"dash"</font>(Joiner(<font color=red>"-"</font>));
 
-<font color=blue>auto</font> statement = db.prepare(<font color=red>"INSERT INTO test (value, weight) VALUES (?1, ?2)"</font>);
-<font color=blue>double</font>[<font color=blue>double</font>] list = [11.5: 3, 14.8: 1.6, 19: 2.4];
-<font color=blue>foreach</font> (value, weight; list)
+<font color=blue>auto</font> statement = db.prepare(<font color=red>"INSERT INTO test VALUES (?)"</font>);
+<font color=blue>auto</font> list = [<font color=red>"My"</font>, <font color=red>"cat"</font>, <font color=red>"is"</font>, <font color=red>"black"</font>];
+<font color=blue>foreach</font> (word; list)
 {
-    statement.bind(1, value);
-    statement.bind(2, weight);
+    statement.bind(1, word);
     statement.execute();
     statement.reset();
 }
 
-<font color=blue>auto</font> w_avg = db.execute(<font color=red>"SELECT w_avg(value, weight) FROM test"</font>)
-               .oneValue!<font color=blue>double</font>;
-<font color=blue>import</font> std.math: approxEqual;
-<font color=blue>assert</font>(approxEqual(w_avg, (11.5*3 + 14.8*1.6 + 19*2.4)/(3 + 1.6 + 2.4)));
+<font color=blue>auto</font> text = db.execute(<font color=red>"SELECT dash(word) FROM test"</font>).oneValue!string;
+<font color=blue>assert</font>(text == <font color=red>"My-cat-is-black"</font>);
 </pre>
 <br><br>
 </dd>
-<dt><big><a name="Database.createCollation"></a>void <u>createCollation</u>(alias fun, string name = __traits(identifier, fun))();
+<dt><big><a name="Database.createCollation"></a>void <u>createCollation</u>(string name, T)(T <i>fun</i>);
 </big></dt>
 <dd>Creates and registers a collation function in the database.
 <br><br>
 <b>Params:</b><br>
-<table><tr><td>fun</td>
+<table><tr><td>T fun</td>
 <td>An alias to the D implementation of the function. The function <i>fun</i>
         must satisfy these criteria:
             <ul>                <li>If s1 is less than s2, <tt>ret &lt; 0</tt>.</li>
@@ -412,7 +402,7 @@ db.<u>createAggregate</u>!(weighted_average, <font color=red>"w_avg"</font>)();
 }
 
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
-db.<u>createCollation</u>!my_collation();
+db.<u>createCollation</u>!<font color=red>"my_coll"</font>(&amp;my_collation);
 db.execute(<font color=red>"CREATE TABLE test (word TEXT)"</font>);
 
 <font color=blue>auto</font> statement = db.prepare(<font color=red>"INSERT INTO test (word) VALUES (?)"</font>);
@@ -423,7 +413,7 @@ db.execute(<font color=red>"CREATE TABLE test (word TEXT)"</font>);
     statement.reset();
 }
 
-<font color=blue>auto</font> word = db.execute(<font color=red>"SELECT word FROM test ORDER BY word COLLATE my_collation"</font>)
+<font color=blue>auto</font> word = db.execute(<font color=red>"SELECT word FROM test ORDER BY word COLLATE my_coll"</font>)
               .oneValue!string;
 <font color=blue>assert</font>(word == <font color=red>"straße"</font>);
 </pre>
@@ -431,7 +421,7 @@ db.execute(<font color=red>"CREATE TABLE test (word TEXT)"</font>);
 </dd>
 <dt><big><a name="Database.setUpdateHook"></a>void <u>setUpdateHook</u>(scope void delegate(int type, string dbName, string tableName, long rowid) <i>hook</i>);
 </big></dt>
-<dd>Registers an update hook.
+<dd>Registers a delegate as the database's update <i>hook</i>. Any previously set <i>hook</i> is released.
 <br><br>
 <b>See Also:</b><br>
 <a href="http://www.sqlite.org/c3ref/commit_hook.html">http://www.sqlite.org/c3ref/commit_hook.html</a>.<br><br>
@@ -455,7 +445,8 @@ db.execute(<font color=red>"INSERT INTO test VALUES (100)"</font>);
 <dt><big><a name="Database.setCommitHook"></a>void <u>setCommitHook</u>(int delegate() <i>hook</i>);
 <br><a name="Database.setRollbackHook"></a>void <u>setRollbackHook</u>(void delegate() <i>hook</i>);
 </big></dt>
-<dd>Registers a commit hook or a rollback hook.
+<dd>Registers a delegate as the database's commit or rollback <i>hook</i>.
+    Any previously set <i>hook</i> is released.
 <br><br>
 <b>Params:</b><br>
 <table><tr><td>int delegate() <i>hook</i></td>
@@ -480,22 +471,6 @@ db.commit();
 <font color=blue>assert</font>(i == 42);
 </pre>
 <br><br>
-</dd>
-<dt><big><a name="Database.setProgressHandler"></a>void <u>setProgressHandler</u>(int <i>pace</i>, int delegate() <i>hook</i>);
-</big></dt>
-<dd>Registers a progress handler hook.
-<br><br>
-<b>Params:</b><br>
-<table><tr><td>int <i>pace</i></td>
-<td>The approximate number of virtual machine instructions that are evaluated
-        between successive invocations of the <i>hook</i>.</td></tr>
-<tr><td>int delegate() <i>hook</i></td>
-<td>A delegate that should return 0 if the operation must be aborted or another
-        value if it can continue.</td></tr>
-</table><br>
-<b>See Also:</b><br>
-<a href="http://www.sqlite.org/c3ref/progress_handler.html">http://www.sqlite.org/c3ref/progress_handler.html</a><br><br>
-
 </dd>
 </dl>
 </dd>
