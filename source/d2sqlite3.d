@@ -32,7 +32,7 @@ import std.variant;
 import std.c.string : memcpy;
 public import sqlite3;
 
-debug import std.stdio;
+// debug import std.stdio;
 
 
 /++
@@ -54,6 +54,16 @@ struct Sqlite3
     static @property int versionNumber() nothrow
     {
         return sqlite3_libversion_number();
+    }
+    
+    /++
+    Tells whether SQLite was compiled with the thread-safe options.
+        
+    See_also: ($LINK http://www.sqlite.org/c3ref/threadsafe.html).
+    +/
+    static @property bool threadSafe() nothrow
+    {
+        return cast(bool) sqlite3_threadsafe();
     }
 }
 
