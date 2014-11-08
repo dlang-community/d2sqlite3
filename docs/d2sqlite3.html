@@ -399,7 +399,7 @@ db.execute(<font color=red>"CREATE TABLE test (word TEXT)"</font>);
 <dd>Registers an update hook.
 <br><br>
 <b>See Also:</b><br>
-<a href="https://www.sqlite.org/c3ref/commit_hook.html">https://www.sqlite.org/c3ref/commit_hook.html</a>.<br><br>
+<a href="http://www.sqlite.org/c3ref/commit_hook.html">http://www.sqlite.org/c3ref/commit_hook.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>int</font> i;
@@ -422,13 +422,18 @@ db.execute(<font color=red>"INSERT INTO test VALUES (100)"</font>);
 </big></dt>
 <dd>Registers a commit hook or a rollback hook.
 <br><br>
+<b>Params:</b><br>
+<table><tr><td>int delegate() <i>hook</i></td>
+<td>For the commit <i>hook</i>, a delegate that should return 0 if the operation must be
+        aborted or another value if it can continue.</td></tr>
+</table><br>
 <b>See Also:</b><br>
-<a href="https://www.sqlite.org/c3ref/commit_hook.html">https://www.sqlite.org/c3ref/commit_hook.html</a>.<br><br>
+<a href="http://www.sqlite.org/c3ref/commit_hook.html">http://www.sqlite.org/c3ref/commit_hook.html</a>.<br><br>
 <b>Examples:</b><br>
 <pre class="d_code">
 <font color=blue>int</font> i;
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
-db.setCommitHook({ i = 42; <font color=blue>return</font> 0; });
+db.setCommitHook({ i = 42; <font color=blue>return</font> SQLITE_OK; });
 db.<u>setRollbackHook</u>({ i = 666; });
 db.begin();
 db.execute(<font color=red>"CREATE TABLE test (val INTEGER)"</font>);
@@ -440,6 +445,22 @@ db.commit();
 <font color=blue>assert</font>(i == 42);
 </pre>
 <br><br>
+</dd>
+<dt><big><a name="Database.setProgressHandler"></a>void <u>setProgressHandler</u>(int <i>pace</i>, int delegate() <i>hook</i>);
+</big></dt>
+<dd>Registers a progress handler hook.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>int <i>pace</i></td>
+<td>The approximate number of virtual machine instructions that are evaluated
+        between successive invocations of the <i>hook</i>.</td></tr>
+<tr><td>int delegate() <i>hook</i></td>
+<td>A delegate that should return 0 if the operation must be aborted or another
+        value if it can continue.</td></tr>
+</table><br>
+<b>See Also:</b><br>
+<a href="http://www.sqlite.org/c3ref/progress_handler.html">http://www.sqlite.org/c3ref/progress_handler.html</a><br><br>
+
 </dd>
 </dl>
 </dd>

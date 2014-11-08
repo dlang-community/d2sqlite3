@@ -728,7 +728,7 @@ public:
     /++
     Registers an update _hook.
 
-    See_Also: $(LINK https://www.sqlite.org/c3ref/commit_hook.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
     void setUpdateHook(scope void delegate(int type, string dbName, string tableName, long rowid) hook)
     {
@@ -773,8 +773,12 @@ public:
 
     /++
     Registers a commit _hook or a rollback _hook.
+    
+    Params:        
+        hook = For the commit hook, a delegate that should return 0 if the operation must be
+        aborted or another value if it can continue.
 
-    See_Also: $(LINK https://www.sqlite.org/c3ref/commit_hook.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
     void setCommitHook(int delegate() hook)
     {
@@ -822,7 +826,7 @@ public:
     {
         int i;
         auto db = Database(":memory:");
-        db.setCommitHook({ i = 42; return 0; });
+        db.setCommitHook({ i = 42; return SQLITE_OK; });
         db.setRollbackHook({ i = 666; });
         db.begin();
         db.execute("CREATE TABLE test (val INTEGER)");
@@ -832,6 +836,39 @@ public:
         db.execute("CREATE TABLE test (val INTEGER)");
         db.commit();
         assert(i == 42);
+    }
+    
+    /++
+    Registers a progress handler _hook.
+        
+    Params:
+        pace = The approximate number of virtual machine instructions that are evaluated
+        between successive invocations of the hook.
+        
+        hook = A delegate that should return 0 if the operation must be aborted or another
+        value if it can continue.
+        
+    See_Also: $(LINK http://www.sqlite.org/c3ref/progress_handler.html)
+    +/
+    void setProgressHandler(int pace, int delegate() hook)
+    {
+        struct del
+        {
+            int function() funcptr;
+            void* ptr;
+        }
+
+        extern(C) static int callback(void* ptr)
+        {
+            auto d = *(cast(del*) ptr);
+            int delegate() dg;
+            dg.ptr = d.ptr;
+            dg.funcptr = d.funcptr;
+            return dg();
+        }
+
+        sqlite3_progress_handler(core.handle, pace, &callback,
+                                 cast(void*) new del(hook.funcptr, hook.ptr));
     }
 }
 ///
