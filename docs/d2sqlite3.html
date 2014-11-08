@@ -19,8 +19,20 @@ Nicolas Sicard (dransic@gmail.com).
 
 <dl><dt><big><a name="Sqlite3"></a>struct <u>Sqlite3</u>;
 </big></dt>
-<dd>Metadata from the SQLite library.<br><br>
-
+<dd>Global SQLite utilities.<br><br>
+<b>Examples:</b><br>
+<pre class="d_code">
+<u>Sqlite3</u>.config(SQLITE_CONFIG_MULTITHREAD);
+<u>Sqlite3</u>.config(SQLITE_CONFIG_LOG,
+    <font color=blue>function</font>(<font color=blue>void</font>* p, <font color=blue>int</font> code, <font color=blue>const</font>(<font color=blue>char</font>*) msg)
+    {
+        <font color=blue>import</font> std.stdio;
+        writefln(<font color=red>"%05d | %s"</font>, code, msg.to!string);
+    },
+    <font color=blue>null</font>);
+<u>Sqlite3</u>.initialize();
+</pre>
+<br><br>
 <dl><dt><big><a name="Sqlite3.versionString"></a>static nothrow @property string <u>versionString</u>();
 </big></dt>
 <dd>Gets the library's version string (e.g. "3.8.7").<br><br>
@@ -37,6 +49,21 @@ Nicolas Sicard (dransic@gmail.com).
 <br><br>
 <b>See Also:</b><br>
 ($LINK http://www.sqlite.org/c3ref/threadsafe.html).<br><br>
+
+</dd>
+<dt><big><a name="Sqlite3.initialize"></a>static void <u>initialize</u>();
+<br><a name="Sqlite3.shutdown"></a>static void <u>shutdown</u>();
+</big></dt>
+<dd>Initializes or shuts down SQLite.<br><br>
+
+</dd>
+<dt><big><a name="Sqlite3.config"></a>void <u>config</u>(Args...)(int <i>code</i>, Args <i>args</i>);
+</big></dt>
+<dd>Sets a configuration option. Use before initialization and before execution of
+    the first statement.
+<br><br>
+<b>See Also:</b><br>
+<a href="http://www.sqlite.org/c3ref/config.html">http://www.sqlite.org/c3ref/config.html</a>.<br><br>
 
 </dd>
 </dl>

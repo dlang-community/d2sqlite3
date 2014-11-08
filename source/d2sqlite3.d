@@ -36,7 +36,7 @@ public import sqlite3;
 
 
 /++
-Metadata from the SQLite library.
+Global SQLite utilities.
 +/
 struct Sqlite3
 {
@@ -64,6 +64,60 @@ struct Sqlite3
     static @property bool threadSafe() nothrow
     {
         return cast(bool) sqlite3_threadsafe();
+    }
+
+    /// Initializes or shuts down SQLite.
+    static void initialize()
+    {
+        auto result = sqlite3_initialize(); 
+        enforce(result == SQLITE_OK,
+                new SqliteException("Initialization: error %s".format(result)));
+    }
+    /// Ditto
+    static void shutdown()
+    {
+        auto result = sqlite3_shutdown(); 
+        enforce(result == SQLITE_OK,
+                new SqliteException("Shutdown: error %s".format(result)));
+    }
+
+    /++
+    Sets a configuration option. Use before initialization and before execution of
+    the first statement.
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/config.html).
+    +/
+    static void config(Args...)(int code, Args args)
+    {
+        auto result = sqlite3_config(code, args); 
+        enforce(result == SQLITE_OK,
+                new SqliteException("Configuration: error %s".format(result)));
+    }
+}
+version (D_Ddoc)
+{
+    ///
+    unittest
+    {
+        Sqlite3.config(SQLITE_CONFIG_MULTITHREAD);
+        Sqlite3.config(SQLITE_CONFIG_LOG,
+            function(void* p, int code, const(char*) msg)
+            {
+                import std.stdio;
+                writefln("%05d | %s", code, msg.to!string);
+            },
+            null);
+        Sqlite3.initialize();
+    }
+}
+else
+{
+    unittest
+    {
+        Sqlite3.config(SQLITE_CONFIG_MULTITHREAD);
+        Sqlite3.config(SQLITE_CONFIG_LOG, 
+                       (void* p, int code, const(char*) msg) {}, null);
+        Sqlite3.initialize();
     }
 }
 
