@@ -870,6 +870,16 @@ public:
         sqlite3_progress_handler(core.handle, pace, &callback,
                                  cast(void*) new del(hook.funcptr, hook.ptr));
     }
+    unittest
+    {
+        int i;
+        auto db = Database(":memory:");
+        db.setProgressHandler(1, { i = 42; return SQLITE_OK; });
+        db.begin();
+        db.execute("CREATE TABLE test (val INTEGER)");
+        db.commit();
+        assert(i == 42);
+    }
 }
 ///
 unittest // Documentation example
