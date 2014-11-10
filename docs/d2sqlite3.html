@@ -595,10 +595,10 @@ db.execute(<font color=red>"CREATE TABLE test (val INTEGER)"</font>);
 <dd>A SQLite row, implemented as a random-access range of ColumnData.<br><br>
 
 <dl><dt><big><a name="Row.empty"></a>pure nothrow @property @safe bool <u>empty</u>();
-<br><a name="Row.front"></a>nothrow @property ColumnData <u>front</u>();
+<br><a name="Row.front"></a>@property ColumnData <u>front</u>();
 <br><a name="Row.popFront"></a>pure nothrow @safe void <u>popFront</u>();
 <br><a name="Row.save"></a>pure nothrow @property @safe Row <u>save</u>();
-<br><a name="Row.back"></a>nothrow @property ColumnData <u>back</u>();
+<br><a name="Row.back"></a>@property ColumnData <u>back</u>();
 <br><a name="Row.popBack"></a>pure nothrow @safe void <u>popBack</u>();
 <br><a name="Row.length"></a>pure nothrow @property @safe int <u>length</u>();
 <br><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(int <i>index</i>);
@@ -618,11 +618,13 @@ db.execute(<font color=red>"CREATE TABLE test (val INTEGER)"</font>);
 
 </dd>
 <dt><big><a name="Row.peek"></a>auto <u>peek</u>(T)(int <i>index</i>);
+<br><a name="Row.peek"></a>auto <u>peek</u>(T)(string <i>name</i>);
 </big></dt>
 <dd>Returns the data of a column.
 <br><br>
-Contraty to <tt>opIndex</tt>, the <tt><u>peek</u></tt> functions return the data directly,
-    automatically cast to T, without the overhead of using a wrapped <tt>Variant</tt> (<tt>    ColumnData</tt>).
+Contrary to <tt>opIndex</tt>, the <tt><u>peek</u></tt> functions return the data directly,
+    automatically cast to T, without the overhead of using a wrapped <tt>Variant</tt>
+    (<tt>ColumnData</tt>).
 
 <br><br>
 <b>Params:</b><br>
@@ -630,38 +632,40 @@ Contraty to <tt>opIndex</tt>, the <tt><u>peek</u></tt> functions return the data
 <td>The type of the returned data. T must be a boolean, a built-in numeric type, a
         string, an array or a Variant.</td></tr>
 <tr><td>int index</td>
-<td>The index of the column in the prepared statement.</td></tr>
+<td>The index of the column in the prepared statement or
+        the name of the column, as specified in the prepared statement
+        with an AS clause.</td></tr>
 </table><br>
 <b>Returns:</b><br>
-A value of type T, or T.init if the data is NULL.
+A value of type T. The returned value is T.init if the data type is NULL.
+        In all other cases, the data is fetched from SQLite (which returns a value
+        depending on its own conversion rules;
+        see <a href="http://www.sqlite.org/c3ref/column_blob.html">http://www.sqlite.org/c3ref/column_blob.html</a> and
+        <a href="http://www.sqlite.org/lang_expr.html#castexpr">http://www.sqlite.org/lang_expr.html#castexpr</a>), and it is converted
+        to T using <tt>std.conv.to!T</tt>.
+<br><br>
+
+        <table>        <tr><th>Condition on T</th>
+             <th>Requested database type</th></tr>
+        <tr><td>isIntegral!T || isBoolean!T</td>
+             <td>INTEGER, via <tt>sqlite3_column_int64</tt></td></tr>
+        <tr><td>isFloatingPoint!T</td>
+             <td>FLOAT, via <tt>sqlite3_column_double</tt></td></tr>
+        <tr><td>isSomeString!T</td>
+             <td>TEXT, via <tt>sqlite3_column_text</tt></td></tr>
+        <tr><td>isArray!T</td>
+             <td>BLOB, via <tt>sqlite3_column_blob</tt></td></tr>
+        <tr><td>Other types</td>
+             <td>Compilation error</td></tr>
+        </table>
 
 <br><br>
-<b>Warning:</b><br>
-The result is undefined if then index is out of range.<br><br>
-
-</dd>
-<dt><big><a name="Row.peek"></a>auto <u>peek</u>(T)(string <i>name</i>);
-</big></dt>
-<dd>Returns the data of a column.
+<b>Warnings:</b><br>
+The result is undefined if then index is out of range.
 <br><br>
-Contraty to <tt>opIndex</tt>, the <tt><u>peek</u></tt> functions return the data directly,
-    automatically cast to T, without the overhead of using a wrapped <tt>Variant</tt> (<tt>    ColumnData</tt>).
 
-<br><br>
-<b>Params:</b><br>
-<table><tr><td>T</td>
-<td>The type of the returned data. T must be a boolean, a built-in numeric type, a
-        string, an array or a Variant.</td></tr>
-<tr><td>string name</td>
-<td>The name of the column, as specified in the prepared statement with an AS
-        clause.</td></tr>
-</table><br>
-<b>Returns:</b><br>
-A value of type T, or T.init if the data is NULL.
-
-<br><br>
-<b>Warning:</b><br>
-The names of all the columns are tested each time this function is called: use
+        If the second overload is used, the names of all the columns are
+        tested each time this function is called: use
         numeric indexing for better performance.<br><br>
 
 </dd>

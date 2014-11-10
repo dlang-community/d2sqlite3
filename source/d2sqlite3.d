@@ -1264,9 +1264,9 @@ struct Row
     }
 
     /// ditto
-    @property ColumnData front() nothrow
+    @property ColumnData front()
     {
-        return ColumnData(peek!Variant(0));
+        return opIndex(0);
     }
 
     /// ditto
@@ -1286,9 +1286,9 @@ struct Row
     }
 
     /// ditto
-    @property ColumnData back() nothrow
+    @property ColumnData back()
     {
-        return ColumnData(peek!Variant(backIndex - frontIndex));
+        return opIndex(backIndex - frontIndex);
     }
 
     /// ditto
@@ -1307,8 +1307,27 @@ struct Row
     ColumnData opIndex(int index)
     {
         int i =  cast(int) index + frontIndex;
-        enforce(i >= 0 && i <= backIndex, new SqliteException(format("invalid column index: %d", i)));
-        return ColumnData(peek!Variant(index));
+        enforce(i >= 0 && i <= backIndex,
+                new SqliteException(format("invalid column index: %d", i)));
+
+        auto type = sqlite3_column_type(statement, i);
+        final switch (type)
+        {
+            case SQLITE_INTEGER:
+                return ColumnData(Variant(peek!long(index)));
+
+            case SQLITE_FLOAT:
+                return ColumnData(Variant(peek!double(index)));
+
+            case SQLITE3_TEXT:
+                return ColumnData(Variant(peek!string(index)));
+
+            case SQLITE_BLOB:
+                return ColumnData(Variant(peek!(ubyte[])(index)));
+
+            case SQLITE_NULL:
+                return ColumnData(Variant());
+        }
     }
 
     /++
@@ -1320,40 +1339,70 @@ struct Row
     +/
     ColumnData opIndex(string name)
     {
-        return ColumnData(peek!Variant(name));
+        foreach (i; frontIndex .. backIndex + 1)
+            if (sqlite3_column_name(statement, i).to!string == name)
+                return opIndex(i);
+
+        throw new SqliteException("invalid column name: '%s'".format(name));
     }
 
     /++
     Returns the data of a column.
 
-    Contraty to $(D opIndex), the $(D peek) functions return the data directly,
-    automatically cast to T, without the overhead of using a wrapped $(D Variant) ($(D
-    ColumnData)).
+    Contrary to $(D opIndex), the $(D peek) functions return the data directly,
+    automatically cast to T, without the overhead of using a wrapped $(D Variant)
+    ($(D ColumnData)).
 
     Params:
         T = The type of the returned data. T must be a boolean, a built-in numeric type, a
         string, an array or a Variant.
 
-        index = The index of the column in the prepared statement.
+        index = The index of the column in the prepared statement or
+        the name of the column, as specified in the prepared statement
+        with an AS clause.
 
-    Returns: A value of type T, or T.init if the data is NULL.
+    Returns:
+        A value of type T. The returned value is T.init if the data type is NULL.
+        In all other cases, the data is fetched from SQLite (which returns a value 
+        depending on its own conversion rules;
+        see $(LINK http://www.sqlite.org/c3ref/column_blob.html) and
+        $(LINK http://www.sqlite.org/lang_expr.html#castexpr)), and it is converted
+        to T using $(D std.conv.to!T).
 
-    Warning:
+        $(TABLE
+        $(TR $(TH Condition on T)
+             $(TH Requested database type))
+        $(TR $(TD isIntegral!T || isBoolean!T)
+             $(TD INTEGER, via $(D sqlite3_column_int64)))
+        $(TR $(TD isFloatingPoint!T)
+             $(TD FLOAT, via $(D sqlite3_column_double)))
+        $(TR $(TD isSomeString!T)
+             $(TD TEXT, via $(D sqlite3_column_text)))
+        $(TR $(TD isArray!T)
+             $(TD BLOB, via $(D sqlite3_column_blob)))
+        $(TR $(TD Other types)
+             $(TD Compilation error))
+        )
+
+    Warnings:
         The result is undefined if then index is out of range.
+
+        If the second overload is used, the names of all the columns are
+        tested each time this function is called: use
+        numeric indexing for better performance.
     +/
     auto peek(T)(int index)
     {
         int i =  cast(int) index + frontIndex;
-
         static if (isBoolean!T || isIntegral!T)
         {
-            return cast(T) sqlite3_column_int64(statement, i);
+            return sqlite3_column_int64(statement, i).to!T;
         }
         else static if (isFloatingPoint!T)
         {
             if (sqlite3_column_type(statement, i) == SQLITE_NULL)
-                return double.nan;
-            return cast(T) sqlite3_column_double(statement, i);
+                return T.init;
+            return sqlite3_column_double(statement, i).to!T;
         }
         else static if (isSomeString!T)
         {
@@ -1366,53 +1415,12 @@ struct Row
             ubyte[] blob;
             blob.length = length;
             memcpy(blob.ptr, ptr, length);
-            return cast(T) blob;
-        }
-        else static if (is(T == Variant))
-        {
-            auto type = sqlite3_column_type(statement, i);
-            final switch (type)
-            {
-                case SQLITE_INTEGER:
-                    return Variant(peek!long(index));
-
-                case SQLITE_FLOAT:
-                    return Variant(peek!double(index));
-
-                case SQLITE3_TEXT:
-                    return Variant(peek!string(index));
-
-                case SQLITE_BLOB:
-                    return Variant(peek!(ubyte[])(index));
-
-                case SQLITE_NULL:
-                    return Variant();
-            }
+            return blob.to!T;
         }
         else
             static assert(false, "value cannot be converted to type " ~ T.stringof);
     }
-
-    /++
-    Returns the data of a column.
-
-    Contraty to $(D opIndex), the $(D peek) functions return the data directly,
-    automatically cast to T, without the overhead of using a wrapped $(D Variant) ($(D
-    ColumnData)).
-
-    Params:
-        T = The type of the returned data. T must be a boolean, a built-in numeric type, a
-        string, an array or a Variant.
-
-        name = The name of the column, as specified in the prepared statement with an AS
-        clause.
-
-    Returns: A value of type T, or T.init if the data is NULL.
-
-    Warning:
-        The names of all the columns are tested each time this function is called: use
-        numeric indexing for better performance.
-    +/
+    /// Ditto
     auto peek(T)(string name)
     {
         foreach (i; frontIndex .. backIndex + 1)
@@ -1429,13 +1437,58 @@ version (unittest)
     static assert(is(ElementType!Row == ColumnData));
 }
 
+unittest // Peek
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (value)");
+    auto statement = db.prepare("INSERT INTO test VALUES(?)");
+    statement.inject(null);
+    statement.inject(42);
+    statement.inject(3.14);
+    statement.inject("ABC");
+    auto blob = cast(ubyte[]) x"DEADBEEF";
+    statement.inject(blob);
+
+    import std.math : isNaN;
+    auto results = db.execute("SELECT * FROM test");
+    auto row = results.front;
+    assert(row.peek!long(0) == 0);
+    assert(row.peek!double(0).isNaN);
+    assert(row.peek!string(0) is null);
+    assert(row.peek!(ubyte[])(0) is null);
+    results.popFront();
+    row = results.front;
+    assert(row.peek!long(0) == 42);
+    assert(row.peek!double(0) == 42);
+    assert(row.peek!string(0) == "42");
+    assert(row.peek!(ubyte[])(0) == cast(ubyte[]) "42");
+    results.popFront();
+    row = results.front;
+    assert(row.peek!long(0) == 3);
+    assert(row.peek!double(0) == 3.14);
+    assert(row.peek!string(0) == "3.14");
+    assert(row.peek!(ubyte[])(0) == cast(ubyte[]) "3.14");
+    results.popFront();
+    row = results.front;
+    assert(row.peek!long(0) == 0);
+    assert(row.peek!double(0) == 0.0);
+    assert(row.peek!string(0) == "ABC");
+    assert(row.peek!(ubyte[])(0) == cast(ubyte[]) "ABC");
+    results.popFront();
+    row = results.front;
+    assert(row.peek!long(0) == 0);
+    assert(row.peek!double(0) == 0.0);
+    assert(row.peek!string(0) == x"DEADBEEF");
+    assert(row.peek!(ubyte[])(0) == cast(ubyte[]) x"DEADBEEF");
+}
+
 unittest // Row random-access range interface
 {
     auto db = Database(":memory:");
 
     {
         db.execute("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER, d INTEGER)");
-        auto statement = db.prepare("INSERT INTO test (a, b, c, d) VALUES (?, ?, ?, ?)");
+        auto statement = db.prepare("INSERT INTO test VALUES(?, ?, ?, ?)");
         statement.bind(1, 1);
         statement.bind(2, 2);
         statement.bind(3, 3);
@@ -1647,13 +1700,13 @@ struct RowCache
 
         int[string] columnIndexes;
 
-        private this(Row row, int[string] columnIndexes) nothrow
+        private this(Row row, int[string] columnIndexes)
         {
             this.columnIndexes = columnIndexes;
 
             auto colapp = appender!(ColumnData[]);
             foreach (i; 0 .. row.length)
-                colapp.put(ColumnData(row.peek!Variant(i)));
+                colapp.put(ColumnData(row[i]));
             columns = colapp.data;
         }
 
@@ -1904,49 +1957,44 @@ private static @property string block_read_values(size_t n, string name, PT...)(
         static if (isBoolean!UT)
             enum templ = q{
                 @{previous_block}
-                type = sqlite3_value_numeric_type(argv[@{index}]);
-                enforce(type == SQLITE_INTEGER, new SqliteException(
-                    "argument @{n} of function @{name}() should be a boolean"));
                 args[@{index}] = sqlite3_value_int64(argv[@{index}]) != 0;
             };
         else static if (isIntegral!UT)
             enum templ = q{
                 @{previous_block}
-                type = sqlite3_value_numeric_type(argv[@{index}]);
-                enforce(type == SQLITE_INTEGER, new SqliteException(
-                    "argument @{n} of function @{name}() should be of an integral type"));
                 args[@{index}] = to!(PT[@{index}])(sqlite3_value_int64(argv[@{index}]));
             };
         else static if (isFloatingPoint!UT)
             enum templ = q{
                 @{previous_block}
-                type = sqlite3_value_numeric_type(argv[@{index}]);
-                enforce(type == SQLITE_FLOAT, new SqliteException(
-                    "argument @{n} of function @{name}() should be a floating point"));
-                args[@{index}] = to!(PT[@{index}])(sqlite3_value_double(argv[@{index}]));
+                type = sqlite3_value_type(argv[@{index}]);
+                if (type == SQLITE_NULL)
+                    args[@{index}] = double.nan;
+                else
+                    args[@{index}] = to!(PT[@{index}])(sqlite3_value_double(argv[@{index}]));
             };
         else static if (isSomeString!UT)
             enum templ = q{
                 @{previous_block}
                 type = sqlite3_value_type(argv[@{index}]);
-                enforce(type == SQLITE3_TEXT, new SqliteException(
-                    "argument @{n} of function @{name}() should be a string"));
-                args[@{index}] = to!(PT[@{index}])(sqlite3_value_text(argv[@{index}]));
+                if (type == SQLITE_NULL)
+                    args[@{index}] = null;
+                else
+                    args[@{index}] = to!(PT[@{index}])(sqlite3_value_text(argv[@{index}]));
             };
         else static if (isArray!UT && is(Unqual!(ElementType!UT) : ubyte))
             enum templ = q{
                 @{previous_block}
                 type = sqlite3_value_type(argv[@{index}]);
-                enforce(type == SQLITE_BLOB, new SqliteException(
-                    "argument @{n} of function @{name}() should be of an array of bytes (BLOB)"));
-                n = sqlite3_value_bytes(argv[@{index}]);
-                blob.length = n;
-                memcpy(blob.ptr, sqlite3_value_blob(argv[@{index}]), n);
-                args[@{index}] = to!(PT[@{index}])(blob.dup);
-            };
-        else static if (is(UT == void*))
-            enum templ = q{
-                @{previous_block}
+                if (type == SQLITE_NULL)
+                    args[@{index}] = null;
+                else
+                {
+                    n = sqlite3_value_bytes(argv[@{index}]);
+                    blob.length = n;
+                    memcpy(blob.ptr, sqlite3_value_blob(argv[@{index}]), n);
+                    args[@{index}] = to!(PT[@{index}])(blob.dup);                    
+                }
             };
         else
             static assert(false, PT[index].stringof ~ " is not a compatible argument type");
@@ -1972,8 +2020,12 @@ private static @property string block_return_result(RT...)()
         };
     else static if (isFloatingPoint!RT)
         return q{
+            import std.math;
             auto result = to!double(tmp);
-            sqlite3_result_double(context, result);
+            if (result.isFinite)
+                sqlite3_result_double(context, result);
+            else
+                sqlite3_result_null(context);
         };
     else static if (isSomeString!RT)
         return q{
