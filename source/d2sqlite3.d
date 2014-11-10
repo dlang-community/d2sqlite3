@@ -36,88 +36,84 @@ public import sqlite3;
 
 
 /++
-Global SQLite utilities.
+Gets the library's version string (e.g. "3.8.7").
 +/
-struct Sqlite3
+string versionString() nothrow
 {
-    /++
-    Gets the library's version string (e.g. "3.8.7").
-    +/
-    static @property string versionString() nothrow
-    {
-        return to!string(sqlite3_libversion());
-    }
+    return to!string(sqlite3_libversion());
+}
 
-    /++
-    Gets the library's version number (e.g. 3008007).
-    +/
-    static @property int versionNumber() nothrow
-    {
-        return sqlite3_libversion_number();
-    }
+/++
+Gets the library's version number (e.g. 3008007).
++/
+int versionNumber() nothrow
+{
+    return sqlite3_libversion_number();
+}
+
+/++
+Tells whether SQLite was compiled with the thread-safe options.
     
-    /++
-    Tells whether SQLite was compiled with the thread-safe options.
-        
-    See_also: ($LINK http://www.sqlite.org/c3ref/threadsafe.html).
-    +/
-    static @property bool threadSafe() nothrow
-    {
-        return cast(bool) sqlite3_threadsafe();
-    }
+See_also: ($LINK http://www.sqlite.org/c3ref/threadsafe.html).
++/
+bool threadSafe() nothrow
+{
+    return cast(bool) sqlite3_threadsafe();
+}
 
-    /// Initializes or shuts down SQLite.
-    static void initialize()
-    {
-        auto result = sqlite3_initialize(); 
-        enforce(result == SQLITE_OK,
-                new SqliteException("Initialization: error %s".format(result)));
-    }
-    /// Ditto
-    static void shutdown()
-    {
-        auto result = sqlite3_shutdown(); 
-        enforce(result == SQLITE_OK,
-                new SqliteException("Shutdown: error %s".format(result)));
-    }
+/// Initializes or shuts down SQLite.
+void initialize()
+{
+    auto result = sqlite3_initialize(); 
+    enforce(result == SQLITE_OK,
+            new SqliteException("Initialization: error %s".format(result)));
+}
+/// Ditto
+void shutdown()
+{
+    auto result = sqlite3_shutdown(); 
+    enforce(result == SQLITE_OK,
+            new SqliteException("Shutdown: error %s".format(result)));
+}
 
-    /++
-    Sets a configuration option. Use before initialization and before execution of
-    the first statement.
+/++
+Sets a configuration option. Use before initialization, e.g. before the first
+call to initialize and before execution of the first statement.
 
-    See_Also: $(LINK http://www.sqlite.org/c3ref/config.html).
-    +/
-    static void config(Args...)(int code, Args args)
-    {
-        auto result = sqlite3_config(code, args); 
-        enforce(result == SQLITE_OK,
-                new SqliteException("Configuration: error %s".format(result)));
-    }
+See_Also: $(LINK http://www.sqlite.org/c3ref/config.html).
++/
+void config(Args...)(int code, Args args)
+{
+    auto result = sqlite3_config(code, args); 
+    enforce(result == SQLITE_OK,
+            new SqliteException("Configuration: error %s".format(result)));
 }
 version (D_Ddoc)
 {
     ///
     unittest
     {
-        Sqlite3.config(SQLITE_CONFIG_MULTITHREAD);
-        Sqlite3.config(SQLITE_CONFIG_LOG,
+        config(SQLITE_CONFIG_MULTITHREAD);
+
+        // Setup a logger callback function
+        config(SQLITE_CONFIG_LOG,
             function(void* p, int code, const(char*) msg)
             {
                 import std.stdio;
                 writefln("%05d | %s", code, msg.to!string);
             },
             null);
-        Sqlite3.initialize();
+        initialize();
     }
 }
 else
 {
     unittest
     {
-        Sqlite3.config(SQLITE_CONFIG_MULTITHREAD);
-        Sqlite3.config(SQLITE_CONFIG_LOG, 
-                       (void* p, int code, const(char*) msg) {}, null);
-        Sqlite3.initialize();
+        config(SQLITE_CONFIG_MULTITHREAD);
+        config(SQLITE_CONFIG_LOG, 
+               (void* p, int code, const(char*) msg) {}, null);
+        initialize();
     }
 }
 
