@@ -1060,6 +1060,21 @@ public:
             enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
         }
     }
+
+    /++
+    Convenience function equivalent of:
+    ---
+    bindAll(args);
+    execute();
+    reset();
+    ---
+    +/
+    void inject(Args...)(Args args)
+    {
+        bindAll(args);
+        execute();
+        reset();
+    }
 }
 
 unittest // Simple parameters binding

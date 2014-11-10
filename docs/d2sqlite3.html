@@ -547,6 +547,16 @@ Calling this method invalidates any <tt>ResultRange</tt> struct returned by a pr
     This does not clear the bindings. Use <tt>Statement.clear()</tt> for this.<br><br>
 
 </dd>
+<dt><big><a name="Statement.inject"></a>void <u>inject</u>(Args...)(Args <i>args</i>);
+</big></dt>
+<dd>    Convenience function equivalent of:
+<pre class="d_code">bindAll(args);
+execute();
+reset();
+</pre>
+<br><br>
+
+</dd>
 </dl>
 </dd>
 <dt><big><a name="ResultRange"></a>struct <u>ResultRange</u>;
