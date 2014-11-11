@@ -489,6 +489,23 @@ db.commit();
 </pre>
 <br><br>
 </dd>
+<dt><big><a name="Database.setProgressHandler"></a>void <u>setProgressHandler</u>(int <i>pace</i>, int delegate() <i>handler</i>);
+</big></dt>
+<dd>Sets the progress <i>handler</i>.
+    Any previously set <i>handler</i> is released.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>int <i>pace</i></td>
+<td>The approximate number of virtual machine instructions that are
+        evaluated between successive invocations of the <i>handler</i>.</td></tr>
+<tr><td>int delegate() <i>handler</i></td>
+<td>A delegate that should return 0 if the operation must be
+        aborted or another value if it can continue.</td></tr>
+</table><br>
+<b>See Also:</b><br>
+<a href="http://www.sqlite.org/c3ref/commit_hook.html">http://www.sqlite.org/c3ref/commit_hook.html</a>.<br><br>
+
+</dd>
 </dl>
 </dd>
 <dt><big><a name="Statement"></a>struct <u>Statement</u>;

@@ -156,6 +156,7 @@ private:
     struct _Payload
     {
         sqlite3* handle;
+        void* progressHandler;
 
         this(sqlite3* handle) @safe pure nothrow
         {
@@ -170,6 +171,7 @@ private:
                 enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
             }
             handle = null;
+            ptrFree(progressHandler);
         }
 
         @disable this(this);
@@ -739,6 +741,32 @@ public:
         db.execute("CREATE TABLE test (val INTEGER)");
         db.commit();
         assert(i == 42);
+    }
+
+    /++
+    Sets the progress handler.
+    Any previously set handler is released.
+
+    Params:        
+        pace = The approximate number of virtual machine instructions that are
+        evaluated between successive invocations of the handler.
+
+        handler = A delegate that should return 0 if the operation must be
+        aborted or another value if it can continue.
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
+    +/
+    void setProgressHandler(int pace, int delegate() handler)
+    {
+        extern(C) static int callback(void* ptr)
+        {
+            return delegateUnwrap!(int delegate())(ptr)();
+        }
+
+        ptrFree(p.progressHandler);
+        auto ptr = delegateWrap(handler);
+        sqlite3_progress_handler(p.handle, pace, &callback, ptr);
+        p.progressHandler = ptr;
     }
 }
 ///
