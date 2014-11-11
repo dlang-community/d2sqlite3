@@ -243,7 +243,7 @@ void extract()
         scope (success) db.commit();
         scope (failure) db.rollback();
 
-        db.createFunction!(nameOnList, "name_on_list");
+        db.createFunction!"name_on_list"(&nameOnList);
 
         ResultRange results;
         if (options.paths.length)
