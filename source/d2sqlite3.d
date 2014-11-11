@@ -255,22 +255,22 @@ public:
     +/
     void run(string sql, scope bool delegate(ResultRange) dg = null)
     {
-        do
+        foreach (statement; sql.byStatement)
         {
-            auto stmt = prepare(sql);
+            auto stmt = prepare(statement);
             auto results = stmt.execute();
             if (dg && !dg(results))
                 return;
-            sql = stmt.p.tail;
         }
-        while (sql.length);
     }
     ///
     unittest
     {
         auto db = Database(":memory:");
         db.run(`CREATE TABLE test1 (val INTEGER);
-                CREATE TABLE test2 (val FLOAT);`);
+                CREATE TABLE test2 (val FLOAT);
+                DROP TABLE test1;
+                DROP TABLE test2;`);
     }
 
     /++
@@ -918,7 +918,6 @@ private:
     struct _Payload
     {
         sqlite3_stmt* handle; // null if error or empty statement
-        string tail;
 
         ~this()
         {
@@ -942,16 +941,10 @@ private:
             cast(char*) sql.toStringz(),
             cast(int) sql.length,
             &handle,
-            &ptail
+            null
         );
         enforce(result == SQLITE_OK, new SqliteException(errmsg(dbHandle), result, sql));
         p = Payload(handle);
-        if (ptail)
-        {
-            // Offset sometimes seems to be undefined if statement doesn't end with ";"
-            auto offset = min(ptail - sql.ptr, sql.length);
-            p.tail = sql[offset .. $];
-        }
     }
 
 public:
@@ -2001,6 +1994,72 @@ class SqliteException : Exception
 
 
 private:
+
+auto byStatement(string sql)
+{
+    static struct ByStatement
+    {
+        string sql;
+        size_t end;
+
+        this(string sql)
+        {
+            this.sql = sql;
+            end = findEnd();
+        }
+
+        bool empty()
+        {
+            return !sql.length;
+        }
+
+        string front()
+        {
+            return sql[0 .. end];
+        }
+
+        void popFront()
+        {
+            sql = sql[end .. $];
+            end = findEnd();
+        }
+
+    private:
+        size_t findEnd()
+        {
+            size_t pos;
+            bool complete;
+            do
+            {
+                auto tail = sql[pos .. $];
+                auto offset = tail.countUntil(';') + 1;
+                pos += offset;
+                if (offset == 0)
+                    pos = sql.length;
+                auto part = sql[0 .. pos];
+                complete = cast(bool) sqlite3_complete(part.toStringz);
+            }
+            while (!complete && pos < sql.length);
+            return pos;
+        }
+    }
+
+    return ByStatement(sql);
+}
+unittest
+{
+    auto sql = "CREATE TABLE test (dummy);
+        CREATE TRIGGER trig INSERT ON test BEGIN SELECT 1; SELECT 'a;b'; END;
+        SELECT 'c;d';;
+        CREATE";
+    assert(equal(sql.byStatement.map!(s => s.strip), [
+        "CREATE TABLE test (dummy);",
+        "CREATE TRIGGER trig INSERT ON test BEGIN SELECT 1; SELECT 'a;b'; END;",
+        "SELECT 'c;d';",
+        ";",
+        "CREATE"
+    ]));
+}
 
 struct DelegateWrapper(T)
 {
