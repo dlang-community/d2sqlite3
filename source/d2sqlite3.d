@@ -1071,7 +1071,6 @@ public:
         core.state = sqlite3_step(core.statement);
         if (core.state != SQLITE_ROW && core.state != SQLITE_DONE)
         {
-            reset(); // necessary to retrieve the error message.
             throw new SqliteException(errmsg(core.dbHandle), core.state);
         }
     }
