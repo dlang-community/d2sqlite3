@@ -506,8 +506,8 @@ public:
         enum x_final_mix = render(x_final, ["name": name]);
         mixin(x_final_mix);
 
-        import core.stdc.stdlib;
-        auto ptr = cast(T*) malloc(T.sizeof);
+        import core.memory;
+        auto ptr = cast(T*) GC.malloc(T.sizeof);
         *ptr = agg;
 
         assert(p.handle);
@@ -1982,9 +1982,10 @@ struct DelegateWrapper(T)
 void* delegateWrap(T)(T dlg)
     if (isCallable!T)
 {
-    import std.functional, core.stdc.stdlib;
+    import std.functional, core.memory;
     alias D = typeof(toDelegate(dlg));
-    auto d = cast(DelegateWrapper!D*) malloc(DelegateWrapper!D.sizeof);
+    auto d = cast(DelegateWrapper!D*) GC.malloc(DelegateWrapper!D.sizeof);
+    GC.setAttr(d, GC.BlkAttr.NO_MOVE);
     d.dlg = toDelegate(dlg);
     return cast(void*) d;
 }
@@ -1997,9 +1998,9 @@ auto delegateUnwrap(T)(void* ptr)
 
 extern(C) void ptrFree(void* ptr)
 {
-    import core.stdc.stdlib;
+    import core.memory;
     if (ptr)
-        free(ptr);
+        GC.free(ptr);
 }
 
 // Compile-time rendering of code templates.
