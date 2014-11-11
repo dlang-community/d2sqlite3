@@ -208,7 +208,7 @@ public:
     /++
     Gets the SQLite internal _handle of the database connection.
     +/
-    @property sqlite3* handle() @safe pure nothrow
+    sqlite3* handle() @property @safe pure nothrow
     {
         return p.handle;
     }
@@ -303,7 +303,7 @@ public:
     Gets the number of database rows that were changed, inserted or deleted by the most
     recently executed SQL statement.
     +/
-    @property int changes() nothrow
+    int changes() @property nothrow
     {
         assert(p.handle);
         return sqlite3_changes(p.handle);
@@ -313,7 +313,7 @@ public:
     Gets the number of database rows that were changed, inserted or deleted since the
     database was opened.
     +/
-    @property int totalChanges() nothrow
+    int totalChanges() @property nothrow
     {
         assert(p.handle);
         return sqlite3_total_changes(p.handle);
@@ -322,7 +322,7 @@ public:
     /++
     Gets the SQLite error code of the last operation.
     +/
-    @property int errorCode() nothrow
+    int errorCode() @property nothrow
     {
         return p.handle ? sqlite3_errcode(p.handle) : 0;
     }
@@ -958,7 +958,7 @@ public:
     /++
     Gets the SQLite internal _handle of the statement.
     +/
-    @property sqlite3_stmt* handle()
+    sqlite3_stmt* handle() @property
     {
         return p.handle;
     }
@@ -1242,14 +1242,14 @@ public:
     /++
     Range primitives.
     +/
-    @property bool empty()
+    bool empty() @property
     {
         assert(p.state);
         return p.state == SQLITE_DONE;
     }
 
     /// ditto
-    @property Row front()
+    Row front() @property
     {
         assert(p.state);
         enforce(!empty, new SqliteException("No rows available"));
@@ -1321,13 +1321,13 @@ struct Row
     }
 
     /// Range interface.
-    @property bool empty() @safe pure nothrow
+    bool empty() @property @safe pure nothrow
     {
         return length == 0;
     }
 
     /// ditto
-    @property ColumnData front()
+    ColumnData front() @property
     {
         return opIndex(0);
     }
@@ -1339,7 +1339,7 @@ struct Row
     }
 
     /// ditto
-    @property Row save() @safe pure nothrow
+    Row save() @property @safe pure nothrow
     {
         Row ret;
         ret.statement = statement;
@@ -1349,7 +1349,7 @@ struct Row
     }
 
     /// ditto
-    @property ColumnData back()
+    ColumnData back() @property
     {
         return opIndex(backIndex - frontIndex);
     }
@@ -1361,7 +1361,7 @@ struct Row
     }
 
     /// ditto
-    @property int length() @safe pure nothrow
+    int length() @property @safe pure nothrow
     {
         return backIndex - frontIndex + 1;
     }
@@ -2083,7 +2083,7 @@ unittest // Code templates
 /+
 Helper function to translate the arguments values of a D function into Sqlite values.
 +/
-private static @property string block_read_values(size_t n, string name, PT...)()
+private static string block_read_values(size_t n, string name, PT...)()
 {
     static if (n == 0)
         return null;
@@ -2148,7 +2148,7 @@ private static @property string block_read_values(size_t n, string name, PT...)(
 /+
 Helper function to translate the return of a function into a Sqlite value.
 +/
-private static @property string block_return_result(RT...)()
+private static string block_return_result(RT...)()
 {
     static if (isIntegral!RT || isBoolean!RT)
         return q{
