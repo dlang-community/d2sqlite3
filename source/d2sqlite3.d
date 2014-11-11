@@ -35,6 +35,16 @@ public import sqlite3;
 // debug import std.stdio;
 
 
+/// SQLite type codes
+enum SqliteType
+{
+    INTEGER = SQLITE_INTEGER, ///
+    FLOAT = SQLITE_FLOAT, ///
+    TEXT = SQLITE3_TEXT, ///
+    BLOB = SQLITE_BLOB, ///
+    NULL = SQLITE_NULL ///
+}
+
 /++
 Gets the library's version string (e.g. "3.8.7").
 +/
@@ -112,7 +122,7 @@ else
     {
         config(SQLITE_CONFIG_MULTITHREAD);
         config(SQLITE_CONFIG_LOG, 
-               (void* p, int code, const(char*) msg) {}, null);
+               function(void* p, int code, const(char*) msg) {}, null);
         initialize();
     }
 }
@@ -249,7 +259,7 @@ public:
             auto results = stmt.execute();
             if (dg && !dg(results))
                 return;
-            sql = stmt.p.next;
+            sql = stmt.p.tail;
         }
         while (sql.length);
     }
@@ -880,7 +890,7 @@ private:
     struct _Payload
     {
         sqlite3_stmt* handle; // null if error or empty statement
-        string next;
+        string tail;
 
         ~this()
         {
@@ -912,16 +922,8 @@ private:
         {
             // Offset sometimes seems to be undefined if statement doesn't end with ";"
             auto offset = min(ptail - sql.ptr, sql.length);
-            p.next = sql[offset .. $];
+            p.tail = sql[offset .. $];
         }
-    }
-
-    int parameterCount() nothrow
-    {
-        if (p.handle)
-            return sqlite3_bind_parameter_count(p.handle);
-        else
-            return 0;
     }
 
 public:
@@ -1071,6 +1073,42 @@ public:
         execute();
         reset();
     }
+
+    /// Gets the count of bind parameters.
+    int parameterCount() nothrow
+    {
+        if (p.handle)
+            return sqlite3_bind_parameter_count(p.handle);
+        else
+            return 0;
+    }
+
+    /++
+    Gets the name of the bind parameter at the given index.
+
+    Returns: The name of the parameter or null is not found or out of range.
+    +/
+    string parameterName(int index)
+    {
+        if (p.handle)
+            return sqlite3_bind_parameter_name(p.handle, index).to!string;
+        else
+            return null;
+    }
+
+    /++
+    Gets the index of a bind parameter.
+
+    Returns: The index of the parameter (the first parameter has the index 1)
+    or 0 is not found or out of range.
+    +/
+    int parameterIndex(string name)
+    {
+        if (p.handle)
+            return sqlite3_bind_parameter_index(p.handle, name.toStringz);
+        else
+            return 0;        
+    }
 }
 
 unittest // Simple parameters binding
@@ -1167,6 +1205,7 @@ private:
             p.state = sqlite3_step(p.statement.handle);
         else
             p.state = SQLITE_DONE;
+
         enforce(p.state == SQLITE_ROW || p.state == SQLITE_DONE,
                 new SqliteException(errmsg(p.statement.handle), p.state));
     }
@@ -1302,26 +1341,26 @@ struct Row
     /// ditto
     ColumnData opIndex(int index)
     {
-        int i =  cast(int) index + frontIndex;
+        auto i = internalIndex(index);
         enforce(i >= 0 && i <= backIndex,
                 new SqliteException(format("invalid column index: %d", i)));
 
         auto type = sqlite3_column_type(statement, i);
         final switch (type)
         {
-            case SQLITE_INTEGER:
+            case SqliteType.INTEGER:
                 return ColumnData(Variant(peek!long(index)));
 
-            case SQLITE_FLOAT:
+            case SqliteType.FLOAT:
                 return ColumnData(Variant(peek!double(index)));
 
-            case SQLITE3_TEXT:
+            case SqliteType.TEXT:
                 return ColumnData(Variant(peek!string(index)));
 
-            case SQLITE_BLOB:
+            case SqliteType.BLOB:
                 return ColumnData(Variant(peek!(ubyte[])(index)));
 
-            case SQLITE_NULL:
+            case SqliteType.NULL:
                 return ColumnData(Variant());
         }
     }
@@ -1330,16 +1369,12 @@ struct Row
     Returns the data of a column as a $(D ColumnData).
 
     Params:
-        name = The name of the column, as specified in the prepared statement with an AS
+        columnName = The name of the column, as specified in the prepared statement with an AS
         clause.
     +/
-    ColumnData opIndex(string name)
+    ColumnData opIndex(string columnName)
     {
-        foreach (i; frontIndex .. backIndex + 1)
-            if (sqlite3_column_name(statement, i).to!string == name)
-                return opIndex(i);
-
-        throw new SqliteException("invalid column name: '%s'".format(name));
+        return opIndex(indexForName(columnName));
     }
 
     /++
@@ -1389,14 +1424,14 @@ struct Row
     +/
     auto peek(T)(int index)
     {
-        int i =  cast(int) index + frontIndex;
+        auto i = internalIndex(index);
         static if (isBoolean!T || isIntegral!T)
         {
             return sqlite3_column_int64(statement, i).to!T;
         }
         else static if (isFloatingPoint!T)
         {
-            if (sqlite3_column_type(statement, i) == SQLITE_NULL)
+            if (sqlite3_column_type(statement, i) == SqliteType.NULL)
                 return T.init;
             return sqlite3_column_double(statement, i).to!T;
         }
@@ -1417,13 +1452,90 @@ struct Row
             static assert(false, "value cannot be converted to type " ~ T.stringof);
     }
     /// Ditto
-    auto peek(T)(string name)
+    auto peek(T)(string columnName)
+    {
+        return peek!T(indexForName(columnName));
+    }
+
+    /++
+    Determines the type of a particular result column in SELECT statement.
+
+    See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
+    +/
+    SqliteType columnType(int index)
+    {
+        return cast(SqliteType) sqlite3_column_type(statement, internalIndex(index));
+    }
+    /// Ditto
+    SqliteType columnType(string columnName)
+    {
+        return columnType(indexForName(columnName));
+    }
+
+    /++
+    Determines the name of the database, table, or column that is the origin of a
+    particular result column in SELECT statement.
+
+    See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
+    +/
+    string columnDatabaseName(int index)
+    {
+        return sqlite3_column_database_name(statement, internalIndex(index)).to!string;
+    }
+    /// Ditto
+    string columnDatabaseName(string columnName)
+    {
+        return columnDatabaseName(indexForName(columnName));
+    }
+    /// Ditto
+    string columnTableName(int index)
+    {
+        return sqlite3_column_database_name(statement, internalIndex(index)).to!string;   
+    }
+    /// Ditto
+    string columnTableName(string columnName)
+    {
+        return columnTableName(indexForName(columnName)); 
+    }
+    /// Ditto
+    string columnOriginName(int index)
+    {
+        return sqlite3_column_origin_name(statement, internalIndex(index)).to!string;   
+    }
+    /// Ditto
+    string columnOriginName(string columnName)
+    {
+        return columnOriginName(indexForName(columnName));
+    }
+
+    /++
+    Determines the declared type name of a particular result column in SELECT statement.
+
+    See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
+    +/
+    string columnDeclaredTypeName(int index)
+    {
+        return sqlite3_column_decltype(statement, internalIndex(index)).to!string;
+    }
+    /// Ditto
+    string columnDeclaredTypeName(string columnName)
+    {
+        return columnDeclaredTypeName(indexForName(columnName));
+    }
+
+private:
+    int internalIndex(int index)
+    {
+        return index + frontIndex;
+    }
+
+    int indexForName(string name)
     {
         foreach (i; frontIndex .. backIndex + 1)
             if (sqlite3_column_name(statement, i).to!string == name)
-                return peek!T(i);
+                return i;
 
-        throw new SqliteException("invalid column name: '%s'".format(name));
+        throw new SqliteException("invalid column name: '%s'".format(name));        
     }
 }
 
@@ -1964,7 +2076,7 @@ private static @property string block_read_values(size_t n, string name, PT...)(
             enum templ = q{
                 @{previous_block}
                 type = sqlite3_value_type(argv[@{index}]);
-                if (type == SQLITE_NULL)
+                if (type == SqliteType.NULL)
                     args[@{index}] = double.nan;
                 else
                     args[@{index}] = to!(PT[@{index}])(sqlite3_value_double(argv[@{index}]));
@@ -1973,7 +2085,7 @@ private static @property string block_read_values(size_t n, string name, PT...)(
             enum templ = q{
                 @{previous_block}
                 type = sqlite3_value_type(argv[@{index}]);
-                if (type == SQLITE_NULL)
+                if (type == SqliteType.NULL)
                     args[@{index}] = null;
                 else
                     args[@{index}] = to!(PT[@{index}])(sqlite3_value_text(argv[@{index}]));
@@ -1982,7 +2094,7 @@ private static @property string block_read_values(size_t n, string name, PT...)(
             enum templ = q{
                 @{previous_block}
                 type = sqlite3_value_type(argv[@{index}]);
-                if (type == SQLITE_NULL)
+                if (type == SqliteType.NULL)
                     args[@{index}] = null;
                 else
                 {

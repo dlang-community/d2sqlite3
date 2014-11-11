@@ -17,7 +17,28 @@ Nicolas Sicard (dransic@gmail.com).
 
 <br><br>
 
-<dl><dt><big><a name="versionString"></a>nothrow string <u>versionString</u>();
+<dl><dt><big><a name="SqliteType"></a>enum <u>SqliteType</u>: int;
+</big></dt>
+<dd>SQLite type codes<br><br>
+
+<dl><dt><big><a name="SqliteType.INTEGER"></a><u>INTEGER</u></big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="SqliteType.FLOAT"></a><u>FLOAT</u></big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="SqliteType.TEXT"></a><u>TEXT</u></big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="SqliteType.BLOB"></a><u>BLOB</u></big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="SqliteType.NULL"></a><u>NULL</u></big></dt>
+<dd><br><br>
+</dd>
+</dl>
+</dd>
+<dt><big><a name="versionString"></a>nothrow string <u>versionString</u>();
 </big></dt>
 <dd>Gets the library's version string (e.g. "3.8.7").<br><br>
 
@@ -553,6 +574,28 @@ reset();
 <br><br>
 
 </dd>
+<dt><big><a name="Statement.parameterCount"></a>nothrow int <u>parameterCount</u>();
+</big></dt>
+<dd>Gets the count of bind parameters.<br><br>
+
+</dd>
+<dt><big><a name="Statement.parameterName"></a>string <u>parameterName</u>(int <i>index</i>);
+</big></dt>
+<dd>Gets the name of the bind parameter at the given <i>index</i>.
+<br><br>
+<b>Returns:</b><br>
+The name of the parameter or <b>null</b> is not found or out of range.<br><br>
+
+</dd>
+<dt><big><a name="Statement.parameterIndex"></a>int <u>parameterIndex</u>(string <i>name</i>);
+</big></dt>
+<dd>Gets the index of a bind parameter.
+<br><br>
+<b>Returns:</b><br>
+The index of the parameter (the first parameter has the index 1)
+    or 0 is not found or out of range.<br><br>
+
+</dd>
 </dl>
 </dd>
 <dt><big><a name="ResultRange"></a>struct <u>ResultRange</u>;
@@ -602,19 +645,19 @@ db.execute(<font color=red>"CREATE TABLE test (val INTEGER)"</font>);
 <dd>Range interface.<br><br>
 
 </dd>
-<dt><big><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(string <i>name</i>);
+<dt><big><a name="Row.opIndex"></a>ColumnData <u>opIndex</u>(string <i>columnName</i>);
 </big></dt>
 <dd>Returns the data of a column as a <tt>ColumnData</tt>.
 <br><br>
 <b>Params:</b><br>
-<table><tr><td>string <i>name</i></td>
-<td>The <i>name</i> of the column, as specified in the prepared statement with an AS
+<table><tr><td>string <i>columnName</i></td>
+<td>The name of the column, as specified in the prepared statement with an AS
         clause.</td></tr>
 </table><br>
 
 </dd>
 <dt><big><a name="Row.peek"></a>auto <u>peek</u>(T)(int <i>index</i>);
-<br><a name="Row.peek"></a>auto <u>peek</u>(T)(string <i>name</i>);
+<br><a name="Row.peek"></a>auto <u>peek</u>(T)(string <i>columnName</i>);
 </big></dt>
 <dd>Returns the data of a column.
 <br><br>
@@ -663,6 +706,38 @@ The result is undefined if then index is out of range.
         If the second overload is used, the names of all the columns are
         tested each time this function is called: use
         numeric indexing for better performance.<br><br>
+
+</dd>
+<dt><big><a name="Row.columnType"></a>SqliteType <u>columnType</u>(int <i>index</i>);
+<br><a name="Row.columnType"></a>SqliteType <u>columnType</u>(string <i>columnName</i>);
+</big></dt>
+<dd>Determines the type of a particular result column in SELECT statement.
+<br><br>
+<b>See Also:</b><br>
+<tt>http://www.sqlite.org/c3ref/column_database_name.html</tt>.<br><br>
+
+</dd>
+<dt><big><a name="Row.columnDatabaseName"></a>string <u>columnDatabaseName</u>(int <i>index</i>);
+<br><a name="Row.columnDatabaseName"></a>string <u>columnDatabaseName</u>(string <i>columnName</i>);
+<br><a name="Row.columnTableName"></a>string <u>columnTableName</u>(int <i>index</i>);
+<br><a name="Row.columnTableName"></a>string <u>columnTableName</u>(string <i>columnName</i>);
+<br><a name="Row.columnOriginName"></a>string <u>columnOriginName</u>(int <i>index</i>);
+<br><a name="Row.columnOriginName"></a>string <u>columnOriginName</u>(string <i>columnName</i>);
+</big></dt>
+<dd>Determines the name of the database, table, or column that is the origin of a
+    particular result column in SELECT statement.
+<br><br>
+<b>See Also:</b><br>
+<tt>http://www.sqlite.org/c3ref/column_database_name.html</tt>.<br><br>
+
+</dd>
+<dt><big><a name="Row.columnDeclaredTypeName"></a>string <u>columnDeclaredTypeName</u>(int <i>index</i>);
+<br><a name="Row.columnDeclaredTypeName"></a>string <u>columnDeclaredTypeName</u>(string <i>columnName</i>);
+</big></dt>
+<dd>Determines the declared type name of a particular result column in SELECT statement.
+<br><br>
+<b>See Also:</b><br>
+<tt>http://www.sqlite.org/c3ref/column_database_name.html</tt>.<br><br>
 
 </dd>
 </dl>
