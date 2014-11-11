@@ -203,6 +203,46 @@ statement.execute();
 <dd>Gets the SQLite internal handle of the database connection.<br><br>
 
 </dd>
+<dt><big><a name="Database.attachedFilePath"></a>nothrow string <u>attachedFilePath</u>(string <i>database</i> = "main");
+</big></dt>
+<dd>Gets the path associated with an attached <i>database</i>.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>string <i>database</i></td>
+<td>The name of an attached <i>database</i>.</td></tr>
+</table><br>
+<b>Returns:</b><br>
+The absolute path of the attached <i>database</i>.
+        If there is no attached <i>database</i>, or if <i>database</i> is a temporary or
+        in-memory <i>database</i>, then <b>null</b> is returned.<br><br>
+
+</dd>
+<dt><big><a name="Database.isReadOnly"></a>bool <u>isReadOnly</u>(string <i>database</i> = "main");
+</big></dt>
+<dd>Gets the read-only status of an attached <i>database</i>.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>string <i>database</i></td>
+<td>The name of an attached <i>database</i>.</td></tr>
+</table><br>
+
+</dd>
+<dt><big><a name="Database.tableColumnMetadata"></a>ColumnMetadata <u>tableColumnMetadata</u>(string <i>table</i>, string <i>column</i>, string <i>database</i> = "main");
+</big></dt>
+<dd>Gets metadata for a specific <i>table</i> <i>column</i> of an attached <i>database</i>.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>string <i>table</i></td>
+<td>The name of the <i>table</i>.</td></tr>
+<tr><td>string <i>column</i></td>
+<td>The name of the <i>column</i>.</td></tr>
+<tr><td>string <i>database</i></td>
+<td>The name of a <i>database</i> attached. If <b>null</b>, then all attached databases
+        are searched for the <i>table</i> using the same algorithm used by the <i>database</i> engine
+        to resolve unqualified <i>table</i> references.</td></tr>
+</table><br>
+
+</dd>
 <dt><big><a name="Database.close"></a>void <u>close</u>();
 </big></dt>
 <dd>Explicitly closes the database.
@@ -240,7 +280,9 @@ db.<u>execute</u>(<font color=red>"VACUUM"</font>);
 <pre class="d_code">
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
 db.<u>run</u>(<font color=red>`CREATE TABLE test1 (val INTEGER);
-        CREATE TABLE test2 (val FLOAT);`</font>);
+        CREATE TABLE test2 (val FLOAT);
+        DROP TABLE test1;
+        DROP TABLE test2;`</font>);
 </pre>
 <br><br>
 </dd>
@@ -769,6 +811,32 @@ through "<tt>alias this</tt>".<br><br>
 <dd>Returns the data converted to T. If the data is NULL, defaultValue is
     returned.<br><br>
 
+</dd>
+</dl>
+</dd>
+<dt><big><a name="ColumnMetadata"></a>struct <u>ColumnMetadata</u>;
+</big></dt>
+<dd>Information about a column.<br><br>
+
+<dl><dt><big><a name="ColumnMetadata.declaredTypeName"></a>string <u>declaredTypeName</u>;
+</big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="ColumnMetadata.collationSequenceName"></a>string <u>collationSequenceName</u>;
+</big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="ColumnMetadata.isNotNull"></a>bool <u>isNotNull</u>;
+</big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="ColumnMetadata.isPrimaryKey"></a>bool <u>isPrimaryKey</u>;
+</big></dt>
+<dd><br><br>
+</dd>
+<dt><big><a name="ColumnMetadata.isAutoIncrement"></a>bool <u>isAutoIncrement</u>;
+</big></dt>
+<dd><br><br>
 </dd>
 </dl>
 </dd>

@@ -214,6 +214,79 @@ public:
     }
 
     /++
+    Gets the path associated with an attached database.
+
+    Params:
+        database = The name of an attached database.
+
+    Returns: The absolute path of the attached database.
+        If there is no attached database, or if database is a temporary or
+        in-memory database, then null is returned.
+    +/
+    string attachedFilePath(string database = "main") nothrow
+    {
+        return sqlite3_db_filename(p.handle, database.toStringz).to!string;
+    }
+
+    /++
+    Gets the read-only status of an attached database.
+
+    Params:
+        database = The name of an attached database.
+    +/
+    bool isReadOnly(string database = "main")
+    {
+        int ret = sqlite3_db_readonly(p.handle, "main");
+        enforce(ret >= 0, new SqliteException("Database not found: %s".format(database)));
+        return ret == 1;
+    }
+
+    /++
+    Gets metadata for a specific table column of an attached database.
+
+    Params:
+        table = The name of the table.
+
+        column = The name of the column.
+
+        database = The name of a database attached. If null, then all attached databases
+        are searched for the table using the same algorithm used by the database engine
+        to resolve unqualified table references.
+    +/
+    ColumnMetadata tableColumnMetadata(string table, string column, string database = "main")
+    {
+        ColumnMetadata data;
+        char* pzDataType, pzCollSeq;
+        int notNull, primaryKey, autoIncrement;
+        auto result = sqlite3_table_column_metadata(p.handle,
+                                                 cast(const(char*)) database.toStringz,
+                                                 cast(const(char*)) table.toStringz,
+                                                 cast(const(char*)) column.toStringz,
+                                                 &pzDataType,
+                                                 &pzCollSeq,
+                                                 &notNull,
+                                                 &primaryKey,
+                                                 &autoIncrement);
+        data.declaredTypeName = pzDataType.to!string;
+        data.collationSequenceName = pzCollSeq.to!string;
+        data.isNotNull = cast(bool) notNull;
+        data.isPrimaryKey = cast(bool) primaryKey;
+        data.isAutoIncrement = cast(bool) autoIncrement;
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+        return data;
+    }
+    unittest
+    {
+        auto db = Database(":memory:");
+        db.run("CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                val FLOAT NOT NULL)");
+        assert(db.tableColumnMetadata("test", "id") ==
+               ColumnMetadata("INTEGER", "BINARY", false, true, true));
+        assert(db.tableColumnMetadata("test", "val") ==
+               ColumnMetadata("FLOAT", "BINARY", true, false, false));
+    }
+
+    /++
     Explicitly closes the database.
 
     After this function has been called successfully, using the database or one of its
@@ -859,6 +932,14 @@ unittest // Database construction
     assert(db2.p.refCountedStore.refCount == 2);
     assert(db1.p.refCountedStore.refCount == 2);
 }
+
+unittest
+{
+    auto db = Database(":memory:");
+    assert(db.attachedFilePath("main") is null);
+    db.close();
+}
+
 
 unittest // Execute an SQL statement
 {
@@ -1810,6 +1891,16 @@ unittest // Getting null values
     assert(results.front[0].as!double.isnan);
     assert(results.front[0].as!string is null);
     assert(results.front[0].as!(ubyte[]) is null);
+}
+
+/// Information about a column.
+struct ColumnMetadata
+{
+    string declaredTypeName; ///
+    string collationSequenceName; ///
+    bool isNotNull; ///
+    bool isPrimaryKey; ///
+    bool isAutoIncrement; ///
 }
 
 
