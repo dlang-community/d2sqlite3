@@ -197,7 +197,7 @@ public:
     this(string path, int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE)
     {
         sqlite3* hdl;
-        auto result = sqlite3_open_v2(cast(char*) path.toStringz, &hdl, flags, null);
+        auto result = sqlite3_open_v2(path.toStringz, &hdl, flags, null);
         p = Payload(hdl);
         enforce(result == SQLITE_OK,
                 new SqliteException(p.handle
@@ -259,9 +259,9 @@ public:
         char* pzDataType, pzCollSeq;
         int notNull, primaryKey, autoIncrement;
         auto result = sqlite3_table_column_metadata(p.handle,
-                                                 cast(const(char*)) database.toStringz,
-                                                 cast(const(char*)) table.toStringz,
-                                                 cast(const(char*)) column.toStringz,
+                                                 database.toStringz,
+                                                 table.toStringz,
+                                                 column.toStringz,
                                                  &pzDataType,
                                                  &pzCollSeq,
                                                  &notNull,
@@ -461,7 +461,7 @@ public:
                 catch (Exception e)
                 {
                     auto txt = "error in function @{name}(): " ~ e.msg;
-                    sqlite3_result_error(context, cast(char*) txt.toStringz(), -1);
+                    sqlite3_result_error(context, txt.toStringz, -1);
                 }
             }
         };
@@ -475,7 +475,7 @@ public:
         assert(p.handle);
         auto result = sqlite3_create_function_v2(
             p.handle,
-            name.toStringz(),
+            name.toStringz,
             PT.length,
             SQLITE_UTF8 | det,
             delegateWrap(fun),
@@ -550,7 +550,7 @@ public:
                 catch (Exception e)
                 {
                     auto txt = "error in aggregate function @{name}(): " ~ e.msg;
-                    sqlite3_result_error(context, cast(char*) txt.toStringz(), -1);
+                    sqlite3_result_error(context, txt.toStringz, -1);
                 }
             }
         };
@@ -574,7 +574,7 @@ public:
                 catch (Exception e)
                 {
                     auto txt = "error in aggregate function @{name}(): " ~ e.msg;
-                    sqlite3_result_error(context, cast(char*) txt.toStringz(), -1);
+                    sqlite3_result_error(context, txt.toStringz, -1);
                 }
             }
         };
@@ -588,7 +588,7 @@ public:
         assert(p.handle);
         auto result = sqlite3_create_function_v2(
             p.handle,
-            name.toStringz(),
+            name.toStringz,
             PT.length,
             SQLITE_UTF8 | det,
             ptr,
@@ -681,7 +681,7 @@ public:
             extern (C) static
             int @{name}_x_compare(void* ptr,
                                   int n1, const(void*) str1,
-                                  int n2, const(void* )str2)
+                                  int n2, const(void*) str2)
             {
                 auto dg = delegateUnwrap!T(ptr);
                 char[] s1, s2;
@@ -697,7 +697,7 @@ public:
         assert(p.handle);
         auto result = sqlite3_create_collation_v2(
             p.handle,
-            name.toStringz(),
+            name.toStringz,
             SQLITE_UTF8,
             delegateWrap(fun),
             mixin("&%s_x_compare".format(name)),
@@ -1019,8 +1019,8 @@ private:
         const(char*) ptail;
         auto result = sqlite3_prepare_v2(
             dbHandle,
-            cast(char*) sql.toStringz(),
-            cast(int) sql.length,
+            sql.toStringz,
+            sql.length.to!int,
             &handle,
             null
         );
@@ -1068,8 +1068,8 @@ public:
             string utf8 = value.to!string;
             result = sqlite3_bind_text(p.handle,
                                        index,
-                                       cast(char*) utf8.toStringz(),
-                                       cast(int) utf8.length,
+                                       utf8.toStringz,
+                                       utf8.length.to!int,
                                        null);
         }
         else static if (isArray!U)
@@ -1081,8 +1081,8 @@ public:
                 auto bytes = cast(ubyte[]) value;
                 result = sqlite3_bind_blob(p.handle,
                                            index,
-                                           cast(void*) bytes.ptr,
-                                           cast(int) bytes.length,
+                                           bytes.ptr,
+                                           bytes.length.to!int,
                                            null);
             }
         }
@@ -1108,7 +1108,7 @@ public:
     +/
     void bind(T)(string name, T value)
     {
-        auto index = sqlite3_bind_parameter_index(p.handle, cast(char*) name.toStringz());
+        auto index = sqlite3_bind_parameter_index(p.handle, name.toStringz);
         enforce(index > 0, new SqliteException(format("no parameter named '%s'", name)));
         bind(index, value);
     }
@@ -2318,7 +2318,7 @@ private static string block_return_result(RT...)()
         return q{
             auto result = to!string(tmp);
             if (result)
-                sqlite3_result_text(context, cast(char*) result.toStringz(), -1, null);
+                sqlite3_result_text(context, result.toStringz, -1, null);
             else
                 sqlite3_result_null(context);
         };
@@ -2326,7 +2326,7 @@ private static string block_return_result(RT...)()
         return q{
             auto result = to!(ubyte[])(tmp);
             if (result)
-                sqlite3_result_blob(context, cast(void*) result.ptr, cast(int) result.length, null);
+                sqlite3_result_blob(context, cast(void*) result.ptr, result.length.to!int, null);
             else
                 sqlite3_result_null(context);
         };
