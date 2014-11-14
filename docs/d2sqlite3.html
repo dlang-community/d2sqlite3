@@ -323,6 +323,24 @@ The statement becomes invalid if the Database goes out of scope and is destroyed
 <dd>Gets the SQLite error code of the last operation.<br><br>
 
 </dd>
+<dt><big><a name="Database.enableLoadExtensions"></a>void <u>enableLoadExtensions</u>(bool <i>enable</i> = true);
+</big></dt>
+<dd>Enables or disables loading extensions.<br><br>
+
+</dd>
+<dt><big><a name="Database.loadExtension"></a>void <u>loadExtension</u>(string <i>path</i>, string <i>entryPoint</i> = null);
+</big></dt>
+<dd>Loads an extension.
+<br><br>
+<b>Params:</b><br>
+<table><tr><td>string <i>path</i></td>
+<td>The <i>path</i> of the extension file.</td></tr>
+<tr><td>string <i>entryPoint</i></td>
+<td>The name of the entry point function. If <b>null</b> is passed, SQLite
+        uses the name of the extension file as the entry point.</td></tr>
+</table><br>
+
+</dd>
 <dt><big><a name="Database.createFunction"></a>void <u>createFunction</u>(string name, T)(T <i>fun</i>, Deterministic <i>det</i> = Deterministic.yes);
 </big></dt>
 <dd>Creates and registers a new function in the database.
