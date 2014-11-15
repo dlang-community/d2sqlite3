@@ -388,16 +388,16 @@ db.<u>createFunction</u>!<font color=red>"msg"</font>(&amp;my_msg);
 </pre>
 <br><br>
 </dd>
-<dt><big><a name="Database.createAggregate"></a>void <u>createAggregate</u>(string name, T)(T <i>agg</i>, Deterministic <i>det</i> = Deterministic.yes);
+<dt><big><a name="Database.createAggregate"></a>void <u>createAggregate</u>(T, string name)(Deterministic <i>det</i> = Deterministic.yes);
 </big></dt>
 <dd>Creates and registers a new aggregate function in the database.
 <br><br>
 <b>Params:</b><br>
-<table><tr><td>name</td>
+<table><tr><td>T</td>
+<td>The <tt>struct</tt> type implementing the aggregate. T must be default-construtible
+        (a POD type) and implement at least these two methods: <tt>accumulate</tt> and <tt>result</tt>.</td></tr>
+<tr><td>name</td>
 <td>The name that the aggregate function will have in the database.</td></tr>
-<tr><td>T agg</td>
-<td>The <tt>struct</tt> implementing the aggregate. agg must implement at least these
-        two methods: <tt>accumulate</tt> and <tt>result</tt>.</td></tr>
 <tr><td>Deterministic det</td>
 <td>Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
@@ -409,30 +409,26 @@ db.<u>createFunction</u>!<font color=red>"msg"</font>(&amp;my_msg);
 <pre class="d_code">
 <font color=blue>import</font> std.array : appender, join;
 
-<font color=blue>struct</font> Joiner
+<font color=blue>static</font> <font color=blue>struct</font> Joiner
 {
-    string sep;
     Appender!(string[]) app;
+    string separator;
 
-    <font color=blue>this</font>(string sep)
+    <font color=blue>void</font> accumulate(string word, string sep)
     {
-        <font color=blue>this</font>.sep = sep;
-    }
-
-    <font color=blue>void</font> accumulate(string word)
-    {
+        separator = sep;
         app.put(word);
     }
 
     string result()
     {
-        <font color=blue>return</font> join(app.data, sep);
+        <font color=blue>return</font> join(app.data, separator);
     }
 }
 
 <font color=blue>auto</font> db = Database(<font color=red>":memory:"</font>);
 db.execute(<font color=red>"CREATE TABLE test (word TEXT)"</font>);
-db.<u>createAggregate</u>!<font color=red>"dash"</font>(Joiner(<font color=red>"-"</font>));
+db.<u>createAggregate</u>!(Joiner, <font color=red>"strjoin"</font>);
 
 <font color=blue>auto</font> statement = db.prepare(<font color=red>"INSERT INTO test VALUES (?)"</font>);
 <font color=blue>auto</font> list = [<font color=red>"My"</font>, <font color=red>"cat"</font>, <font color=red>"is"</font>, <font color=red>"black"</font>];
@@ -443,7 +439,7 @@ db.<u>createAggregate</u>!<font color=red>"dash"</font>(Joiner(<font color=red>"
     statement.reset();
 }
 
-<font color=blue>auto</font> text = db.execute(<font color=red>"SELECT dash(word) FROM test"</font>).oneValue!string;
+<font color=blue>auto</font> text = db.execute(<font color=red>"SELECT strjoin(word, '-') FROM test"</font>).oneValue!string;
 <font color=blue>assert</font>(text == <font color=red>"My-cat-is-black"</font>);
 </pre>
 <br><br>

@@ -533,10 +533,10 @@ public:
     Creates and registers a new aggregate function in the database.
 
     Params:
-        name = The name that the aggregate function will have in the database.
+        T = The $(D struct) type implementing the aggregate. T must be default-construtible
+        (a POD type) and implement at least these two methods: $(D accumulate) and $(D result).
 
-        agg = The $(D struct) implementing the aggregate. agg must implement at least these
-        two methods: $(D accumulate) and $(D result).
+        name = The name that the aggregate function will have in the database.
 
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
@@ -544,10 +544,12 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
-    void createAggregate(string name, T)(T agg, Deterministic det = Deterministic.yes)
+    void createAggregate(T, string name)(Deterministic det = Deterministic.yes)
     {
         static assert(isAggregateType!T,
             name ~ " should be an aggregate type");
+        static assert(__traits(isPOD, T),
+            name ~ " should be a POD type");
         static assert(is(typeof(T.accumulate) == function),
             name ~ " shoud have a method named accumulate");
         static assert(is(typeof(T.result) == function),
@@ -564,7 +566,12 @@ public:
             extern(C) static
             void @{name}_step(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
-                auto agg = cast(T*) sqlite3_user_data(context);
+                auto aggregate = cast(T*) sqlite3_aggregate_context(context, T.sizeof);
+                if (!aggregate)
+                {
+                    sqlite3_result_error_nomem(context);
+                    return;
+                }
 
                 PT args;
                 int type;
@@ -574,7 +581,7 @@ public:
 
                 try
                 {
-                    agg.accumulate(args);
+                    aggregate.accumulate(args);
                 }
                 catch (Exception e)
                 {
@@ -593,11 +600,16 @@ public:
         enum x_final = q{
             extern(C) static void @{name}_final(sqlite3_context* context)
             {
-                auto agg = cast(T*) sqlite3_user_data(context);
+                auto aggregate = cast(T*) sqlite3_aggregate_context(context, T.sizeof);
+                if (!aggregate)
+                {
+                    sqlite3_result_error_nomem(context);
+                    return;
+                }
 
                 try
                 {
-                    auto tmp = agg.result();
+                    auto tmp = aggregate.result();
                     mixin(block_return_result!RT);
                 }
                 catch (Exception e)
@@ -610,21 +622,17 @@ public:
         enum x_final_mix = render(x_final, ["name": name]);
         mixin(x_final_mix);
 
-        import core.memory;
-        auto ptr = cast(T*) GC.malloc(T.sizeof);
-        *ptr = agg;
-
         assert(p.handle);
         auto result = sqlite3_create_function_v2(
             p.handle,
             name.toStringz,
             PT.length,
             SQLITE_UTF8 | det,
-            ptr,
+            null,
             null,
             mixin(format("&%s_step", name)),
             mixin(format("&%s_final", name)),
-            &ptrFree
+            null
         );
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
@@ -633,30 +641,26 @@ public:
     {
         import std.array : appender, join;
 
-        struct Joiner
+        static struct Joiner
         {
-            string sep;
             Appender!(string[]) app;
+            string separator;
 
-            this(string sep)
+            void accumulate(string word, string sep)
             {
-                this.sep = sep;
-            }
-
-            void accumulate(string word)
-            {
+                separator = sep;
                 app.put(word);
             }
 
             string result()
             {
-                return join(app.data, sep);
+                return join(app.data, separator);
             }
         }
 
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (word TEXT)");
-        db.createAggregate!"dash"(Joiner("-"));
+        db.createAggregate!(Joiner, "strjoin");
 
         auto statement = db.prepare("INSERT INTO test VALUES (?)");
         auto list = ["My", "cat", "is", "black"];
@@ -667,7 +671,7 @@ public:
             statement.reset();
         }
 
-        auto text = db.execute("SELECT dash(word) FROM test").oneValue!string;
+        auto text = db.execute("SELECT strjoin(word, '-') FROM test").oneValue!string;
         assert(text == "My-cat-is-black");
     }
 
