@@ -1963,7 +1963,7 @@ struct RowCache
             columns = colapp.data;
         }
 
-        ColumnData opIndex(int index) nothrow
+        ColumnData opIndex(int index)
         {
             return columns[index];
         }
