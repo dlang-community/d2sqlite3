@@ -48,7 +48,7 @@ enum SqliteType
 /++
 Gets the library's version string (e.g. "3.8.7").
 +/
-string versionString() nothrow
+string versionString()
 {
     return to!string(sqlite3_libversion());
 }
@@ -223,7 +223,7 @@ public:
         If there is no attached database, or if database is a temporary or
         in-memory database, then null is returned.
     +/
-    string attachedFilePath(string database = "main") nothrow
+    string attachedFilePath(string database = "main")
     {
         return sqlite3_db_filename(p.handle, database.toStringz).to!string;
     }
