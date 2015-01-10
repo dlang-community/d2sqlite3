@@ -994,7 +994,10 @@ public:
                 result = sqlite3_bind_null(core.statement, index);
             else
             {
-                auto bytes = cast(ubyte[]) value;
+				static if (isStaticArray!U)
+                	auto bytes = cast(ubyte[]) value.dup;
+				else
+					auto bytes = cast(ubyte[]) value;
                 result = sqlite3_bind_blob(core.statement,
                                            index,
                                            cast(void*) bytes.ptr,
@@ -1565,6 +1568,10 @@ unittest // Getting blob values
     auto query = db.query("INSERT INTO test (val) VALUES (?)");
     ubyte[] array = [1, 2, 3];
     query.bind(1, array);
+    query.execute();
+	query.reset();
+    ubyte[3] sarray = [1, 2, 3];
+    query.bind(1, sarray);
     query.execute();
 
     query = db.query("SELECT * FROM test");
