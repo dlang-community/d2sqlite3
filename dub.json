@@ -12,6 +12,11 @@
 			"targetType": "library"
 		},
 		{
+			"name": "test",
+			"targetType": "library",
+			"lflags": ["-L/usr/local/lib"]
+		},
+		{
 			"name": "dsqlar",
             "targetName": "dsqlar",
 			"targetType": "executable",
