@@ -4,17 +4,7 @@ This is a small wrapper around for SQLite (version 3) for the D programming lang
 It provides a simple "object-oriented" interface to the SQLite database
 engine.
 
-## Features
-
-1. `Database` is wrapper around a database connection. The connection is open at the time of its creation and it is automatically closed when no more references exist.
-
-2. `Database` has facility functions create new functions, aggregates or collations.
-
-3. `Query` is a wrapper around prepared statements and their results, with functionality to bind parameters, iterate on result rows with a lazy input range interface and convert column value to a built-in type or a Variant.
-
-4. `QueryCache` is a helper struct that stores all the results of a query in memory in the form of a two-dimensional-array-like interface.
-
-### Synopsis
+## Synopsis
 ```d
 unittest
 {
