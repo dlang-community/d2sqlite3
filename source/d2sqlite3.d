@@ -180,6 +180,10 @@ private:
 
     alias RefCounted!(_Payload, RefCountedAutoInitialize.no) Payload;
     Payload p;
+    
+    void check(int result) {
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+    }
 
 public:
     /++
@@ -258,7 +262,7 @@ public:
         ColumnMetadata data;
         char* pzDataType, pzCollSeq;
         int notNull, primaryKey, autoIncrement;
-        auto result = sqlite3_table_column_metadata(p.handle,
+        check(sqlite3_table_column_metadata(p.handle,
                                                  database.toStringz,
                                                  table.toStringz,
                                                  column.toStringz,
@@ -266,13 +270,12 @@ public:
                                                  &pzCollSeq,
                                                  &notNull,
                                                  &primaryKey,
-                                                 &autoIncrement);
+                                                 &autoIncrement));
         data.declaredTypeName = pzDataType.to!string;
         data.collationSequenceName = pzCollSeq.to!string;
         data.isNotNull = cast(bool) notNull;
         data.isPrimaryKey = cast(bool) primaryKey;
         data.isAutoIncrement = cast(bool) autoIncrement;
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
         return data;
     }
     unittest
@@ -294,8 +297,7 @@ public:
     +/
     void close()
     {
-        auto result = sqlite3_close(handle);
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+        check(sqlite3_close(handle));
         p.handle = null;
     }
 
@@ -502,7 +504,7 @@ public:
         mixin(x_func_mix);
 
         assert(p.handle);
-        auto result = sqlite3_create_function_v2(
+        check(sqlite3_create_function_v2(
             p.handle,
             name.toStringz,
             PT.length,
@@ -512,8 +514,7 @@ public:
             null,
             null,
             &ptrFree
-        );
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+        ));
     }
     ///
     unittest
@@ -623,7 +624,7 @@ public:
         mixin(x_final_mix);
 
         assert(p.handle);
-        auto result = sqlite3_create_function_v2(
+        check(sqlite3_create_function_v2(
             p.handle,
             name.toStringz,
             PT.length,
@@ -633,8 +634,7 @@ public:
             mixin(format("&%s_step", name)),
             mixin(format("&%s_final", name)),
             null
-        );
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+        ));
     }
     ///
     unittest // Aggregate creation
@@ -728,15 +728,14 @@ public:
         mixin(render(x_compare, ["name": name]));
 
         assert(p.handle);
-        auto result = sqlite3_create_collation_v2(
+        check(sqlite3_create_collation_v2(
             p.handle,
             name.toStringz,
             SQLITE_UTF8,
             delegateWrap(fun),
             mixin("&%s_x_compare".format(name)),
             &ptrFree
-        );
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+        ));
     }
     ///
     unittest // Collation creation
@@ -1060,6 +1059,10 @@ private:
         enforce(result == SQLITE_OK, new SqliteException(errmsg(dbHandle), result, sql));
         p = Payload(handle);
     }
+    
+    void check(int result) {
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+    }
 
 public:
     /++
@@ -1069,7 +1072,7 @@ public:
     {
         return p.handle;
     }
-
+    
     /++
     Binds values to parameters of this statement.
 
@@ -1077,55 +1080,66 @@ public:
         index = The index of the parameter (starting from 1).
 
         value = The bound _value. The type of value must be compatible with the SQLite
-        types: it must be a boolean or numeric type, a string or an array.
+        types: it must be a boolean or numeric type, a string, an array, null, or a Nullable!T where T is any of the previous types.
     +/
     void bind(T)(int index, T value)
+    if(is(T == typeof(null)) || is(T == void*))
     {
-        alias Unqual!T U;
-        int result;
-
-        static if (is(U == typeof(null)) || is(U == void*))
-        {
-            result = sqlite3_bind_null(p.handle, index);
-        }
-        else static if (isIntegral!U || isSomeChar!U)
-        {
-            result = sqlite3_bind_int64(p.handle, index, cast(long) value);
-        }
-        else static if (isFloatingPoint!U)
-        {
-            result = sqlite3_bind_double(p.handle, index, value);
-        }
-        else static if (isSomeString!U)
-        {
-            string utf8 = value.to!string;
-            result = sqlite3_bind_text(p.handle,
-                                       index,
-                                       utf8.toStringz,
-                                       utf8.length.to!int,
-                                       null);
-        }
-        else static if (isArray!U)
-        {
-            if (!value.length)
-                result = sqlite3_bind_null(p.handle, index);
-            else
-            {
-				static if (isStaticArray!U)
-                	auto bytes = cast(ubyte[]) value.dup;
-				else
-					auto bytes = cast(ubyte[]) value;
-                result = sqlite3_bind_blob(p.handle,
-                                           index,
-                                           bytes.ptr,
-                                           bytes.length.to!int,
-                                           null);
-            }
-        }
+        check(sqlite3_bind_null(p.handle, index));
+    }
+    
+    /// ditto
+    void bind(T)(int index, T value)
+    if(isIntegral!T || isSomeChar!T)
+    {
+        check(sqlite3_bind_int64(p.handle, index, cast(long) value));
+    }
+    
+    /// ditto
+    void bind(T)(int index, T value)
+    if(isBoolean!T)
+    {
+        check(sqlite3_bind_int(p.handle, index, to!T(value)));
+    }
+    
+    /// ditto
+    void bind(T)(int index, T value)
+    if(isFloatingPoint!T)
+    {
+        check(sqlite3_bind_double(p.handle, index, cast(double) value));
+    }
+    
+    /// ditto
+    void bind(T)(int index, T value)
+    if(isSomeString!T)
+    {
+        string str = to!string(value);
+        check(sqlite3_bind_text64(p.handle, index, str.ptr, str.length, SQLITE_TRANSIENT, SQLITE_UTF8));
+    }
+    
+    /// ditto
+    void bind(T)(int index, T value)
+    if(isStaticArray!T)
+    {
+        check(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr, value.sizeof, SQLITE_TRANSIENT));
+    }
+    
+    /// ditto
+    void bind(T)(int index, T value)
+    if(isDynamicArray!T && !isSomeString!T)
+    {
+        auto arr = cast(void[]) value;
+        check(sqlite3_bind_blob64(p.handle, index, arr.ptr, arr.length, SQLITE_TRANSIENT));
+    }
+    
+    /// ditto
+    void bind(T)(int index, T value)
+    if(is(T == Nullable!U, U...))
+    {
+        if(value.isNull)
+            check(sqlite3_bind_null(p.handle, index));
         else
-            static assert(false, "cannot bind a value of type " ~ U.stringof);
-
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+            bind(index, value.get);
     }
 
     /++
@@ -1167,8 +1181,7 @@ public:
     {
         if (p.handle)
         {
-            auto result = sqlite3_clear_bindings(p.handle);
-            enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+            check(sqlite3_clear_bindings(p.handle));
         }
     }
 
@@ -1192,8 +1205,7 @@ public:
     {
         if (p.handle)
         {
-            auto result = sqlite3_reset(p.handle);
-            enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+            check(sqlite3_reset(p.handle));
         }
     }
 
@@ -1307,6 +1319,67 @@ unittest // Multiple parameters binding: tuples
         assert(row.peek!int(0) == 42);
         assert(row.peek!double(1) == 3.14);
         assert(row.peek!string(2) == "TEXT");
+    }
+}
+
+unittest // Static array binding
+{
+    ubyte[3] data = [1,2,3];
+    
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (a BLOB)");
+    auto statement = db.prepare("INSERT INTO test (a) VALUES (?)");
+    statement.bind(1, data);
+    statement.execute();
+    
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+    {
+        assert(row.length == 1);
+        auto rdata = row.peek!(ubyte[])(0);
+        assert(rdata.length == 3);
+        assert(rdata[0] == 1);
+        assert(rdata[1] == 2);
+        assert(rdata[2] == 3);
+    }
+}
+
+unittest // Nullable binding
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (a, b, c, d, e);");
+    
+    auto statement = db.prepare("INSERT INTO test (a,b,c,d,e) VALUES (?,?,?,?,?)");
+    statement.bind(1, Nullable!int(123));
+    statement.bind(2, Nullable!int());
+    statement.bind(3, Nullable!(uint, 0)(42));
+    statement.bind(4, Nullable!(uint, 0)());
+	statement.bind(5, Nullable!bool(false));
+    statement.execute();
+    
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+    {
+        assert(row.length == 5);
+        assert(row.peek!int(0) == 123);
+        assert(row.columnType(1) == SqliteType.NULL);
+        assert(row.peek!int(2) == 42);
+        assert(row.columnType(3) == SqliteType.NULL);
+		assert(!row.peek!bool(4));
+    }
+}
+    
+unittest // Nullable peek
+{
+    auto db = Database(":memory:");
+    auto results = db.execute("SELECT 1, NULL, 8.5, NULL");
+    foreach (row; results)
+    {
+        assert(row.length == 4);
+        assert(row.peek!(Nullable!double)(2).get == 8.5);
+		assert(row.peek!(Nullable!double)(3).isNull);
+		assert(row.peek!(Nullable!(int, 0))(0).get == 1);
+		assert(row.peek!(Nullable!(int, 0))(1).isNull);
     }
 }
 
@@ -1549,6 +1622,8 @@ struct Row
              $(TD TEXT, via $(D sqlite3_column_text)))
         $(TR $(TD isArray!T)
              $(TD BLOB, via $(D sqlite3_column_blob)))
+        $(TR $(TD is(T == Nullable!U))
+             $(TD NULL or T)
         $(TR $(TD Other types)
              $(TD Compilation error))
         )
@@ -1560,39 +1635,54 @@ struct Row
         tested each time this function is called: use
         numeric indexing for better performance.
     +/
-    auto peek(T)(int index)
+    T peek(T)(int index)
+    if(isBoolean!T || isIntegral!T)
+    {
+        return sqlite3_column_int64(statement, internalIndex(index)).to!T();
+    }
+    
+    /// ditto
+    T peek(T)(int index)
+    if(isFloatingPoint!T)
     {
         auto i = internalIndex(index);
-        static if (isBoolean!T || isIntegral!T)
-        {
-            return sqlite3_column_int64(statement, i).to!T;
-        }
-        else static if (isFloatingPoint!T)
-        {
-            if (sqlite3_column_type(statement, i) == SqliteType.NULL)
-                return T.init;
-            return sqlite3_column_double(statement, i).to!T;
-        }
-        else static if (isSomeString!T)
-        {
-            return sqlite3_column_text(statement, i).to!T;
-        }
-        else static if (isArray!T)
-        {
-            auto ptr = sqlite3_column_blob(statement, i);
-            auto length = sqlite3_column_bytes(statement, i);
-            ubyte[] blob;
-            blob.length = length;
-            memcpy(blob.ptr, ptr, length);
-            return blob.to!T;
-        }
-        else
-            static assert(false, "value cannot be converted to type " ~ T.stringof);
+        if (sqlite3_column_type(statement, i) == SqliteType.NULL)
+            return T.init;
+        return sqlite3_column_double(statement, i).to!T();
     }
-    /// Ditto
-    auto peek(T)(string columnName)
+    
+    /// ditto
+    T peek(T)(int index)
+    if(isSomeString!T)
+    {
+        return sqlite3_column_text(statement, internalIndex(index)).to!T;
+    }
+    
+    /// ditto
+    T peek(T)(int index)
+    if(isArray!T && !isSomeString!T)
+    {
+        auto i = internalIndex(index);
+        auto ptr = sqlite3_column_blob(statement, i);
+        auto length = sqlite3_column_bytes(statement, i);
+        ubyte[] blob;
+        blob.length = length;
+        memcpy(blob.ptr, ptr, length);
+        return blob.to!T;
+    }
+    
+    /// ditto
+    T peek(T)(string columnName)
     {
         return peek!T(indexForName(columnName));
+    }
+    
+    /// ditto
+    T peek(T : Nullable!U, U...)(int index)
+    {
+        if (sqlite3_column_type(statement, internalIndex(index)) == SqliteType.NULL)
+            return T();
+        return T(peek!(U[0])(index));
     }
 
     /++
@@ -1899,7 +1989,7 @@ unittest // Getting blob values
     ubyte[] array = [1, 2, 3];
     statement.bind(1, array);
     statement.execute();
-	statement.reset;
+    statement.reset;
     ubyte[3] sarray = [1, 2, 3];
     statement.bind(1, sarray);
     statement.execute();
@@ -2373,4 +2463,3 @@ private static string block_return_result(RT...)()
     else
         static assert(false, RT.stringof ~ " is not a compatible return type");
 }
-
