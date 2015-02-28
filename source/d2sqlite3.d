@@ -30,10 +30,23 @@ import std.typecons;
 import std.typetuple;
 import std.variant;
 import std.c.string : memcpy;
+import core.memory : GC;
 public import sqlite3;
 
 // debug import std.stdio;
 
+/// Anchors and returns a pointer to D memory, so that it will not be moved or collected. For use with release_mem.
+private void* anchor_mem(void* ptr) {
+    GC.addRoot(ptr);
+    GC.setAttr(ptr, GC.BlkAttr.NO_MOVE);
+    return ptr;
+}
+
+/// Passed to sqlite3_bind_blob/sqlite3_bind_text to unanchor memory 
+private extern(C) void release_mem(void* ptr) {
+    GC.setAttr(ptr, GC.BlkAttr.NO_MOVE);
+    GC.removeRoot(ptr);
+}
 
 /// SQLite type codes
 enum SqliteType
@@ -1114,7 +1127,8 @@ public:
     if(isSomeString!T)
     {
         string str = to!string(value);
-        check(sqlite3_bind_text64(p.handle, index, str.ptr, str.length, SQLITE_TRANSIENT, SQLITE_UTF8));
+        auto ptr = anchor_mem(cast(void*) str.ptr);
+        check(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr, str.length, &release_mem, SQLITE_UTF8));
     }
     
     /// ditto
@@ -1129,7 +1143,8 @@ public:
     if(isDynamicArray!T && !isSomeString!T)
     {
         auto arr = cast(void[]) value;
-        check(sqlite3_bind_blob64(p.handle, index, arr.ptr, arr.length, SQLITE_TRANSIENT));
+        auto ptr = anchor_mem(cast(void*) arr.ptr);
+        check(sqlite3_bind_blob64(p.handle, index, ptr, arr.length, &release_mem));
     }
     
     /// ditto
@@ -1354,7 +1369,7 @@ unittest // Nullable binding
     statement.bind(2, Nullable!int());
     statement.bind(3, Nullable!(uint, 0)(42));
     statement.bind(4, Nullable!(uint, 0)());
-	statement.bind(5, Nullable!bool(false));
+    statement.bind(5, Nullable!bool(false));
     statement.execute();
     
     auto results = db.execute("SELECT * FROM test");
@@ -1365,7 +1380,7 @@ unittest // Nullable binding
         assert(row.columnType(1) == SqliteType.NULL);
         assert(row.peek!int(2) == 42);
         assert(row.columnType(3) == SqliteType.NULL);
-		assert(!row.peek!bool(4));
+        assert(!row.peek!bool(4));
     }
 }
     
@@ -1377,9 +1392,30 @@ unittest // Nullable peek
     {
         assert(row.length == 4);
         assert(row.peek!(Nullable!double)(2).get == 8.5);
-		assert(row.peek!(Nullable!double)(3).isNull);
-		assert(row.peek!(Nullable!(int, 0))(0).get == 1);
-		assert(row.peek!(Nullable!(int, 0))(1).isNull);
+        assert(row.peek!(Nullable!double)(3).isNull);
+        assert(row.peek!(Nullable!(int, 0))(0).get == 1);
+        assert(row.peek!(Nullable!(int, 0))(1).isNull);
+    }
+}
+
+unittest // GC anchoring test
+{
+    auto db = Database(":memory:");
+    auto stmt = db.prepare("SELECT ?");
+
+    auto str = ("I am test string").dup;
+    stmt.bind(1, str);
+    str = null;
+
+    for(int i=0; i<3; i++) {
+        GC.collect();
+        GC.minimize();
+    }
+
+    ResultRange results = stmt.execute();
+    foreach(row; results) {
+        assert(row.length == 1);
+        assert(row.peek!string(0) == "I am test string");
     }
 }
 
