@@ -6,25 +6,5 @@
 	"copyright": "Copyright © 2011-14, Nicolas Sicard",
 	"license": "BSL-1.0",
 	"libs": ["sqlite3"],
-	"configurations": [
-		{
-			"name": "library",
-			"targetType": "library"
-		},
-		{
-			"name": "test",
-			"targetType": "library",
-			"lflags": ["-L/usr/local/lib"]
-		},
-		{
-			"name": "dsqlar",
-            "targetName": "dsqlar",
-			"targetType": "executable",
-			"sourcePaths": ["examples/dsqlar"],
-			"dependencies": {
-				"sizefmt": ">=0.2.0"
-			},
-            "lflags": ["-L/usr/local/lib"]
-		}
-	]
+    "targetType": "library"
 }

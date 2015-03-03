@@ -1,8 +1,15 @@
-# d2sqlite3
+# `d2sqlite3`
 
-This is a small wrapper around for SQLite (version 3) for the D programming language.
+This is a small wrapper around SQLite for the D programming language.
 It provides a simple "object-oriented" interface to the SQLite database
 engine.
+
+The SQLite library itself is not included: you have to link your projects to a version
+of SQLite >= 3.8.7. If you use `dub`, add the following line to your `dub.json` file:
+```json
+    "libs": ["sqlite3"],
+    "lflags": ["-L/path/to/lib"]
+```
 
 ## Synopsis
 ```d
@@ -88,4 +95,4 @@ unittest
 ---
 License: BSL 1.0
 
-Copyright 2011-14, Nicolas Sicard
+Copyright 2011-15, Nicolas Sicard

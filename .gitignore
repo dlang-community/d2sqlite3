@@ -1,7 +1,5 @@
 .dub
-__test__*
 dub.selections.json
+__test__*
 libd2sqlite3.a
-sqlite3.html
 TODO.txt
-dsqlar

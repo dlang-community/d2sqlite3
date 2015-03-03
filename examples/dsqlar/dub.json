@@ -1,0 +1,15 @@
+{
+	"name": "dsqlar",
+	"description": "Example for d2sqlite3",
+	"homepage": "https://github.com/biozic/d2sqlite3",
+	"authors": ["Nicolas Sicard"],
+    "targetName": "dsqlar",
+	"targetType": "executable",
+    "dflags": ["-I../../source"],
+    "sourcePaths": ["source", "../../source"],
+	"libs": ["sqlite3"],
+    "lflags": ["-L/usr/local/lib"],
+	"dependencies": {
+		"sizefmt": ">=0.2.0"
+	}
+}
