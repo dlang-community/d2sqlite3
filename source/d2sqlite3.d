@@ -174,7 +174,7 @@ private:
         void opAssign(_Payload) { assert(false); }
     }
 
-    alias RefCounted!(_Payload, RefCountedAutoInitialize.no) Payload;
+    alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
     Payload p;
     
     void check(int result) {
@@ -198,10 +198,10 @@ public:
     {
         sqlite3* hdl;
         auto result = sqlite3_open_v2(path.toStringz, &hdl, flags, null);
-        p = Payload(hdl);
         enforce(result == SQLITE_OK, new SqliteException(p.handle
                 ? errmsg(p.handle) : "Error opening the database", result));
-    }
+		p = Payload(hdl);
+	}
 
     /++
     Gets the SQLite internal _handle of the database connection.
@@ -955,7 +955,7 @@ unittest // Different arguments and result types with createFunction
 	assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(ubyte[]) == cast(ubyte[]) x"ABCD");
 
 	assert(db.execute("SELECT display_integer(NULL)").oneValue!int == 0);
-	assert(db.execute("SELECT display_float(NULL)").oneValue!double.isnan);
+	assert(db.execute("SELECT display_float(NULL)").oneValue!double.isNaN);
 	assert(db.execute("SELECT display_text(NULL)").oneValue!string is null);
 	assert(db.execute("SELECT display_blob(NULL)").oneValue!(ubyte[]) is null);
 }
@@ -1013,7 +1013,7 @@ private:
         @disable this(this);
         void opAssign(_Payload) { assert(false); }
     }
-    alias RefCounted!(_Payload, RefCountedAutoInitialize.no) Payload;
+    alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
     Payload p;
 
     this(sqlite3* dbHandle, string sql)
@@ -1392,7 +1392,7 @@ private:
         @disable this(this);
         void opAssign(_Payload) { assert(false); }
     }
-    alias RefCounted!(_Payload, RefCountedAutoInitialize.no) Payload;
+    alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
     Payload p;
 
     this(Statement statement)
@@ -2002,12 +2002,12 @@ unittest // Getting null values
     auto results = db.execute("SELECT * FROM test");
     assert(results.front.peek!bool(0) == false);
     assert(results.front.peek!long(0) == 0);
-    assert(results.front.peek!double(0).isnan);
+    assert(results.front.peek!double(0).isNaN);
     assert(results.front.peek!string(0) is null);
     assert(results.front.peek!(ubyte[])(0) is null);
     assert(results.front[0].as!bool == false);
     assert(results.front[0].as!long == 0);
-    assert(results.front[0].as!double.isnan);
+    assert(results.front[0].as!double.isNaN);
     assert(results.front[0].as!string is null);
     assert(results.front[0].as!(ubyte[]) is null);
 }
