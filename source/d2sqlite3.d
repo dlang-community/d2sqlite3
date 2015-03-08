@@ -62,7 +62,7 @@ int versionNumber() nothrow
 
 /++
 Tells whether SQLite was compiled with the thread-safe options.
-    
+
 See_also: ($LINK http://www.sqlite.org/c3ref/threadsafe.html).
 +/
 bool threadSafe() nothrow
@@ -73,13 +73,13 @@ bool threadSafe() nothrow
 /// Initializes or shuts down SQLite.
 void initialize()
 {
-    auto result = sqlite3_initialize(); 
+    auto result = sqlite3_initialize();
     enforce(result == SQLITE_OK, new SqliteException("Initialization: error %s".format(result)));
 }
 /// Ditto
 void shutdown()
 {
-    auto result = sqlite3_shutdown(); 
+    auto result = sqlite3_shutdown();
     enforce(result == SQLITE_OK, new SqliteException("Shutdown: error %s".format(result)));
 }
 
@@ -91,7 +91,7 @@ See_Also: $(LINK http://www.sqlite.org/c3ref/config.html).
 +/
 void config(Args...)(int code, Args args)
 {
-    auto result = sqlite3_config(code, args); 
+    auto result = sqlite3_config(code, args);
     enforce(result == SQLITE_OK,
             new SqliteException("Configuration: error %s".format(result)));
 }
@@ -117,7 +117,7 @@ else
 {
     unittest
     {
-		config(SQLITE_CONFIG_MULTITHREAD);
+        config(SQLITE_CONFIG_MULTITHREAD);
         config(SQLITE_CONFIG_LOG, function(void* p, int code, const(char*) msg) {}, null);
         initialize();
     }
@@ -176,7 +176,7 @@ private:
 
     alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
     Payload p;
-    
+
     void check(int result) {
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
@@ -200,8 +200,8 @@ public:
         auto result = sqlite3_open_v2(path.toStringz, &hdl, flags, null);
         enforce(result == SQLITE_OK, new SqliteException(p.handle
                 ? errmsg(p.handle) : "Error opening the database", result));
-		p = Payload(hdl);
-	}
+        p = Payload(hdl);
+    }
 
     /++
     Gets the SQLite internal _handle of the database connection.
@@ -257,7 +257,7 @@ public:
         char* pzDataType, pzCollSeq;
         int notNull, primaryKey, autoIncrement;
         check(sqlite3_table_column_metadata(p.handle, database.toStringz, table.toStringz,
-			column.toStringz, &pzDataType, &pzCollSeq, &notNull, &primaryKey, &autoIncrement));
+            column.toStringz, &pzDataType, &pzCollSeq, &notNull, &primaryKey, &autoIncrement));
         data.declaredTypeName = pzDataType.to!string;
         data.collationSequenceName = pzCollSeq.to!string;
         data.isNotNull = cast(bool) notNull;
@@ -267,7 +267,7 @@ public:
     }
     unittest
     {
-		auto db = Database(":memory:");
+        auto db = Database(":memory:");
         db.run("CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT,
                 val FLOAT NOT NULL)");
         assert(db.tableColumnMetadata("test", "id") ==
@@ -301,7 +301,7 @@ public:
     ///
     unittest
     {
-		auto db = Database(":memory:");
+        auto db = Database(":memory:");
         db.execute("VACUUM");
     }
 
@@ -328,7 +328,7 @@ public:
     ///
     unittest
     {
-		auto db = Database(":memory:");
+        auto db = Database(":memory:");
         db.run(`CREATE TABLE test1 (val INTEGER);
                 CREATE TABLE test2 (val FLOAT);
                 DROP TABLE test1;
@@ -411,7 +411,7 @@ public:
     {
         auto ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
         enforce(ret == SQLITE_OK, new SqliteException("Could load extension: %s:%s",
-                .format(entryPoint, path)));        
+                .format(entryPoint, path)));
     }
 
     /++
@@ -433,7 +433,7 @@ public:
                 $(LI It must not be a variadic.)
                 $(LI Its arguments must all have a type that is compatible with SQLite types:
                 it must be a boolean or numeric type, a string, an array, null,
-       			or a Nullable!T where T is any of the previous types.)
+                or a Nullable!T where T is any of the previous types.)
                 $(LI Its return value must also be of a compatible type.)
             )
 
@@ -459,13 +459,13 @@ public:
         {
             PT args;
 
-			foreach (i, type; PT)
-				args[i] = getValue!type(argv[i]);
+            foreach (i, type; PT)
+                args[i] = getValue!type(argv[i]);
 
             auto ptr = sqlite3_user_data(context);
 
             try
-				setResult(context, delegateUnwrap!T(ptr)(args));
+                setResult(context, delegateUnwrap!T(ptr)(args));
             catch (Exception e)
             {
                 auto txt = "error in function %s(): %s".format(name, e.msg);
@@ -480,7 +480,7 @@ public:
     ///
     unittest
     {
-		string fmt = "Hello, %s!";
+        string fmt = "Hello, %s!";
         string my_msg(string name)
         {
             return fmt.format(name);
@@ -538,10 +538,10 @@ public:
             }
 
             PT args;
-			foreach (i, type; PT)
-				args[i] = getValue!type(argv[i]);
-		
-			try
+            foreach (i, type; PT)
+                args[i] = getValue!type(argv[i]);
+
+            try
                 aggregate.accumulate(args);
             catch (Exception e)
             {
@@ -550,8 +550,8 @@ public:
             }
         }
 
-        extern(C) static 
-		void x_final(sqlite3_context* context)
+        extern(C) static
+        void x_final(sqlite3_context* context)
         {
             auto aggregate = cast(T*) sqlite3_aggregate_context(context, T.sizeof);
             if (!aggregate)
@@ -561,14 +561,14 @@ public:
             }
 
             try
-				setResult(context, aggregate.result());
+                setResult(context, aggregate.result());
             catch (Exception e)
             {
                 auto txt = "error in aggregate function %s(): %s".format(name, e.msg);
                 sqlite3_result_error(context, txt.toStringz, -1);
             }
         }
-       
+
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, PT.length, SQLITE_UTF8 | det,
             null, null, &x_step, &x_final, null));
@@ -576,7 +576,7 @@ public:
     ///
     unittest // Aggregate creation
     {
-		import std.array : appender, join;
+        import std.array : appender, join;
 
         static struct Joiner
         {
@@ -612,7 +612,7 @@ public:
         assert(text == "My-cat-is-black");
     }
 
-	/++
+    /++
     Creates and registers a collation function in the database.
 
     Params:
@@ -646,7 +646,7 @@ public:
             "the second argument of function " ~ name ~ " should be a string");
         static assert(isImplicitlyConvertible!(ReturnType!fun, int),
             "function " ~ name ~ " should return a value convertible to an int");
-			
+
         extern (C) static
         int x_compare(void* ptr, int n1, const(void*) str1, int n2, const(void*) str2)
         {
@@ -661,12 +661,12 @@ public:
 
         assert(p.handle);
         check(sqlite3_create_collation_v2(p.handle, name.toStringz, SQLITE_UTF8,
-			delegateWrap(fun), &x_compare, &ptrFree));
+            delegateWrap(fun), &x_compare, &ptrFree));
     }
     ///
     unittest // Collation creation
     {
-		static int my_collation(string s1, string s2)
+        static int my_collation(string s1, string s2)
         {
             import std.uni;
             return icmp(s1, s2);
@@ -710,7 +710,7 @@ public:
     ///
     unittest
     {
-		int i;
+        int i;
         auto db = Database(":memory:");
         db.setUpdateHook((int type, string dbName, string tableName, long rowid) {
             assert(type == SQLITE_INSERT);
@@ -728,7 +728,7 @@ public:
     Registers a delegate as the database's commit or rollback hook.
     Any previously set hook is released.
 
-    Params:        
+    Params:
         hook = For the commit hook, a delegate that should return 0 if the operation must be
         aborted or another value if it can continue.
 
@@ -760,7 +760,7 @@ public:
     ///
     unittest
     {
-		int i;
+        int i;
         auto db = Database(":memory:");
         db.setCommitHook({ i = 42; return SQLITE_OK; });
         db.setRollbackHook({ i = 666; });
@@ -778,7 +778,7 @@ public:
     Sets the progress handler.
     Any previously set handler is released.
 
-    Params:        
+    Params:
         pace = The approximate number of virtual machine instructions that are
         evaluated between successive invocations of the handler.
 
@@ -803,9 +803,9 @@ public:
 ///
 unittest // Documentation example
 {
-	// Note: exception handling is left aside for clarity.
+    // Note: exception handling is left aside for clarity.
 
-	import std.typecons : Nullable;
+    import std.typecons : Nullable;
 
     // Open a database in memory.
     auto db = Database(":memory:");
@@ -858,14 +858,14 @@ unittest // Documentation example
         auto name = row["name"].as!string;
 
         // Retrieve "score", which is at index 3, e.g. using the peek function,
-		// using a Nullable type
+        // using a Nullable type
         auto score = row.peek!(Nullable!double)(3);
-		if (!score.isNull) {
-			// ...
-		}
-	}
-	
-	// Read all the table in memory at once
+        if (!score.isNull) {
+            // ...
+        }
+    }
+
+    // Read all the table in memory at once
     auto data = RowCache(db.execute("SELECT * FROM person"));
     foreach (row; data)
     {
@@ -878,7 +878,7 @@ unittest // Documentation example
 
 unittest // Database construction
 {
-	Database db1;
+    Database db1;
     auto db2 = db1;
     db1 = Database(":memory:");
     db2 = Database("");
@@ -890,7 +890,7 @@ unittest // Database construction
 
 unittest
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     assert(db.attachedFilePath("main") is null);
     db.close();
 }
@@ -898,7 +898,7 @@ unittest
 
 unittest // Execute an SQL statement
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.run("");
     db.run("-- This is a comment!");
     db.run(";");
@@ -907,7 +907,7 @@ unittest // Execute an SQL statement
 
 unittest // Unexpected multiple statements
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("BEGIN; CREATE TABLE test (val INTEGER); ROLLBACK;");
     assertThrown(db.execute("DROP TABLE test"));
 
@@ -920,70 +920,70 @@ unittest // Unexpected multiple statements
 
 unittest // Multiple statements with callback
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     RowCache[] rows;
     db.run("SELECT 1, 2, 3; SELECT 'A', 'B', 'C';", (ResultRange r) {
         rows ~= RowCache(r);
         return true;
     });
     assert(equal!"a.as!int == b"(rows[0][0], [1, 2, 3]));
-	assert(equal!"a.as!string == b"(rows[1][0], ["A", "B", "C"]));
+    assert(equal!"a.as!string == b"(rows[1][0], ["A", "B", "C"]));
 }
 
 unittest // Different arguments and result types with createFunction
 {
-	import std.math;
+    import std.math;
 
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
 
-	T display(T)(T value)
-	{
-		return value;
-	}
+    T display(T)(T value)
+    {
+        return value;
+    }
 
-	db.createFunction!"display_integer"(&display!int);
-	db.createFunction!"display_float"(&display!double);
-	db.createFunction!"display_text"(&display!string);
-	db.createFunction!"display_blob"(&display!(ubyte[]));
+    db.createFunction!"display_integer"(&display!int);
+    db.createFunction!"display_float"(&display!double);
+    db.createFunction!"display_text"(&display!string);
+    db.createFunction!"display_blob"(&display!(ubyte[]));
 
-	assert(db.execute("SELECT display_integer(42)").oneValue!int == 42);
-	assert(db.execute("SELECT display_float(3.14)").oneValue!double == 3.14);
-	assert(db.execute("SELECT display_text('ABC')").oneValue!string == "ABC");
-	assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(ubyte[]) == cast(ubyte[]) x"ABCD");
+    assert(db.execute("SELECT display_integer(42)").oneValue!int == 42);
+    assert(db.execute("SELECT display_float(3.14)").oneValue!double == 3.14);
+    assert(db.execute("SELECT display_text('ABC')").oneValue!string == "ABC");
+    assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(ubyte[]) == cast(ubyte[]) x"ABCD");
 
-	assert(db.execute("SELECT display_integer(NULL)").oneValue!int == 0);
-	assert(db.execute("SELECT display_float(NULL)").oneValue!double.isNaN);
-	assert(db.execute("SELECT display_text(NULL)").oneValue!string is null);
-	assert(db.execute("SELECT display_blob(NULL)").oneValue!(ubyte[]) is null);
+    assert(db.execute("SELECT display_integer(NULL)").oneValue!int == 0);
+    assert(db.execute("SELECT display_float(NULL)").oneValue!double.isNaN);
+    assert(db.execute("SELECT display_text(NULL)").oneValue!string is null);
+    assert(db.execute("SELECT display_blob(NULL)").oneValue!(ubyte[]) is null);
 }
 
 unittest // Different Nullable argument types with createFunction
 {
-	import std.math;
+    import std.math;
 
-	auto db = Database(":memory:");
-	
-	auto display(T : Nullable!U, U...)(T value)
-	{
-		if (value.isNull)
-			return T();
-		return value;
-	}
-	
-	db.createFunction!"display_integer"(&display!(Nullable!int));
-	db.createFunction!"display_float"(&display!(Nullable!double));
-	db.createFunction!"display_text"(&display!(Nullable!string));
-	db.createFunction!"display_blob"(&display!(Nullable!(ubyte[])));
+    auto db = Database(":memory:");
 
-	assert(db.execute("SELECT display_integer(42)").oneValue!(Nullable!int) == 42);
-	assert(db.execute("SELECT display_float(3.14)").oneValue!(Nullable!double) == 3.14);
-	assert(db.execute("SELECT display_text('ABC')").oneValue!(Nullable!string) == "ABC");
-	assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(Nullable!(ubyte[])) == cast(ubyte[]) x"ABCD");
-	
-	assert(db.execute("SELECT display_integer(NULL)").oneValue!(Nullable!int).isNull);
-	assert(db.execute("SELECT display_float(NULL)").oneValue!(Nullable!double).isNull);
-	assert(db.execute("SELECT display_text(NULL)").oneValue!(Nullable!string).isNull);
-	assert(db.execute("SELECT display_blob(NULL)").oneValue!(Nullable!(ubyte[])).isNull);
+    auto display(T : Nullable!U, U...)(T value)
+    {
+        if (value.isNull)
+            return T();
+        return value;
+    }
+
+    db.createFunction!"display_integer"(&display!(Nullable!int));
+    db.createFunction!"display_float"(&display!(Nullable!double));
+    db.createFunction!"display_text"(&display!(Nullable!string));
+    db.createFunction!"display_blob"(&display!(Nullable!(ubyte[])));
+
+    assert(db.execute("SELECT display_integer(42)").oneValue!(Nullable!int) == 42);
+    assert(db.execute("SELECT display_float(3.14)").oneValue!(Nullable!double) == 3.14);
+    assert(db.execute("SELECT display_text('ABC')").oneValue!(Nullable!string) == "ABC");
+    assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(Nullable!(ubyte[])) == cast(ubyte[]) x"ABCD");
+
+    assert(db.execute("SELECT display_integer(NULL)").oneValue!(Nullable!int).isNull);
+    assert(db.execute("SELECT display_float(NULL)").oneValue!(Nullable!double).isNull);
+    assert(db.execute("SELECT display_text(NULL)").oneValue!(Nullable!string).isNull);
+    assert(db.execute("SELECT display_blob(NULL)").oneValue!(Nullable!(ubyte[])).isNull);
 }
 
 
@@ -1022,7 +1022,7 @@ private:
         enforce(result == SQLITE_OK, new SqliteException(errmsg(dbHandle), result, sql));
         p = Payload(handle);
     }
-    
+
     void check(int result) {
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
@@ -1035,7 +1035,7 @@ public:
     {
         return p.handle;
     }
-    
+
     /++
     Binds values to parameters of this statement.
 
@@ -1047,59 +1047,59 @@ public:
         or a Nullable!T where T is any of the previous types.
     +/
     void bind(T)(int index, T value)
-    	if (is(T == typeof(null)) || is(T == void*))
+        if (is(T == typeof(null)) || is(T == void*))
     {
         check(sqlite3_bind_null(p.handle, index));
     }
-    
+
     /// ditto
     void bind(T)(int index, T value)
-    	if (isIntegral!T || isSomeChar!T)
+        if (isIntegral!T || isSomeChar!T)
     {
         check(sqlite3_bind_int64(p.handle, index, cast(long) value));
     }
-    
+
     /// ditto
     void bind(T)(int index, T value)
-    	if (isBoolean!T)
+        if (isBoolean!T)
     {
         check(sqlite3_bind_int(p.handle, index, to!T(value)));
     }
-    
+
     /// ditto
     void bind(T)(int index, T value)
-    	if (isFloatingPoint!T)
+        if (isFloatingPoint!T)
     {
         check(sqlite3_bind_double(p.handle, index, cast(double) value));
     }
-    
+
     /// ditto
     void bind(T)(int index, T value)
-    	if (isSomeString!T)
+        if (isSomeString!T)
     {
         string str = to!string(value);
         auto ptr = anchorMem(cast(void*) str.ptr);
         check(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr, str.length, &releaseMem, SQLITE_UTF8));
     }
-    
+
     /// ditto
     void bind(T)(int index, T value)
-    	if (isStaticArray!T)
+        if (isStaticArray!T)
     {
         check(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr, value.sizeof, SQLITE_TRANSIENT));
     }
-    
+
     /// ditto
     void bind(T)(int index, T value)
-    	if (isDynamicArray!T && !isSomeString!T)
+        if (isDynamicArray!T && !isSomeString!T)
     {
         auto arr = cast(void[]) value;
         check(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr), arr.length, &releaseMem));
     }
-    
+
     /// ditto
     void bind(T)(int index, T value)
-    	if (is(T == Nullable!U, U...))
+        if (is(T == Nullable!U, U...))
     {
         if (value.isNull)
             check(sqlite3_bind_null(p.handle, index));
@@ -1219,13 +1219,13 @@ public:
         if (p.handle)
             return sqlite3_bind_parameter_index(p.handle, name.toStringz);
         else
-            return 0;        
+            return 0;
     }
 }
 
 unittest // Simple parameters binding
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
@@ -1242,7 +1242,7 @@ unittest // Simple parameters binding
 
 unittest // Multiple parameters binding
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
     auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (:i, @f, $t)");
     assert(statement.parameterCount == 3);
@@ -1268,7 +1268,7 @@ unittest // Multiple parameters binding
 
 unittest // Multiple parameters binding: tuples
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
     auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (?, ?, ?)");
     statement.bindAll(42, 3.14, "TEXT");
@@ -1286,14 +1286,14 @@ unittest // Multiple parameters binding: tuples
 
 unittest // Static array binding
 {
-	ubyte[3] data = [1,2,3];
-    
+    ubyte[3] data = [1,2,3];
+
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (a BLOB)");
     auto statement = db.prepare("INSERT INTO test (a) VALUES (?)");
     statement.bind(1, data);
     statement.execute();
-    
+
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
     {
@@ -1308,9 +1308,9 @@ unittest // Static array binding
 
 unittest // Nullable binding
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (a, b, c, d, e);");
-    
+
     auto statement = db.prepare("INSERT INTO test (a,b,c,d,e) VALUES (?,?,?,?,?)");
     statement.bind(1, Nullable!int(123));
     statement.bind(2, Nullable!int());
@@ -1318,7 +1318,7 @@ unittest // Nullable binding
     statement.bind(4, Nullable!(uint, 0)());
     statement.bind(5, Nullable!bool(false));
     statement.execute();
-    
+
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
     {
@@ -1330,10 +1330,10 @@ unittest // Nullable binding
         assert(!row.peek!bool(4));
     }
 }
-    
+
 unittest // Nullable peek
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     auto results = db.execute("SELECT 1, NULL, 8.5, NULL");
     foreach (row; results)
     {
@@ -1347,7 +1347,7 @@ unittest // Nullable peek
 
 unittest // GC anchoring test
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     auto stmt = db.prepare("SELECT ?");
 
     auto str = ("I am test string").dup;
@@ -1442,7 +1442,7 @@ public:
     ///
     unittest // One value
     {
-		auto db = Database(":memory:");
+        auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
         auto count = db.execute("SELECT count(*) FROM test").oneValue!long;
         assert(count == 0);
@@ -1451,7 +1451,7 @@ public:
 
 unittest // Refcount tests
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     {
         db.execute("CREATE TABLE test (val INTEGER)");
         auto tmp = db.prepare("INSERT INTO test (val) VALUES (?)");
@@ -1540,34 +1540,34 @@ struct Row
                 new SqliteException(format("invalid column index: %d", i)));
 
         auto type = sqlite3_column_type(statement, i);
-		
-		final switch (type)
+
+        final switch (type)
         {
             case SqliteType.INTEGER:
-				auto data = peek!(Nullable!long)(index);
-				if (data.isNull)
-					return ColumnData.init;
+                auto data = peek!(Nullable!long)(index);
+                if (data.isNull)
+                    return ColumnData.init;
                 return ColumnData(Variant(data.get));
 
             case SqliteType.FLOAT:
-				auto data = peek!(Nullable!double)(index);
-				if (data.isNull)
-					return ColumnData.init;
-				return ColumnData(Variant(data.get));
-				
-			case SqliteType.TEXT:
-				auto data = peek!(Nullable!string)(index);
-				if (data.isNull)
-					return ColumnData.init;
-				return ColumnData(Variant(data.get));
-				
-			case SqliteType.BLOB:
-				auto data = peek!(Nullable!(ubyte[]))(index);
-				if (data.isNull)
-					return ColumnData.init;
-				return ColumnData(Variant(data.get));
+                auto data = peek!(Nullable!double)(index);
+                if (data.isNull)
+                    return ColumnData.init;
+                return ColumnData(Variant(data.get));
 
-			case SqliteType.NULL:
+            case SqliteType.TEXT:
+                auto data = peek!(Nullable!string)(index);
+                if (data.isNull)
+                    return ColumnData.init;
+                return ColumnData(Variant(data.get));
+
+            case SqliteType.BLOB:
+                auto data = peek!(Nullable!(ubyte[]))(index);
+                if (data.isNull)
+                    return ColumnData.init;
+                return ColumnData(Variant(data.get));
+
+            case SqliteType.NULL:
                 return ColumnData.init;
         }
     }
@@ -1601,7 +1601,7 @@ struct Row
 
     Returns:
         A value of type T. The returned value is T.init if the data type is NULL.
-        In all other cases, the data is fetched from SQLite (which returns a value 
+        In all other cases, the data is fetched from SQLite (which returns a value
         depending on its own conversion rules;
         see $(LINK http://www.sqlite.org/c3ref/column_blob.html) and
         $(LINK http://www.sqlite.org/lang_expr.html#castexpr)), and it is converted
@@ -1632,31 +1632,31 @@ struct Row
         numeric indexing for better performance.
     +/
     T peek(T)(int index)
-    	if (isBoolean!T || isIntegral!T)
+        if (isBoolean!T || isIntegral!T)
     {
         return sqlite3_column_int64(statement, internalIndex(index)).to!T();
     }
-    
+
     /// ditto
     T peek(T)(int index)
-    	if (isFloatingPoint!T)
+        if (isFloatingPoint!T)
     {
         auto i = internalIndex(index);
         if (sqlite3_column_type(statement, i) == SqliteType.NULL)
             return T.init;
         return sqlite3_column_double(statement, i).to!T();
     }
-    
+
     /// ditto
     T peek(T)(int index)
-    	if (isSomeString!T)
+        if (isSomeString!T)
     {
         return sqlite3_column_text(statement, internalIndex(index)).to!T;
     }
-    
+
     /// ditto
     T peek(T)(int index)
-    	if (isArray!T && !isSomeString!T)
+        if (isArray!T && !isSomeString!T)
     {
         auto i = internalIndex(index);
         auto ptr = sqlite3_column_blob(statement, i);
@@ -1666,21 +1666,21 @@ struct Row
         memcpy(blob.ptr, ptr, length);
         return blob.to!T;
     }
-    
-	/// ditto
-	T peek(T : Nullable!U, U...)(int index)
-	{
-		if (sqlite3_column_type(statement, internalIndex(index)) == SqliteType.NULL)
-			return T();
-		return T(peek!(U[0])(index));
-	}
-	
-	/// ditto
-	T peek(T)(string columnName)
+
+    /// ditto
+    T peek(T : Nullable!U, U...)(int index)
+    {
+        if (sqlite3_column_type(statement, internalIndex(index)) == SqliteType.NULL)
+            return T();
+        return T(peek!(U[0])(index));
+    }
+
+    /// ditto
+    T peek(T)(string columnName)
     {
         return peek!T(indexForName(columnName));
     }
-    
+
     /++
     Determines the type of a particular result column in SELECT statement.
 
@@ -1696,44 +1696,44 @@ struct Row
         return columnType(indexForName(columnName));
     }
 
-	version (SQLITE_ENABLE_COLUMN_METADATA)
-	{
-		/++
-	    Determines the name of the database, table, or column that is the origin of a
-	    particular result column in SELECT statement.
+    version (SQLITE_ENABLE_COLUMN_METADATA)
+    {
+        /++
+        Determines the name of the database, table, or column that is the origin of a
+        particular result column in SELECT statement.
 
-	    See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
-	    +/
-		string columnDatabaseName(int index)
-		{
-			return sqlite3_column_database_name(statement, internalIndex(index)).to!string;
-		}
-		/// Ditto
-		string columnDatabaseName(string columnName)
-		{
-			return columnDatabaseName(indexForName(columnName));
-		}
-		/// Ditto
-		string columnTableName(int index)
-		{
-			return sqlite3_column_database_name(statement, internalIndex(index)).to!string;   
-		}
-		/// Ditto
-		string columnTableName(string columnName)
-		{
-			return columnTableName(indexForName(columnName)); 
-		}
-		/// Ditto
-		string columnOriginName(int index)
-		{
-			return sqlite3_column_origin_name(statement, internalIndex(index)).to!string;   
-		}
-		/// Ditto
-		string columnOriginName(string columnName)
-		{
-			return columnOriginName(indexForName(columnName));
-		}
-	}
+        See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
+        +/
+        string columnDatabaseName(int index)
+        {
+            return sqlite3_column_database_name(statement, internalIndex(index)).to!string;
+        }
+        /// Ditto
+        string columnDatabaseName(string columnName)
+        {
+            return columnDatabaseName(indexForName(columnName));
+        }
+        /// Ditto
+        string columnTableName(int index)
+        {
+            return sqlite3_column_database_name(statement, internalIndex(index)).to!string;
+        }
+        /// Ditto
+        string columnTableName(string columnName)
+        {
+            return columnTableName(indexForName(columnName));
+        }
+        /// Ditto
+        string columnOriginName(int index)
+        {
+            return sqlite3_column_origin_name(statement, internalIndex(index)).to!string;
+        }
+        /// Ditto
+        string columnOriginName(string columnName)
+        {
+            return columnOriginName(indexForName(columnName));
+        }
+    }
 
     /++
     Determines the declared type name of a particular result column in SELECT statement.
@@ -1762,7 +1762,7 @@ private:
             if (sqlite3_column_name(statement, i).to!string == name)
                 return i;
 
-        throw new SqliteException("invalid column name: '%s'".format(name));        
+        throw new SqliteException("invalid column name: '%s'".format(name));
     }
 }
 
@@ -1774,7 +1774,7 @@ version (unittest)
 
 unittest // Peek
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (value)");
     auto statement = db.prepare("INSERT INTO test VALUES(?)");
     statement.inject(null);
@@ -1819,7 +1819,7 @@ unittest // Peek
 
 unittest // Row random-access range interface
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
 
     {
         db.execute("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER, d INTEGER)");
@@ -1891,45 +1891,45 @@ struct ColumnData
     returned.
     +/
     auto as(T)(T defaultValue = T.init)
-		if (isBoolean!T || isNumeric!T || isSomeChar!T || isSomeString!T)
+        if (isBoolean!T || isNumeric!T || isSomeChar!T || isSomeString!T)
     {
         if (!variant.hasValue)
             return defaultValue;
 
-        try 
-			return variant.coerce!T;
-		catch (Exception e)
+        try
+            return variant.coerce!T;
+        catch (Exception e)
             throw new SqliteException("Cannot convert value to type %s: %s".format(T.stringof, e.msg));
     }
 
-	/// ditto
-	auto as(T)(T defaultValue = T.init)
-		if (isArray!T && !isSomeString!T)
-	{
-		if (!variant.hasValue)
-			return defaultValue;
+    /// ditto
+    auto as(T)(T defaultValue = T.init)
+        if (isArray!T && !isSomeString!T)
+    {
+        if (!variant.hasValue)
+            return defaultValue;
 
-		try
-		{
-			auto a = variant.get!(ubyte[]);
-			return cast(T) a;
-		}
-		catch (Exception e)
-			throw new SqliteException("Cannot convert value to type %s: %s".format(T.stringof, e.msg));
-	}
+        try
+        {
+            auto a = variant.get!(ubyte[]);
+            return cast(T) a;
+        }
+        catch (Exception e)
+            throw new SqliteException("Cannot convert value to type %s: %s".format(T.stringof, e.msg));
+    }
 
-	/// ditto
-	auto as(T : Nullable!U, U...)(T defaultValue = T.init)
-	{
-		if (!variant.hasValue)
-			return defaultValue;
-		return T(as!U());
-	}
-	
-	void toString(scope void delegate(const(char)[]) sink)
-	{
-		if (variant.hasValue)
-			sink(variant.toString);
+    /// ditto
+    auto as(T : Nullable!U, U...)(T defaultValue = T.init)
+    {
+        if (!variant.hasValue)
+            return defaultValue;
+        return T(as!U());
+    }
+
+    void toString(scope void delegate(const(char)[]) sink)
+    {
+        if (variant.hasValue)
+            sink(variant.toString);
         else
             sink("NULL");
     }
@@ -1938,7 +1938,7 @@ struct ColumnData
 
 unittest // Getting integral values
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
@@ -1961,7 +1961,7 @@ unittest // Getting integral values
 
 unittest // Getting floating point values
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val FLOAT)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
@@ -1984,7 +1984,7 @@ unittest // Getting floating point values
 
 unittest // Getting text values
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
@@ -1997,7 +1997,7 @@ unittest // Getting text values
 
 unittest // Getting blob values
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val BLOB)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
@@ -2016,7 +2016,7 @@ unittest // Getting blob values
 
 unittest // Getting null values
 {
-	import std.math;
+    import std.math;
 
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val TEXT)");
@@ -2120,7 +2120,7 @@ struct RowCache
 ///
 unittest
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (msg TEXT, num FLOAT)");
 
     auto statement = db.prepare("INSERT INTO test (msg, num) VALUES (?1, ?2)");
@@ -2143,7 +2143,7 @@ unittest
 
 unittest // RowCache copies
 {
-	auto db = Database(":memory:");
+    auto db = Database(":memory:");
     db.execute("CREATE TABLE test (msg TEXT)");
     auto statement = db.prepare("INSERT INTO test (msg) VALUES (?)");
     statement.bind(1, "ABC");
@@ -2181,7 +2181,7 @@ string literal(T)(T value)
 ///
 unittest
 {
-	assert(null.literal == "NULL");
+    assert(null.literal == "NULL");
     assert(false.literal == "0");
     assert(true.literal == "1");
     assert(4.literal == "4");
@@ -2233,12 +2233,12 @@ private:
 
 string errmsg(sqlite3* db)
 {
-	return sqlite3_errmsg(db).to!string;
+    return sqlite3_errmsg(db).to!string;
 }
 
 string errmsg(sqlite3_stmt* stmt)
 {
-	return errmsg(sqlite3_db_handle(stmt));
+    return errmsg(sqlite3_db_handle(stmt));
 }
 
 auto byStatement(string sql)
@@ -2294,7 +2294,7 @@ auto byStatement(string sql)
 }
 unittest
 {
-	auto sql = "CREATE TABLE test (dummy);
+    auto sql = "CREATE TABLE test (dummy);
         CREATE TRIGGER trig INSERT ON test BEGIN SELECT 1; SELECT 'a;b'; END;
         SELECT 'c;d';;
         CREATE";
@@ -2309,7 +2309,7 @@ unittest
 
 struct DelegateWrapper(T)
 {
-    T dlg; 
+    T dlg;
 }
 
 void* delegateWrap(T)(T dlg)
@@ -2340,16 +2340,16 @@ extern(C) void ptrFree(void* ptr)
 // be moved or collected. For use with releaseMem.
 void* anchorMem(void* ptr)
 {
-	GC.addRoot(ptr);
-	GC.setAttr(ptr, GC.BlkAttr.NO_MOVE);
-	return ptr;
+    GC.addRoot(ptr);
+    GC.setAttr(ptr, GC.BlkAttr.NO_MOVE);
+    return ptr;
 }
 
 // Passed to sqlite3_xxx_blob64/sqlite3_xxx_text64 to unanchor memory.
 extern(C) void releaseMem(void* ptr)
 {
-	GC.setAttr(ptr, GC.BlkAttr.NO_MOVE);
-	GC.removeRoot(ptr);
+    GC.setAttr(ptr, GC.BlkAttr.NO_MOVE);
+    GC.removeRoot(ptr);
 }
 
 // getValue and setResult function templates
@@ -2362,79 +2362,79 @@ auto getValue(T)(sqlite3_value* argv)
 }
 
 auto getValue(T)(sqlite3_value* argv)
-	if (isIntegral!T)
+    if (isIntegral!T)
 {
-	return sqlite3_value_int64(argv).to!T;
+    return sqlite3_value_int64(argv).to!T;
 }
 
 auto getValue(T)(sqlite3_value* argv)
-	if (isFloatingPoint!T)
+    if (isFloatingPoint!T)
 {
-	if (sqlite3_value_type(argv) == SqliteType.NULL)
-		return double.nan;
-	return sqlite3_value_double(argv).to!T;
+    if (sqlite3_value_type(argv) == SqliteType.NULL)
+        return double.nan;
+    return sqlite3_value_double(argv).to!T;
 }
 
 auto getValue(T)(sqlite3_value* argv)
-	if (isSomeString!T)
+    if (isSomeString!T)
 {
-	return sqlite3_value_text(argv).to!T;
+    return sqlite3_value_text(argv).to!T;
 }
 
 auto getValue(T)(sqlite3_value* argv)
-	if (isArray!T && !isSomeString!T)
+    if (isArray!T && !isSomeString!T)
 {
-	auto n = sqlite3_value_bytes(argv);
-	ubyte[] blob;
-	blob.length = n;
-	memcpy(blob.ptr, sqlite3_value_blob(argv), n);
-	return blob.to!T;
+    auto n = sqlite3_value_bytes(argv);
+    ubyte[] blob;
+    blob.length = n;
+    memcpy(blob.ptr, sqlite3_value_blob(argv), n);
+    return blob.to!T;
 }
 
 auto getValue(T : Nullable!U, U...)(sqlite3_value* argv)
 {
-	if (sqlite3_value_type(argv) == SqliteType.NULL)
-		return T();
-	return T(getValue!(U[0])(argv));
+    if (sqlite3_value_type(argv) == SqliteType.NULL)
+        return T();
+    return T(getValue!(U[0])(argv));
 }
 
 auto setResult(T)(sqlite3_context* context, T value)
-	if (isIntegral!T || isBoolean!T)
+    if (isIntegral!T || isBoolean!T)
 {
-	sqlite3_result_int64(context, value.to!long);
+    sqlite3_result_int64(context, value.to!long);
 }
 
 auto setResult(T)(sqlite3_context* context, T value)
-	if (isFloatingPoint!T)
+    if (isFloatingPoint!T)
 {
-	sqlite3_result_double(context, value.to!double);
+    sqlite3_result_double(context, value.to!double);
 }
 
 auto setResult(T)(sqlite3_context* context, T value)
-	if (isSomeString!T)
+    if (isSomeString!T)
 {
-	auto val = value.to!string;
-	sqlite3_result_text64(context, cast(const(char)*) anchorMem(cast(void*) val.ptr), val.length, &releaseMem, SQLITE_UTF8);
+    auto val = value.to!string;
+    sqlite3_result_text64(context, cast(const(char)*) anchorMem(cast(void*) val.ptr), val.length, &releaseMem, SQLITE_UTF8);
 }
 
 auto setResult(T)(sqlite3_context* context, T value)
-	if (isDynamicArray!T && !isSomeString!T)
+    if (isDynamicArray!T && !isSomeString!T)
 {
-	auto val = cast(void[]) value;
-	sqlite3_result_blob64(context, anchorMem(val.ptr), val.length, &releaseMem);
+    auto val = cast(void[]) value;
+    sqlite3_result_blob64(context, anchorMem(val.ptr), val.length, &releaseMem);
 }
 
 auto setResult(T)(sqlite3_context* context, T value)
-	if (isStaticArray!T)
+    if (isStaticArray!T)
 {
-	auto val = cast(void[]) value;
-	sqlite3_result_blob64(context, val.ptr, val.sizeof, SQLITE_TRANSIENT);
+    auto val = cast(void[]) value;
+    sqlite3_result_blob64(context, val.ptr, val.sizeof, SQLITE_TRANSIENT);
 }
 
 auto setResult(T : Nullable!U, U...)(sqlite3_context* context, T value)
 {
-	if (value.isNull)
-		sqlite3_result_null(context);
-	else
-		setResult(context, value.get);
+    if (value.isNull)
+        sqlite3_result_null(context);
+    else
+        setResult(context, value.get);
 }
