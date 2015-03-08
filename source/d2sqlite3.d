@@ -813,8 +813,7 @@ unittest // Documentation example
         "CREATE TABLE person (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
-            score FLOAT,
-            photo BLOB
+            score FLOAT
          )"
     );
 
@@ -822,20 +821,19 @@ unittest // Documentation example
 
     // Prepare an INSERT statement
     auto statement = db.prepare(
-        "INSERT INTO person (name, score, photo)
-         VALUES (:name, :score, :photo)"
+        "INSERT INTO person (name, score)
+         VALUES (:name, :score)"
     );
 
     // Bind values one by one (by parameter name or index)
     statement.bind(":name", "John");
-    statement.bind(":score", 77.5);
-    statement.bind(3, [0xDE, 0xEA, 0xBE, 0xEF]);
+    statement.bind(2, 77.5);
     statement.execute();
 
     statement.reset(); // Need to reset the statement after execution.
 
     // Bind muliple values at once
-    statement.bindAll("John", 46.8, null);
+    statement.bindAll("John", null);
     statement.execute();
 
     // Count the changes
@@ -857,24 +855,21 @@ unittest // Documentation example
         // Retrieve "name", e.g. using opIndex(string), which returns a ColumnData.
         auto name = row["name"].as!string;
 
-        // Retrieve "score", which is at index 3, e.g. using the peek function.
-        auto score = row.peek!double("score");
-
-        // Retrieve "photo", e.g. using opIndex(index),
-        // which returns a ColumnData.
-        auto photo = row[3].as!(ubyte[]);
-
-        // ... and use all these data!
-    }
-
-    // Read all the table in memory at once
+        // Retrieve "score", which is at index 3, e.g. using the peek function,
+		// using a Nullable type
+        auto score = row.peek!(Nullable!double)(3);
+		if (!score.isNull) {
+			// ...
+		}
+	}
+	
+	// Read all the table in memory at once
     auto data = RowCache(db.execute("SELECT * FROM person"));
     foreach (row; data)
     {
         auto id = row[0].as!long;
-        auto last = row["name"];
-        auto score = row["score"].as!double;
-        auto photo = row[3].as!(ubyte[]);
+        auto last = row["name"].as!string;
+        auto score = row[2].as!(Nullable!double);
         // etc.
     }
 }
@@ -929,8 +924,8 @@ unittest // Multiple statements with callback
         rows ~= RowCache(r);
         return true;
     });
-    assert(equal(rows[0][0], [1, 2, 3]));
-    assert(equal(rows[1][0], ["A", "B", "C"]));
+    assert(equal!"a.as!int == b"(rows[0][0], [1, 2, 3]));
+	assert(equal!"a.as!string == b"(rows[1][0], ["A", "B", "C"]));
 }
 
 unittest // Different arguments and result types with createFunction
@@ -1543,22 +1538,35 @@ struct Row
                 new SqliteException(format("invalid column index: %d", i)));
 
         auto type = sqlite3_column_type(statement, i);
-        final switch (type)
+		
+		final switch (type)
         {
             case SqliteType.INTEGER:
-                return ColumnData(Variant(peek!long(index)));
+				auto data = peek!(Nullable!long)(index);
+				if (data.isNull)
+					return ColumnData.init;
+                return ColumnData(Variant(data.get));
 
             case SqliteType.FLOAT:
-                return ColumnData(Variant(peek!double(index)));
+				auto data = peek!(Nullable!double)(index);
+				if (data.isNull)
+					return ColumnData.init;
+				return ColumnData(Variant(data.get));
+				
+			case SqliteType.TEXT:
+				auto data = peek!(Nullable!string)(index);
+				if (data.isNull)
+					return ColumnData.init;
+				return ColumnData(Variant(data.get));
+				
+			case SqliteType.BLOB:
+				auto data = peek!(Nullable!(ubyte[]))(index);
+				if (data.isNull)
+					return ColumnData.init;
+				return ColumnData(Variant(data.get));
 
-            case SqliteType.TEXT:
-                return ColumnData(Variant(peek!string(index)));
-
-            case SqliteType.BLOB:
-                return ColumnData(Variant(peek!(ubyte[])(index)));
-
-            case SqliteType.NULL:
-                return ColumnData(Variant());
+			case SqliteType.NULL:
+                return ColumnData.init;
         }
     }
 
@@ -1870,40 +1878,56 @@ unittest // Row random-access range interface
 
 
 /++
-The data retrived from a column, stored internally as a $(D Variant), which is accessible
-through "$(D alias this)".
+The data retrived from a column, stored internally as a $(D Variant).
 +/
 struct ColumnData
 {
-    Variant variant;
-    alias variant this;
+    private Variant variant;
 
     /++
     Returns the data converted to T. If the data is NULL, defaultValue is
     returned.
     +/
     auto as(T)(T defaultValue = T.init)
+		if (isBoolean!T || isNumeric!T || isSomeChar!T || isSomeString!T)
     {
         if (!variant.hasValue)
             return defaultValue;
 
-        static if (isBoolean!T || isNumeric!T || isSomeChar!T || isSomeString!T)
-        {
-            return variant.coerce!T;
-        }
-        else static if (isArray!T)
-        {
-            auto a = variant.get!(ubyte[]);
-            return cast(T) a;
-        }
-        else
-            throw new SqliteException("Cannot convert value to type %s".format(T.stringof));
+        try 
+			return variant.coerce!T;
+		catch (Exception e)
+            throw new SqliteException("Cannot convert value to type %s: %s".format(T.stringof, e.msg));
     }
 
-    void toString(scope void delegate(const(char)[]) sink)
-    {
-        if (variant.hasValue)
-            sink(variant.toString);
+	/// ditto
+	auto as(T)(T defaultValue = T.init)
+		if (isArray!T && !isSomeString!T)
+	{
+		if (!variant.hasValue)
+			return defaultValue;
+
+		try
+		{
+			auto a = variant.get!(ubyte[]);
+			return cast(T) a;
+		}
+		catch (Exception e)
+			throw new SqliteException("Cannot convert value to type %s: %s".format(T.stringof, e.msg));
+	}
+
+	/// ditto
+	auto as(T : Nullable!U, U...)(T defaultValue = T.init)
+	{
+		if (!variant.hasValue)
+			return defaultValue;
+		return T(as!U());
+	}
+	
+	void toString(scope void delegate(const(char)[]) sink)
+	{
+		if (variant.hasValue)
+			sink(variant.toString);
         else
             sink("NULL");
     }
@@ -2045,7 +2069,7 @@ struct RowCache
 
             auto colapp = appender!(ColumnData[]);
             foreach (i; 0 .. row.length)
-                colapp.put(ColumnData(row[i]));
+                colapp.put(row[i]);
             columns = colapp.data;
         }
 
