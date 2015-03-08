@@ -5,4 +5,4 @@ d:
     - dmd-2.067.0-b3
 sudo: false
 script:
-    - dub test --compiler=${DMD}
+    - dub test -c travis --compiler=${DMD}

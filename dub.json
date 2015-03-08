@@ -1,10 +1,19 @@
 {
-	"name": "d2sqlite3",
-	"description": "A thin wrapper around SQLite3",
-	"homepage": "https://github.com/biozic/d2sqlite3",
-	"authors": ["Nicolas Sicard", "Other contributors: see Github repo"],
-	"copyright": "Copyright 2011-15 Nicolas Sicard",
-	"license": "BSL-1.0",
-	"libs": ["sqlite3"],
-    "targetType": "library"
+    "name": "d2sqlite3",
+    "description": "A thin wrapper around SQLite3",
+    "homepage": "https://github.com/biozic/d2sqlite3",
+    "authors": ["Nicolas Sicard", "Other contributors: see Github repo"],
+    "copyright": "Copyright 2011-15 Nicolas Sicard",
+    "license": "BSL-1.0",
+    "libs": ["sqlite3"],
+    "targetType": "library",
+    "configurations": [
+        {
+            "name": "library",
+        },
+        {
+            "name": "travis",
+            "lflags": ["-Llib"]
+        }
+    ]
 }
