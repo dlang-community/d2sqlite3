@@ -1,17 +1,17 @@
 // Written in the D programming language
 /++
-This module provides a simple "object-oriented" interface to the SQLite database engine.
-See example in the documentation for the Database struct below. The (hopefully) complete C
-API is available through the $(D sqlite3) module, which is publicly imported by this module.
+This module provides a small wrapper around SQLite for the D programming language.
+It wraps the C API in an idiomatic manner and handles built-in D types and
+`Nullable!T` automatically.
+
+Authors:
+    Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
 
 Copyright:
-    Copyright Nicolas Sicard, 2011-2015.
+    Copyright 2011-15 Nicolas Sicard.
 
 License:
     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
-
-Authors:
-    Nicolas Sicard and other contributors at $(LINK https://github.com/biozic/d2sqlite3).
 
 Macros:
     D = <tt>$0</tt>

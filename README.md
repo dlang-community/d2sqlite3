@@ -85,8 +85,3 @@ foreach (row; data)
     // etc.
 }
 ```
-
----
-License: BSL 1.0
-
-Copyright 2011-15, Nicolas Sicard
