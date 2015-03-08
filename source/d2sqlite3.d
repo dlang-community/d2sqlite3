@@ -1896,10 +1896,10 @@ struct ColumnData
         if (!variant.hasValue)
             return defaultValue;
 
-        try
+        static if (isBoolean!T)
+            return variant.get!T; // Work around bug in 2.065
+        else
             return variant.coerce!T;
-        catch (Exception e)
-            throw new SqliteException("Cannot convert value to type %s: %s".format(T.stringof, e.msg));
     }
 
     /// ditto
@@ -1908,14 +1908,8 @@ struct ColumnData
     {
         if (!variant.hasValue)
             return defaultValue;
-
-        try
-        {
-            auto a = variant.get!(ubyte[]);
-            return cast(T) a;
-        }
-        catch (Exception e)
-            throw new SqliteException("Cannot convert value to type %s: %s".format(T.stringof, e.msg));
+        
+        return cast(T) variant.get!(ubyte[]);
     }
 
     /// ditto
@@ -1923,6 +1917,7 @@ struct ColumnData
     {
         if (!variant.hasValue)
             return defaultValue;
+        
         return T(as!U());
     }
 
