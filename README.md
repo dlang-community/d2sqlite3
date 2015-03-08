@@ -1,4 +1,4 @@
-# `d2sqlite3`
+# `d2sqlite3` [![Build Status](https://travis-ci.org/biozic/d2sqlite3.svg)](https://travis-ci.org/biozic/d2sqlite3)
 
 This is a small wrapper around SQLite for the D programming language.
 It wraps the C API in an idiomatic manner and handles built-in D types and
