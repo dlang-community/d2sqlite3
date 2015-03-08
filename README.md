@@ -15,6 +15,8 @@ of **SQLite >= 3.8.7**. If you use `dub`, add the following line to your `dub.js
 ```d
 // Note: exception handling is left aside for clarity.
 
+import std.typecons : Nullable;
+
 // Open a database in memory.
 auto db = Database(":memory:");
 

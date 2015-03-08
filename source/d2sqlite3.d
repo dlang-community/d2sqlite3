@@ -805,6 +805,8 @@ unittest // Documentation example
 {
 	// Note: exception handling is left aside for clarity.
 
+	import std.typecons : Nullable;
+
     // Open a database in memory.
     auto db = Database(":memory:");
 
