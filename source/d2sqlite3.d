@@ -905,7 +905,7 @@ unittest // Execute an SQL statement
     db.run("ANALYZE; VACUUM;");
 }
 
-unittest // Unexpected multiple statements
+version (DigitalMars) unittest // Unexpected multiple statements
 {
     auto db = Database(":memory:");
     db.execute("BEGIN; CREATE TABLE test (val INTEGER); ROLLBACK;");
