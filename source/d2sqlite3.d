@@ -1619,7 +1619,7 @@ struct Row
         $(TR $(TD isArray!T)
              $(TD BLOB, via $(D sqlite3_column_blob)))
         $(TR $(TD is(T == Nullable!U))
-             $(TD NULL or T)
+             $(TD NULL or T))
         $(TR $(TD Other types)
              $(TD Compilation error))
         )
