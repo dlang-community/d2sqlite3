@@ -34,8 +34,7 @@ module sqlite3;
 ** part of the build process.
 */
 
-extern (C) {
-__gshared nothrow:
+extern (C) @nogc nothrow:
 
 /**
 ** CAPI3REF: Compile-Time Library Version Numbers
@@ -1781,7 +1780,6 @@ enum SQLITE_FAIL     = 3;
 /* #define SQLITE_ABORT 4  // Also an error code */
 enum SQLITE_REPLACE  = 5;
 
-}  /* End of the 'extern (C) block */
 
 /*
 ** 2010 August 30
@@ -1799,8 +1797,6 @@ enum SQLITE_REPLACE  = 5;
 //#ifndef _SQLITE3RTREE_H_
 //#define _SQLITE3RTREE_H_
 
-
-extern (C) {
 
 alias double sqlite3_rtree_dbl;
 
@@ -1860,7 +1856,5 @@ enum
 	NOT_WITHIN       = 0,   /* Object completely outside of query region */
 	PARTLY_WITHIN    = 1,   /* Object partially overlaps query region */
 	FULLY_WITHIN     = 2;   /* Object fully contained within query region */
-
-}  /* end of the 'extern (C) block */
 
 
