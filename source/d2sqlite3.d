@@ -234,7 +234,7 @@ public:
     +/
     bool isReadOnly(string database = "main")
     {
-        int ret = sqlite3_db_readonly(p.handle, "main");
+        int ret = sqlite3_db_readonly(p.handle, database.toStringz);
         enforce(ret >= 0, new SqliteException("Database not found: %s".format(database)));
         return ret == 1;
     }
