@@ -410,8 +410,8 @@ public:
     void loadExtension(string path, string entryPoint = null)
     {
         auto ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
-        enforce(ret == SQLITE_OK, new SqliteException("Could load extension: %s:%s",
-                .format(entryPoint, path)));
+        enforce(ret == SQLITE_OK,new SqliteException(
+            "Could load extension: %s:%s".format(entryPoint, path)));
     }
 
     /++
