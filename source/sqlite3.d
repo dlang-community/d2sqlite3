@@ -34,7 +34,7 @@ module sqlite3;
 ** part of the build process.
 */
 
-extern (C) @nogc nothrow:
+extern (C) nothrow:
 
 /**
 ** CAPI3REF: Compile-Time Library Version Numbers
