@@ -2393,40 +2393,40 @@ auto getValue(T : Nullable!U, U...)(sqlite3_value* argv)
     return T(getValue!(U[0])(argv));
 }
 
-auto setResult(T)(sqlite3_context* context, T value)
+void setResult(T)(sqlite3_context* context, T value)
     if (isIntegral!T || isBoolean!T)
 {
     sqlite3_result_int64(context, value.to!long);
 }
 
-auto setResult(T)(sqlite3_context* context, T value)
+void setResult(T)(sqlite3_context* context, T value)
     if (isFloatingPoint!T)
 {
     sqlite3_result_double(context, value.to!double);
 }
 
-auto setResult(T)(sqlite3_context* context, T value)
+void setResult(T)(sqlite3_context* context, T value)
     if (isSomeString!T)
 {
     auto val = value.to!string;
     sqlite3_result_text64(context, cast(const(char)*) anchorMem(cast(void*) val.ptr), val.length, &releaseMem, SQLITE_UTF8);
 }
 
-auto setResult(T)(sqlite3_context* context, T value)
+void setResult(T)(sqlite3_context* context, T value)
     if (isDynamicArray!T && !isSomeString!T)
 {
     auto val = cast(void[]) value;
     sqlite3_result_blob64(context, anchorMem(val.ptr), val.length, &releaseMem);
 }
 
-auto setResult(T)(sqlite3_context* context, T value)
+void setResult(T)(sqlite3_context* context, T value)
     if (isStaticArray!T)
 {
     auto val = cast(void[]) value;
     sqlite3_result_blob64(context, val.ptr, val.sizeof, SQLITE_TRANSIENT);
 }
 
-auto setResult(T : Nullable!U, U...)(sqlite3_context* context, T value)
+void setResult(T : Nullable!U, U...)(sqlite3_context* context, T value)
 {
     if (value.isNull)
         sqlite3_result_null(context);
