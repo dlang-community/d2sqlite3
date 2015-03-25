@@ -60,6 +60,13 @@ int versionNumber() nothrow
     return sqlite3_libversion_number();
 }
 
+unittest
+{
+    import std.string : startsWith;
+    assert(versionString.startsWith("3."));
+    assert(versionNumber >= 3008007);
+}
+
 /++
 Tells whether SQLite was compiled with the thread-safe options.
 
@@ -69,8 +76,17 @@ bool threadSafe() nothrow
 {
     return cast(bool) sqlite3_threadsafe();
 }
+unittest
+{
+    auto ts = threadSafe;
+}
 
-/// Initializes or shuts down SQLite.
+/++
+Manually initializes (or shuts down) SQLite.
+
+SQLite initializes itself automatically on the first request execution, so this
+usually wouldn't be called. Use for instance before a call to config().
++/
 void initialize()
 {
     auto result = sqlite3_initialize();
@@ -120,6 +136,7 @@ else
         config(SQLITE_CONFIG_MULTITHREAD);
         config(SQLITE_CONFIG_LOG, function(void* p, int code, const(char*) msg) {}, null);
         initialize();
+        shutdown();
     }
 }
 
@@ -892,6 +909,7 @@ unittest
 {
     auto db = Database(":memory:");
     assert(db.attachedFilePath("main") is null);
+    assert(!db.isReadOnly);
     db.close();
 }
 
@@ -1023,7 +1041,8 @@ private:
         p = Payload(handle);
     }
 
-    void check(int result) {
+    void checkResult(int result) 
+    {
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
 
@@ -1034,6 +1053,21 @@ public:
     sqlite3_stmt* handle() @property
     {
         return p.handle;
+    }
+
+    /++
+    Tells whether the statement is empty (no SQL statement).
+    +/
+    bool empty() @property
+    {
+        return p.handle is null;
+    }
+    ///
+    unittest
+    {
+        auto db = Database(":memory:");
+        auto statement = db.prepare(" ; ");
+        assert(statement.empty);
     }
 
     /++
@@ -1049,52 +1083,59 @@ public:
     void bind(T)(int index, T value)
         if (is(T == typeof(null)) || is(T == void*))
     {
-        check(sqlite3_bind_null(p.handle, index));
+        assert(p.handle, "Operation on an empty statement");
+        checkResult(sqlite3_bind_null(p.handle, index));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isIntegral!T || isSomeChar!T)
     {
-        check(sqlite3_bind_int64(p.handle, index, cast(long) value));
+        assert(p.handle, "Operation on an empty statement");
+        checkResult(sqlite3_bind_int64(p.handle, index, cast(long) value));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isBoolean!T)
     {
-        check(sqlite3_bind_int(p.handle, index, to!T(value)));
+        assert(p.handle, "Operation on an empty statement");
+        checkResult(sqlite3_bind_int(p.handle, index, to!T(value)));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isFloatingPoint!T)
     {
-        check(sqlite3_bind_double(p.handle, index, cast(double) value));
+        assert(p.handle, "Operation on an empty statement");
+        checkResult(sqlite3_bind_double(p.handle, index, cast(double) value));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isSomeString!T)
     {
+        assert(p.handle, "Operation on an empty statement");
         string str = to!string(value);
         auto ptr = anchorMem(cast(void*) str.ptr);
-        check(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr, str.length, &releaseMem, SQLITE_UTF8));
+        checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr, str.length, &releaseMem, SQLITE_UTF8));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isStaticArray!T)
     {
-        check(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr, value.sizeof, SQLITE_TRANSIENT));
+        assert(p.handle, "Operation on an empty statement");
+        checkResult(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr, value.sizeof, SQLITE_TRANSIENT));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isDynamicArray!T && !isSomeString!T)
     {
+        assert(p.handle, "Operation on an empty statement");
         auto arr = cast(void[]) value;
-        check(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr), arr.length, &releaseMem));
+        checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr), arr.length, &releaseMem));
     }
 
     /// ditto
@@ -1102,7 +1143,10 @@ public:
         if (is(T == Nullable!U, U...))
     {
         if (value.isNull)
-            check(sqlite3_bind_null(p.handle, index));
+        {
+            assert(p.handle, "Operation on an empty statement");
+            checkResult(sqlite3_bind_null(p.handle, index));
+        }
         else
             bind(index, value.get);
     }
@@ -1145,8 +1189,8 @@ public:
     +/
     void clearBindings()
     {
-        if (p.handle)
-            check(sqlite3_clear_bindings(p.handle));
+        assert(p.handle, "Operation on an empty statement");
+        checkResult(sqlite3_clear_bindings(p.handle));
     }
 
     /++
@@ -1167,8 +1211,8 @@ public:
     +/
     void reset()
     {
-        if (p.handle)
-            check(sqlite3_reset(p.handle));
+        assert(p.handle, "Operation on an empty statement");
+        checkResult(sqlite3_reset(p.handle));
     }
 
     /++
@@ -1202,10 +1246,8 @@ public:
     +/
     string parameterName(int index)
     {
-        if (p.handle)
-            return sqlite3_bind_parameter_name(p.handle, index).to!string;
-        else
-            return null;
+        assert(p.handle, "Operation on an empty statement");
+        return sqlite3_bind_parameter_name(p.handle, index).to!string;
     }
 
     /++
@@ -1216,10 +1258,8 @@ public:
     +/
     int parameterIndex(string name)
     {
-        if (p.handle)
-            return sqlite3_bind_parameter_index(p.handle, name.toStringz);
-        else
-            return 0;
+        assert(p.handle, "Operation on an empty statement");
+        return sqlite3_bind_parameter_index(p.handle, name.toStringz);
     }
 }
 
@@ -1234,6 +1274,10 @@ unittest // Simple parameters binding
     statement.reset();
     statement.bind(1, 42);
     statement.execute();
+
+    assert(db.lastInsertRowid == 2);
+    assert(db.changes == 1);
+    assert(db.totalChanges == 2);
 
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
@@ -1395,7 +1439,7 @@ private:
     this(Statement statement)
     {
         p = Payload(statement);
-        if (p.statement.handle !is null)
+        if (!p.statement.empty)
             p.state = sqlite3_step(p.statement.handle);
         else
             p.state = SQLITE_DONE;
