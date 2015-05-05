@@ -13,8 +13,7 @@
         },
         {
             "name": "travis",
-            "libs": ["sqlite3", "dl", "pthread"],
-            "lflags": ["-Llib"]
+            "libs": ["sqlite3", "dl", "pthread"]
         }
     ]
 }
