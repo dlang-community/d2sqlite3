@@ -133,10 +133,10 @@ else
 {
     unittest
     {
+        shutdown();
         config(SQLITE_CONFIG_MULTITHREAD);
         config(SQLITE_CONFIG_LOG, function(void* p, int code, const(char*) msg) {}, null);
         initialize();
-        shutdown();
     }
 }
 
