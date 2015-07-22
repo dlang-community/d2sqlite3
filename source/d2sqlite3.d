@@ -360,7 +360,7 @@ public:
     +/
     Statement prepare(string sql)
     {
-        return Statement(p.handle, sql);
+        return Statement(this, sql);
     }
 
     /// Convenience functions equivalent to an SQL statement.
@@ -1016,6 +1016,7 @@ struct Statement
 private:
     struct _Payload
     {
+        Database db;
         sqlite3_stmt* handle; // null if error or empty statement
 
         ~this()
@@ -1031,14 +1032,14 @@ private:
     alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
     Payload p;
 
-    this(sqlite3* dbHandle, string sql)
+    this(Database db, string sql)
     {
         sqlite3_stmt* handle;
         const(char*) ptail;
-        auto result = sqlite3_prepare_v2(dbHandle, sql.toStringz, sql.length.to!int,
+        auto result = sqlite3_prepare_v2(db.handle(), sql.toStringz, sql.length.to!int,
             &handle, null);
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(dbHandle), result, sql));
-        p = Payload(handle);
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(db.handle()), result, sql));
+        p = Payload(db, handle);
     }
 
     void checkResult(int result) 
@@ -1263,6 +1264,16 @@ public:
     }
 }
 
+unittest
+{
+  Statement statement;
+  {
+    auto db = Database(":memory:");
+    statement = db.prepare(" SELECT 42 ");
+  }
+  assert(statement.execute.oneValue!int == 42);
+}
+    
 unittest // Simple parameters binding
 {
     auto db = Database(":memory:");
