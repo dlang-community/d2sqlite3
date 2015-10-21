@@ -69,9 +69,9 @@ foreach (row; results)
     // Retrieve "name", e.g. using opIndex(string), which returns a ColumnData.
     auto name = row["name"].as!string;
 
-    // Retrieve "score", which is at index 3, e.g. using the peek function,
+    // Retrieve "score", which is at index 2, e.g. using the peek function,
 	// using a Nullable type
-    auto score = row.peek!(Nullable!double)(3);
+    auto score = row.peek!(Nullable!double)(2);
 	if (!score.isNull) {
 		// ...
 	}
