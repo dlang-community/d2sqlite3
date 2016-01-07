@@ -406,29 +406,33 @@ public:
         return p.handle ? sqlite3_errcode(p.handle) : 0;
     }
 
-    /++
-    Enables or disables loading extensions.
-    +/
-    void enableLoadExtensions(bool enable = true)
+    version (SQLITE_OMIT_LOAD_EXTENSION) {}
+    else
     {
-        enforce(sqlite3_enable_load_extension(p.handle, enable) == SQLITE_OK,
+        /++
+        Enables or disables loading extensions.
+        +/
+        void enableLoadExtensions(bool enable = true)
+        {
+            enforce(sqlite3_enable_load_extension(p.handle, enable) == SQLITE_OK,
                 new SqliteException("Could not enable loading extensions."));
-    }
+        }
+        
+        /++
+        Loads an extension.
 
-    /++
-    Loads an extension.
+        Params:
+            path = The path of the extension file.
 
-    Params:
-        path = The path of the extension file.
-
-        entryPoint = The name of the entry point function. If null is passed, SQLite
-        uses the name of the extension file as the entry point.
-    +/
-    void loadExtension(string path, string entryPoint = null)
-    {
-        auto ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
-        enforce(ret == SQLITE_OK,new SqliteException(
-            "Could load extension: %s:%s".format(entryPoint, path)));
+            entryPoint = The name of the entry point function. If null is passed, SQLite
+            uses the name of the extension file as the entry point.
+        +/
+        void loadExtension(string path, string entryPoint = null)
+        {
+            auto ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
+            enforce(ret == SQLITE_OK, new SqliteException(
+                    "Could not load extension: %s:%s".format(entryPoint, path)));
+        }
     }
 
     /++
