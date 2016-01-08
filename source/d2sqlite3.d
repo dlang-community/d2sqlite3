@@ -1097,7 +1097,7 @@ public:
         if (isIntegral!T || isSomeChar!T)
     {
         assert(p.handle, "Operation on an empty statement");
-        checkResult(sqlite3_bind_int64(p.handle, index, cast(long) value));
+        checkResult(sqlite3_bind_int64(p.handle, index, value.to!long));
     }
 
     /// ditto
@@ -1105,7 +1105,7 @@ public:
         if (isBoolean!T)
     {
         assert(p.handle, "Operation on an empty statement");
-        checkResult(sqlite3_bind_int(p.handle, index, to!T(value)));
+        checkResult(sqlite3_bind_int(p.handle, index, value.to!T));
     }
 
     /// ditto
@@ -1113,7 +1113,7 @@ public:
         if (isFloatingPoint!T)
     {
         assert(p.handle, "Operation on an empty statement");
-        checkResult(sqlite3_bind_double(p.handle, index, cast(double) value));
+        checkResult(sqlite3_bind_double(p.handle, index, value.to!double));
     }
 
     /// ditto
@@ -1121,7 +1121,7 @@ public:
         if (isSomeString!T)
     {
         assert(p.handle, "Operation on an empty statement");
-        string str = to!string(value);
+        string str = value.to!string;
         auto ptr = anchorMem(cast(void*) str.ptr);
         checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr, str.length, &releaseMem, SQLITE_UTF8));
     }
