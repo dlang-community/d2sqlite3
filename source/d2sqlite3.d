@@ -517,13 +517,13 @@ public:
     Creates and registers a new aggregate function in the database.
 
     Params:
+        name = The name that the aggregate function will have in the database.
+
         T = The $(D struct) type implementing the aggregate. T must be default-construtible
         (a POD type) and implement at least these two methods: $(D accumulate) and $(D result).
         Each parameter and the returned type of $(D accumulate) and $(D result) must be
         a boolean or numeric type, a string, an array, null, or a Nullable!T
-        where T is any of the previous types.
-
-        name = The name that the aggregate function will have in the database.
+        where T is any of the previous types. These methods cannot be variadic.
 
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
@@ -531,16 +531,21 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
-    void createAggregate(T, string name)(Deterministic det = Deterministic.yes)
+    void createAggregate(string name, T)(Deterministic det = Deterministic.yes)
     {
         static assert(isAggregateType!T,
-            name ~ " should be an aggregate type");
+            T.stringof ~ " should be an aggregate type");
         static assert(__traits(isPOD, T),
-            name ~ " should be a POD type");
+            T.stringof ~ " should be a POD type");
         static assert(is(typeof(T.accumulate) == function),
-            name ~ " shoud have a method named accumulate");
+            T.stringof ~ " shoud have a method named accumulate");
         static assert(is(typeof(T.result) == function),
-            name ~ " shoud have a method named result");
+            T.stringof ~ " shoud have a method named result");
+        static assert(is(typeof({
+                alias RT = ReturnType!(T.result);
+                setResult!RT(null, RT.init);
+            })),
+            T.stringof ~ ".result shoud return an SQLite-compatible type");
         static assert(variadicFunctionStyle!(T.accumulate) == Variadic.no,
             "variadic functions are not supported");
         static assert(variadicFunctionStyle!(T.result) == Variadic.no,
@@ -619,7 +624,7 @@ public:
 
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (word TEXT)");
-        db.createAggregate!(Joiner, "strjoin");
+        db.createAggregate!("strjoin", Joiner);
 
         auto statement = db.prepare("INSERT INTO test VALUES (?)");
         auto list = ["My", "cat", "is", "black"];
@@ -634,13 +639,20 @@ public:
         assert(text == "My-cat-is-black");
     }
 
+    /// Kept for backwards compatibility 
+    alias createAggregate(T, string name) = createAggregate!(name, T);
+
     /++
     Creates and registers a collation function in the database.
 
     Params:
+        name = The name that the function will have in the database.
+
         fun = An alias to the D implementation of the function. The function $(D_PARAM fun)
         must satisfy these criteria:
             $(UL
+                $(LI Takes two string arguments s1 and s2. )
+                $(LI Returns an integer $(D ret). )
                 $(LI If s1 is less than s2, $(D ret < 0).)
                 $(LI If s1 is equal to s2, $(D ret == 0).)
                 $(LI If s1 is greater than s2, $(D ret > 0).)
@@ -650,16 +662,12 @@ public:
                 $(LI If s1 is less than s2 and s2 is less than s3, then s1 is less than s3.)
             )
 
-        name = The name that the function will have in the database; this name defaults to
-        the identifier of $(D_PARAM fun).
-
     See_Also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
     +/
     void createCollation(string name, T)(T fun)
     {
-        static assert(isCallable!fun, "expecting a callable");
-        static assert(variadicFunctionStyle!(fun) == Variadic.no,
-            "variadic functions are not supported");
+        static assert(isImplicitlyConvertible!(typeof(fun("a", "b")), int),
+            "the collation function has a wrong signature");
 
         alias ParameterTypeTuple!fun PT;
         static assert(isSomeString!(PT[0]),
