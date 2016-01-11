@@ -445,13 +445,12 @@ public:
     is closed.
 
     Params:
-        name = The name that the function will have in the database; this name defaults to
-        the identifier of $(D_PARAM fun).
+        name = The name that the function will have in the database.
 
         fun = a $(D delegate) or $(D function) that implements the function. $(D_PARAM fun)
         must satisfy these criteria:
             $(UL
-                $(LI It must not be a variadic.)
+                $(LI It must not be variadic.)
                 $(LI Its arguments must all have a type that is compatible with SQLite types:
                 it must be a boolean or numeric type, a string, an array, null,
                 or a Nullable!T where T is any of the previous types.)
@@ -461,6 +460,8 @@ public:
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
         perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
+
+    Bugs: does not work well with struct opCall.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
