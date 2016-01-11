@@ -1,12 +1,15 @@
 language: d
 
 d:
-    - dmd-2.067.1
+    - dmd-2.070.0-b1
     - dmd-2.069.2
-    - ldc-0.15.1
+    - dmd-2.068.2
+    - dmd-2.067.1
+    - dmd-2.066.1
     - ldc-0.16.1
-    - gdc
-
+    - gdc-5.2.0
+    - gdc-4.9.2
+    
 before_install:
     - echo 'deb http://us.archive.ubuntu.com/ubuntu/ vivid main universe' | sudo tee -a /etc/apt/sources.list
     - sudo apt-get -y update

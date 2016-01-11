@@ -1,7 +1,7 @@
 // Derived from etc.c.sqlite3, updated to version 3.10.0
 module sqlite3;
 
-import std.c.stdarg : va_list;
+import core.stdc.stdarg : va_list;
 
 extern (C) nothrow:
 
