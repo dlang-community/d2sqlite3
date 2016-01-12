@@ -448,7 +448,7 @@ public:
         name = The name that the function will have in the database.
 
         fun = a $(D delegate) or $(D function) that implements the function. $(D_PARAM fun)
-        must satisfy these criteria:
+        must satisfy the following criteria:
             $(UL
                 $(LI It must not be variadic.)
                 $(LI Its arguments must all have a type that is compatible with SQLite types:
@@ -456,61 +456,170 @@ public:
                 or a Nullable!T where T is any of the previous types.)
                 $(LI Its return value must also be of a compatible type.)
             )
+            or
+            $(UL
+                $(LI It must be a normal or type-safe variadic function where the arguments
+                are variant. In other terms, the signature of the function must be:
+                $(D function(Variant[] args)) or $(D function(Variant[] args...)))
+                $(LI Its return value must be a boolean or numeric type, a string, an array, null,
+                or a Nullable!T where T is any of the previous types.)
+            )
 
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
         perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
 
-    Bugs: does not work well with struct opCall.
+    Bugs: does not work with struct opCall operators.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
     void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
     {
         static assert(isCallable!fun, "expecting a callable");
-        static assert(variadicFunctionStyle!(fun) == Variadic.no,
-            "variadic functions are not supported");
+        static assert(variadicFunctionStyle!(fun) == Variadic.no
+                || is(ParameterTypeTuple!fun == TypeTuple!(Variant[])),
+                "only type-safe variadic functions with Variant arguments are supported");
 
-        alias ReturnType!fun RT;
-        static assert(!is(RT == void), "function must not return void");
-
-        alias PT = staticMap!(Unqual, ParameterTypeTuple!fun);
-
-        extern(C) static
-        void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
+        static if (is(ParameterTypeTuple!fun == TypeTuple!(Variant[])))
         {
-            PT args;
-
-            foreach (i, type; PT)
-                args[i] = getValue!type(argv[i]);
-
-            auto ptr = sqlite3_user_data(context);
-
-            try
-                setResult(context, delegateUnwrap!T(ptr)(args));
-            catch (Exception e)
+            extern(C) static
+            void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
-                auto txt = "error in function %s(): %s".format(name, e.msg);
-                sqlite3_result_error(context, txt.toStringz, -1);
+                auto args = appender!(Variant[]);
+                
+                for (int i = 0; i < argc; ++i)
+                {
+                    auto value = argv[i];
+                    auto type = sqlite3_value_type(value);
+                    
+                    final switch (type)
+                    {
+                        case SqliteType.INTEGER:
+                            args.put(Variant(getValue!long(value)));
+                            break;
+                            
+                        case SqliteType.FLOAT:
+                            args.put(Variant(getValue!double(value)));
+                            break;
+                            
+                        case SqliteType.TEXT:
+                            args.put(Variant(getValue!string(value)));
+                            break;
+                            
+                        case SqliteType.BLOB:
+                            args.put(Variant(getValue!(ubyte[])(value)));
+                            break;
+                            
+                        case SqliteType.NULL:
+                            args.put(Variant(null));
+                            break;
+                    }
+                }
+                
+                auto ptr = sqlite3_user_data(context);
+                
+                try
+                    setResult(context, delegateUnwrap!T(ptr)(args.data));
+                catch (Exception e)
+                {
+                    auto txt = "error in function %s(): %s".format(name, e.msg);
+                    sqlite3_result_error(context, txt.toStringz, -1);
+                }
             }
+
+            enum argnum = -1; // SQLite variadic
+        }
+        else
+        {
+            alias ReturnType!fun RT;
+            static assert(!is(RT == void), "function must not return void");
+            
+            alias PT = staticMap!(Unqual, ParameterTypeTuple!fun);
+            
+            extern(C) static
+            void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
+            {
+                PT args;
+                
+                foreach (i, type; PT)
+                    args[i] = getValue!type(argv[i]);
+                
+                auto ptr = sqlite3_user_data(context);
+                
+                try
+                    setResult(context, delegateUnwrap!T(ptr)(args));
+                catch (Exception e)
+                {
+                    auto txt = "error in function %s(): %s".format(name, e.msg);
+                    sqlite3_result_error(context, txt.toStringz, -1);
+                }
+            }
+
+            enum argnum = PT.length;
         }
 
         assert(p.handle);
-        check(sqlite3_create_function_v2(p.handle, name.toStringz, PT.length, SQLITE_UTF8 | det,
+        check(sqlite3_create_function_v2(p.handle, name.toStringz, argnum, SQLITE_UTF8 | det,
             delegateWrap(fun), &x_func, null, null, &ptrFree));
     }
     ///
     unittest
     {
         string fmt = "Hello, %s!";
+
+        // The implementation of the new function (capturing fmt)
         string my_msg(string name)
         {
             return fmt.format(name);
         }
+
         auto db = Database(":memory:");
         db.createFunction!"msg"(&my_msg);
         auto msg = db.execute("SELECT msg('John')").oneValue!string;
         assert(msg == "Hello, John!");
+    }
+    ///
+    unittest
+    {
+        import std.variant;
+
+        // The implementation of the new function
+        static string myList(Variant[] args)
+        {
+            Appender!(string[]) app;
+            foreach (arg; args)
+            {
+                if (arg.convertsTo!string)
+                    app.put(`"%s"`.format(arg));
+                else
+                    app.put("%s".format(arg));
+            }
+            return app.data.join(", ");
+        }
+
+        auto db = Database(":memory:");
+        db.createFunction!"my_list"(&myList);
+        auto list = db.execute("SELECT my_list(42, 3.14, 'text', NULL)").oneValue!string;
+        assert(list == `42, 3.14, "text", null`);
+    }
+    unittest
+    {
+        string myList(Variant[] args...)
+        {
+            Appender!(string[]) app;
+            foreach (arg; args)
+            {
+                if (arg.convertsTo!string)
+                    app.put(`"%s"`.format(arg));
+                else
+                    app.put("%s".format(arg));
+            }
+            return app.data.join(", ");
+        }
+        auto db = Database(":memory:");
+        db.createFunction!"my_list"(&myList);
+        auto list = db.execute("SELECT my_list(42, 3.14, 'text', NULL)").oneValue!string;
+        assert(list == `42, 3.14, "text", null`);
     }
 
     /++
