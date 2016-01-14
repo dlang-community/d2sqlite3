@@ -1768,6 +1768,33 @@ struct Row
     automatically cast to T, without the overhead of using a wrapped $(D Variant)
     ($(D ColumnData)).
 
+    $(TABLE
+        $(TR $(TH Condition on T)
+             $(TH Requested database type))
+        $(TR $(TD isIntegral!T || isBoolean!T)
+             $(TD INTEGER, via $(D sqlite3_column_int64)))
+        $(TR $(TD isFloatingPoint!T)
+             $(TD FLOAT, via $(D sqlite3_column_double)))
+        $(TR $(TD isSomeString!T)
+             $(TD TEXT, via $(D sqlite3_column_text)))
+        $(TR $(TD isArray!T)
+             $(TD BLOB, via $(D sqlite3_column_blob)))
+        $(TR $(TD is(T == Nullable!U))
+             $(TD NULL or T))
+        $(TR $(TD Other types)
+             $(TD Compilation error))
+    )
+
+    When using $(D peek) to retrieve a BLOB, you can use either:
+        $(UL
+            $(LI $(D peek!(ubyte[], PeekMode.copy)(index)),
+              in which case the function returns a copy of the data that will outlive the step
+              to the next row,
+            or)
+            $(LI $(D peek!(ubyte[], PeekMode.slice)(index)),
+              in which case a slice of SQLite's internal buffer is returned (see Warnings))
+        )
+
     Params:
         T = The type of the returned data. T must be a boolean, a built-in numeric type, a
         string, an array or a Variant.
@@ -1784,27 +1811,14 @@ struct Row
         $(LINK http://www.sqlite.org/lang_expr.html#castexpr)), and it is converted
         to T using $(D std.conv.to!T).
 
-        $(TABLE
-        $(TR $(TH Condition on T)
-             $(TH Requested database type))
-        $(TR $(TD isIntegral!T || isBoolean!T)
-             $(TD INTEGER, via $(D sqlite3_column_int64)))
-        $(TR $(TD isFloatingPoint!T)
-             $(TD FLOAT, via $(D sqlite3_column_double)))
-        $(TR $(TD isSomeString!T)
-             $(TD TEXT, via $(D sqlite3_column_text)))
-        $(TR $(TD isArray!T)
-             $(TD BLOB, via $(D sqlite3_column_blob)))
-        $(TR $(TD is(T == Nullable!U))
-             $(TD NULL or T))
-        $(TR $(TD Other types)
-             $(TD Compilation error))
-        )
-
     Warnings:
-        The result is undefined if then index is out of range.
+        The result is undefined if the index is out of range.
 
-        If the second overload is used, the names of all the columns are
+        When using $(D PeekMode.slice), the data of the slice will be $(B is invalidated)
+        when the next row is accessed. A copy of the data has to be made somehow for it to 
+        outlive the next step on the same statement.
+
+        When using referring to the column by name, the names of all the columns are
         tested each time this function is called: use
         numeric indexing for better performance.
     +/
@@ -1832,24 +1846,46 @@ struct Row
     }
 
     /// ditto
-    T peek(T)(int index)
+    T peek(T, PeekMode mode = PeekMode.copy)(int index)
         if (isArray!T && !isSomeString!T)
     {
         auto i = internalIndex(index);
         auto ptr = sqlite3_column_blob(statement, i);
         auto length = sqlite3_column_bytes(statement, i);
-        ubyte[] blob;
-        blob.length = length;
-        memcpy(blob.ptr, ptr, length);
-        return blob.to!T;
+
+        static if (mode == PeekMode.copy)
+        {
+            ubyte[] blob;
+            blob.length = length;
+            memcpy(blob.ptr, ptr, length);
+            return cast(T) blob;
+        }
+        else static if (mode == PeekMode.slice)
+            return cast(T) ptr[0..length];
+        else
+            static assert(false);
     }
 
     /// ditto
-    T peek(T : Nullable!U, U...)(int index)
+    T peek(T)(int index)
+        if (isInstanceOf!(Nullable, T)
+            && (!isArray!(TemplateArgsOf!T[0]) || isSomeString!(TemplateArgsOf!T[0])))
     {
+        alias U = TemplateArgsOf!T[0];
         if (sqlite3_column_type(statement, internalIndex(index)) == SqliteType.NULL)
             return T();
-        return T(peek!(U[0])(index));
+        return T(peek!U(index));
+    }
+
+    /// ditto
+    T peek(T, PeekMode mode = PeekMode.copy)(int index)
+        if (isInstanceOf!(Nullable, T)
+            && isArray!(TemplateArgsOf!T[0]) && !isSomeString!(TemplateArgsOf!T[0]))
+    {
+        alias U = TemplateArgsOf!T[0];
+        if (sqlite3_column_type(statement, internalIndex(index)) == SqliteType.NULL)
+            return T();
+        return T(peek!(U, mode)(index));
     }
 
     /// ditto
@@ -1943,6 +1979,13 @@ private:
     }
 }
 
+/// Behavior of the Raw.peek method for arrays
+enum PeekMode
+{
+    copy, /// Return a copy of the data into a new array
+    slice /// Return a slice of the data
+}
+
 version (unittest)
 {
     static assert(isRandomAccessRange!Row);
@@ -1992,6 +2035,31 @@ unittest // Peek
     assert(row.peek!double(0) == 0.0);
     assert(row.peek!string(0) == x"DEADBEEF");
     assert(row.peek!(ubyte[])(0) == cast(ubyte[]) x"DEADBEEF");
+}
+
+unittest // PeekMode
+{
+    alias Blob = ubyte[];
+
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (value)");
+    auto statement = db.prepare("INSERT INTO test VALUES(?)");
+    statement.inject(cast(Blob) x"01020304");
+    statement.inject(cast(Blob) x"0A0B0C0D");
+
+    auto results = db.execute("SELECT * FROM test");
+    auto row = results.front;
+    auto b1 = row.peek!(Blob, PeekMode.copy)(0);
+    auto b2 = row.peek!(Blob, PeekMode.slice)(0);
+    results.popFront();
+    row = results.front;
+    auto b3 = row.peek!(Blob, PeekMode.slice)(0);
+    auto b4 = row.peek!(Nullable!Blob, PeekMode.copy)(0);
+    assert(b1 == cast(Blob) x"01020304");
+    // assert(b2 != cast(Blob) x"01020304"); // PASS if SQLite reuses internal buffer
+    // assert(b2 == cast(Blob) x"0A0B0C0D"); // PASS (idem)
+    assert(b3 == cast(Blob) x"0A0B0C0D");
+    assert(!b4.isNull && b4 == cast(Blob) x"0A0B0C0D");
 }
 
 unittest // Row random-access range interface
