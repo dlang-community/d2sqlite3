@@ -33,7 +33,6 @@ import core.stdc.string : memcpy;
 import core.memory : GC;
 public import sqlite3;
 
-
 /// SQLite type codes
 enum SqliteType
 {
@@ -469,11 +468,11 @@ public:
         result is the same when called with the same parameters. Recent versions of SQLite
         perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
 
-    Bugs: does not work with struct opCall operators.
+    Bugs: Does not work with the opCall operators of structs.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
-    void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
+    void createFunction(T)(string name, T fun, Deterministic det = Deterministic.yes)
     {
         static assert(isCallable!fun, "expecting a callable");
         static assert(variadicFunctionStyle!(fun) == Variadic.no
@@ -517,9 +516,15 @@ public:
                 }
                 
                 auto ptr = sqlite3_user_data(context);
-                
+
+                string name;
                 try
-                    setResult(context, delegateUnwrap!T(ptr)(args.data));
+                {
+                    auto wrappedDelegate = delegateUnwrap!T(ptr);
+                    auto dlg = wrappedDelegate.dlg;
+                    name = wrappedDelegate.name;
+                    setResult(context, dlg(args.data));
+                }
                 catch (Exception e)
                 {
                     auto txt = "error in function %s(): %s".format(name, e.msg);
@@ -545,9 +550,15 @@ public:
                     args[i] = getValue!type(argv[i]);
                 
                 auto ptr = sqlite3_user_data(context);
-                
+
+                string name;
                 try
-                    setResult(context, delegateUnwrap!T(ptr)(args));
+                {
+                    auto wrappedDelegate = delegateUnwrap!T(ptr);
+                    auto dlg = wrappedDelegate.dlg;
+                    name = wrappedDelegate.name;
+                    setResult(context, dlg(args));
+                }
                 catch (Exception e)
                 {
                     auto txt = "error in function %s(): %s".format(name, e.msg);
@@ -560,7 +571,7 @@ public:
 
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, argnum, SQLITE_UTF8 | det,
-            delegateWrap(fun), &x_func, null, null, &ptrFree));
+            delegateWrap(fun, name), &x_func, null, null, &ptrFree));
     }
     ///
     unittest
@@ -574,7 +585,7 @@ public:
         }
 
         auto db = Database(":memory:");
-        db.createFunction!"msg"(&my_msg);
+        db.createFunction("msg", &my_msg);
         auto msg = db.execute("SELECT msg('John')").oneValue!string;
         assert(msg == "Hello, John!");
     }
@@ -584,7 +595,7 @@ public:
         import std.variant;
 
         // The implementation of the new function
-        static string myList(Variant[] args)
+        string myList(Variant[] args)
         {
             Appender!(string[]) app;
             foreach (arg; args)
@@ -598,7 +609,7 @@ public:
         }
 
         auto db = Database(":memory:");
-        db.createFunction!"my_list"(&myList);
+        db.createFunction("my_list", &myList);
         auto list = db.execute("SELECT my_list(42, 3.14, 'text', NULL)").oneValue!string;
         assert(list == `42, 3.14, "text", null`);
     }
@@ -617,9 +628,15 @@ public:
             return app.data.join(", ");
         }
         auto db = Database(":memory:");
-        db.createFunction!"my_list"(&myList);
+        db.createFunction("my_list", &myList);
         auto list = db.execute("SELECT my_list(42, 3.14, 'text', NULL)").oneValue!string;
         assert(list == `42, 3.14, "text", null`);
+    }
+
+    deprecated("Kept for compatibility. Use of the new createFunction method is recommended.")
+    void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
+    {
+        createFunction(name, fun, det);
     }
 
     /++
@@ -628,8 +645,8 @@ public:
     Params:
         name = The name that the aggregate function will have in the database.
 
-        T = The $(D struct) type implementing the aggregate. T must be default-construtible
-        (a POD type) and implement at least these two methods: $(D accumulate) and $(D result).
+        agg = The $(D struct) of type T implementing the aggregate. T must implement
+        at least these two methods: $(D accumulate) and $(D result).
         Each parameter and the returned type of $(D accumulate) and $(D result) must be
         a boolean or numeric type, a string, an array, null, or a Nullable!T
         where T is any of the previous types. These methods cannot be variadic.
@@ -640,21 +657,19 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
-    void createAggregate(string name, T)(Deterministic det = Deterministic.yes)
+    void createAggregate(T)(string name, T agg, Deterministic det = Deterministic.yes)
     {
         static assert(isAggregateType!T,
             T.stringof ~ " should be an aggregate type");
-        static assert(__traits(isPOD, T),
-            T.stringof ~ " should be a POD type");
         static assert(is(typeof(T.accumulate) == function),
-            T.stringof ~ " shoud have a method named accumulate");
+            T.stringof ~ " should have a method named accumulate");
         static assert(is(typeof(T.result) == function),
-            T.stringof ~ " shoud have a method named result");
+            T.stringof ~ " should have a method named result");
         static assert(is(typeof({
                 alias RT = ReturnType!(T.result);
                 setResult!RT(null, RT.init);
             })),
-            T.stringof ~ ".result shoud return an SQLite-compatible type");
+            T.stringof ~ ".result should return an SQLite-compatible type");
         static assert(variadicFunctionStyle!(T.accumulate) == Variadic.no,
             "variadic functions are not supported");
         static assert(variadicFunctionStyle!(T.result) == Variadic.no,
@@ -663,11 +678,17 @@ public:
         alias staticMap!(Unqual, ParameterTypeTuple!(T.accumulate)) PT;
         alias ReturnType!(T.result) RT;
 
+        static struct Context
+        {
+            T aggregate;
+            string functionName;
+        }
+
         extern(C) static
         void x_step(sqlite3_context* context, int argc, sqlite3_value** argv)
         {
-            auto aggregate = cast(T*) sqlite3_aggregate_context(context, T.sizeof);
-            if (!aggregate)
+            auto ctx = cast(Context*) sqlite3_user_data(context);
+            if (!ctx)
             {
                 sqlite3_result_error_nomem(context);
                 return;
@@ -678,10 +699,10 @@ public:
                 args[i] = getValue!type(argv[i]);
 
             try
-                aggregate.accumulate(args);
+                ctx.aggregate.accumulate(args);
             catch (Exception e)
             {
-                auto txt = "error in aggregate function %s(): %s".format(name, e.msg);
+                auto txt = "error in aggregate function %s(): %s".format(ctx.functionName, e.msg);
                 sqlite3_result_error(context, txt.toStringz, -1);
             }
         }
@@ -689,52 +710,66 @@ public:
         extern(C) static
         void x_final(sqlite3_context* context)
         {
-            auto aggregate = cast(T*) sqlite3_aggregate_context(context, T.sizeof);
-            if (!aggregate)
+            auto ctx = cast(Context*) sqlite3_user_data(context);
+            if (!ctx)
             {
                 sqlite3_result_error_nomem(context);
                 return;
             }
 
             try
-                setResult(context, aggregate.result());
+                setResult(context, ctx.aggregate.result());
             catch (Exception e)
             {
-                auto txt = "error in aggregate function %s(): %s".format(name, e.msg);
+                auto txt = "error in aggregate function %s(): %s".format(ctx.functionName, e.msg);
                 sqlite3_result_error(context, txt.toStringz, -1);
             }
         }
 
+        static if (is(T == class) || is(T == Interface))
+            enforce(agg, "Attempt to create an aggregate function from a null reference");
+
+        auto ctx = cast(Context*) GC.malloc(Context.sizeof);
+        GC.setAttr(ctx, GC.BlkAttr.NO_MOVE);
+        ctx.aggregate = agg;
+        ctx.functionName = name;
+
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, PT.length, SQLITE_UTF8 | det,
-            null, null, &x_step, &x_final, null));
+            anchorMem(cast(void*) ctx), null, &x_step, &x_final, &releaseMem));
     }
     ///
     unittest // Aggregate creation
     {
         import std.array : appender, join;
 
-        static struct Joiner
+        // The implementation of the aggregate function
+        struct Joiner
         {
-            Appender!(string[]) app;
-            string separator;
-
-            void accumulate(string word, string sep)
+            private
             {
-                separator = sep;
-                app.put(word);
+                Appender!(string[]) stringList;
+                string separator;
+            }
+
+            this(string separator)
+            {
+                this.separator = separator;
+            }
+
+            void accumulate(string word)
+            {
+                stringList.put(word);
             }
 
             string result()
             {
-                return join(app.data, separator);
+                return stringList.data.join(separator);
             }
         }
 
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (word TEXT)");
-        db.createAggregate!("strjoin", Joiner);
-
         auto statement = db.prepare("INSERT INTO test VALUES (?)");
         auto list = ["My", "cat", "is", "black"];
         foreach (word; list)
@@ -744,12 +779,19 @@ public:
             statement.reset();
         }
 
-        auto text = db.execute("SELECT strjoin(word, '-') FROM test").oneValue!string;
+        db.createAggregate("dash_join", Joiner("-"));
+        auto text = db.execute("SELECT dash_join(word) FROM test").oneValue!string;
         assert(text == "My-cat-is-black");
     }
 
-    /// Kept for backwards compatibility 
-    alias createAggregate(T, string name) = createAggregate!(name, T);
+    deprecated("Kept for compatibility. Use of the new createAggregate method is recommended.")
+    {
+        alias createAggregate(T, string name) = createAggregate!(name, T);
+        void createAggregate(string name, T)(Deterministic det = Deterministic.yes)
+        {
+            createAggregate(name, new T, det);
+        }
+    }
 
     /++
     Creates and registers a collation function in the database.
@@ -773,7 +815,7 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
     +/
-    void createCollation(string name, T)(T fun)
+    void createCollation(T)(string name, T fun)
     {
         static assert(isImplicitlyConvertible!(typeof(fun("a", "b")), int),
             "the collation function has a wrong signature");
@@ -789,7 +831,7 @@ public:
         extern (C) static
         int x_compare(void* ptr, int n1, const(void*) str1, int n2, const(void*) str2)
         {
-            auto dg = delegateUnwrap!T(ptr);
+            auto dg = delegateUnwrap!T(ptr).dlg;
             char[] s1, s2;
             s1.length = n1;
             s2.length = n2;
@@ -800,19 +842,20 @@ public:
 
         assert(p.handle);
         check(sqlite3_create_collation_v2(p.handle, name.toStringz, SQLITE_UTF8,
-            delegateWrap(fun), &x_compare, &ptrFree));
+            delegateWrap(fun, name), &x_compare, &ptrFree));
     }
     ///
     unittest // Collation creation
     {
-        static int my_collation(string s1, string s2)
+        // The implementation of the collation
+        int my_collation(string s1, string s2)
         {
             import std.uni;
             return icmp(s1, s2);
         }
 
         auto db = Database(":memory:");
-        db.createCollation!"my_coll"(&my_collation);
+        db.createCollation("my_coll", &my_collation);
         db.execute("CREATE TABLE test (word TEXT)");
 
         auto statement = db.prepare("INSERT INTO test (word) VALUES (?)");
@@ -838,8 +881,8 @@ public:
         extern(C) static
         void callback(void* ptr, int type, char* dbName, char* tableName, long rowid)
         {
-            return delegateUnwrap!(void delegate(int, string, string, long))(ptr)(
-                type, dbName.to!string, tableName.to!string, rowid);
+            auto dlg = delegateUnwrap!(void delegate(int, string, string, long))(ptr).dlg;
+            return dlg(type, dbName.to!string, tableName.to!string, rowid);
         }
 
         auto ptr = delegateWrap(hook);
@@ -877,7 +920,8 @@ public:
     {
         extern(C) static int callback(void* ptr)
         {
-            return delegateUnwrap!(int delegate())(ptr)();
+            auto dlg = delegateUnwrap!(int delegate())(ptr).dlg; 
+            return dlg();
         }
 
         auto ptr = delegateWrap(hook);
@@ -889,7 +933,8 @@ public:
     {
         extern(C) static void callback(void* ptr)
         {
-            delegateUnwrap!(void delegate())(ptr)();
+            auto dlg = delegateUnwrap!(void delegate())(ptr).dlg; 
+            dlg();
         }
 
         auto ptr = delegateWrap(hook);
@@ -924,13 +969,14 @@ public:
         handler = A delegate that should return 0 if the operation must be
         aborted or another value if it can continue.
 
-    See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/progress_handler.html).
     +/
     void setProgressHandler(int pace, int delegate() handler)
     {
         extern(C) static int callback(void* ptr)
         {
-            return delegateUnwrap!(int delegate())(ptr)();
+            auto dlg = delegateUnwrap!(int delegate())(ptr).dlg; 
+            return dlg();
         }
 
         ptrFree(p.progressHandler);
@@ -1081,10 +1127,10 @@ unittest // Different arguments and result types with createFunction
         return value;
     }
 
-    db.createFunction!"display_integer"(&display!int);
-    db.createFunction!"display_float"(&display!double);
-    db.createFunction!"display_text"(&display!string);
-    db.createFunction!"display_blob"(&display!(ubyte[]));
+    db.createFunction("display_integer", &display!int);
+    db.createFunction("display_float", &display!double);
+    db.createFunction("display_text", &display!string);
+    db.createFunction("display_blob", &display!(ubyte[]));
 
     assert(db.execute("SELECT display_integer(42)").oneValue!int == 42);
     assert(db.execute("SELECT display_float(3.14)").oneValue!double == 3.14);
@@ -1110,10 +1156,10 @@ unittest // Different Nullable argument types with createFunction
         return value;
     }
 
-    db.createFunction!"display_integer"(&display!(Nullable!int));
-    db.createFunction!"display_float"(&display!(Nullable!double));
-    db.createFunction!"display_text"(&display!(Nullable!string));
-    db.createFunction!"display_blob"(&display!(Nullable!(ubyte[])));
+    db.createFunction("display_integer", &display!(Nullable!int));
+    db.createFunction("display_float", &display!(Nullable!double));
+    db.createFunction("display_text", &display!(Nullable!string));
+    db.createFunction("display_blob", &display!(Nullable!(ubyte[])));
 
     assert(db.execute("SELECT display_integer(42)").oneValue!(Nullable!int) == 42);
     assert(db.execute("SELECT display_float(3.14)").oneValue!(Nullable!double) == 3.14);
@@ -2547,26 +2593,28 @@ unittest
     ]));
 }
 
-struct DelegateWrapper(T)
+struct WrappedDelegate(T)
 {
     T dlg;
+    string name;
 }
 
-void* delegateWrap(T)(T dlg)
+void* delegateWrap(T)(T dlg, string name = null)
     if (isCallable!T)
 {
     import std.functional;
     alias D = typeof(toDelegate(dlg));
-    auto d = cast(DelegateWrapper!D*) GC.malloc(DelegateWrapper!D.sizeof);
+    auto d = cast(WrappedDelegate!D*) GC.malloc(WrappedDelegate!D.sizeof);
     GC.setAttr(d, GC.BlkAttr.NO_MOVE);
     d.dlg = toDelegate(dlg);
+    d.name = name;
     return cast(void*) d;
 }
 
 auto delegateUnwrap(T)(void* ptr)
     if (isCallable!T)
 {
-    return (cast(DelegateWrapper!T*) ptr).dlg;
+    return cast(WrappedDelegate!T*) ptr;
 }
 
 extern(C) void ptrFree(void* ptr)
@@ -2654,7 +2702,8 @@ void setResult(T)(sqlite3_context* context, T value)
     if (isSomeString!T)
 {
     auto val = value.to!string;
-    sqlite3_result_text64(context, cast(const(char)*) anchorMem(cast(void*) val.ptr), val.length, &releaseMem, SQLITE_UTF8);
+    sqlite3_result_text64(context, cast(const(char)*) anchorMem(cast(void*) val.ptr),
+        val.length, &releaseMem, SQLITE_UTF8);
 }
 
 void setResult(T)(sqlite3_context* context, T value)
