@@ -1844,7 +1844,7 @@ struct Row
 
         index = The index of the column in the prepared statement or
         the name of the column, as specified in the prepared statement
-        with an AS clause.
+        with an AS clause. The index of the first column is 0.
 
     Returns:
         A value of type T. The returned value is T.init if the data type is NULL.
@@ -1855,9 +1855,7 @@ struct Row
         to T using $(D std.conv.to!T).
 
     Warnings:
-        The result is undefined if the index is out of range.
-
-        When using $(D PeekMode.slice), the data of the slice will be $(B is invalidated)
+        When using $(D PeekMode.slice), the data of the slice will be $(B invalidated)
         when the next row is accessed. A copy of the data has to be made somehow for it to 
         outlive the next step on the same statement.
 
