@@ -169,6 +169,8 @@ private:
     {
         sqlite3* handle;
         void* progressHandler;
+        void* traceCallback;
+        void* profileCallback;
 
         this(sqlite3* handle) @safe pure nothrow
         {
@@ -184,6 +186,8 @@ private:
             }
             handle = null;
             ptrFree(progressHandler);
+            ptrFree(traceCallback);
+            ptrFree(profileCallback);
         }
 
         @disable this(this);
@@ -983,6 +987,53 @@ public:
         auto ptr = delegateWrap(handler);
         sqlite3_progress_handler(p.handle, pace, &callback, ptr);
         p.progressHandler = ptr;
+    }
+
+    /++
+    Sets the trace callback.
+    Any previously set trace callback is released.
+
+    The string parameter that is passed to the callback is the SQL text of the statement being 
+    executed.
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/profile.html).
+    +/
+    void setTraceCallback(void delegate(string sql) traceCallback)
+    {
+        extern(C) static void callback(void* ptr, const char* str)
+        {
+            auto dlg = delegateUnwrap!(void delegate(string))(ptr).dlg; 
+            dlg(str.to!string);
+        }
+        
+        ptrFree(p.traceCallback);
+        auto ptr = delegateWrap(traceCallback);
+        sqlite3_trace(p.handle, &callback, ptr);
+        p.traceCallback = ptr;
+    }
+
+    /++
+    Sets the profile callback.
+    Any previously set profile callback is released.
+
+    The string parameter that is passed to the callback is the SQL text of the statement being 
+    executed. The time unit is defined in SQLite's documentation (subject to change, as the
+    functionality is experimental).
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/profile.html).
+    +/
+    void setProfileCallback(void delegate(string sql, ulong time) profileCallback)
+    {
+        extern(C) static void callback(void* ptr, const char* str, sqlite3_uint64 time)
+        {
+            auto dlg = delegateUnwrap!(void delegate(string, ulong))(ptr).dlg; 
+            dlg(str.to!string, time);
+        }
+        
+        ptrFree(p.profileCallback);
+        auto ptr = delegateWrap(profileCallback);
+        sqlite3_profile(p.handle, &callback, ptr);
+        p.profileCallback = ptr;
     }
 }
 ///
