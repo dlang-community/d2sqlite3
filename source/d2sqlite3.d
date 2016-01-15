@@ -181,7 +181,7 @@ private:
         {
             if (handle)
             {
-                auto result = sqlite3_close(handle);
+                auto result = sqlite3_close_v2(handle);
                 enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
             }
             handle = null;
@@ -304,7 +304,7 @@ public:
     +/
     void close()
     {
-        check(sqlite3_close(handle));
+        check(sqlite3_close_v2(handle));
         p.handle = null;
     }
 
