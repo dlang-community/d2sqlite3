@@ -1814,23 +1814,6 @@ struct Row
     automatically cast to T, without the overhead of using a wrapped $(D Variant)
     ($(D ColumnData)).
 
-    $(TABLE
-        $(TR $(TH Condition on T)
-             $(TH Requested database type))
-        $(TR $(TD isIntegral!T || isBoolean!T)
-             $(TD INTEGER, via $(D sqlite3_column_int64)))
-        $(TR $(TD isFloatingPoint!T)
-             $(TD FLOAT, via $(D sqlite3_column_double)))
-        $(TR $(TD isSomeString!T)
-             $(TD TEXT, via $(D sqlite3_column_text)))
-        $(TR $(TD isArray!T)
-             $(TD BLOB, via $(D sqlite3_column_blob)))
-        $(TR $(TD is(T == Nullable!U))
-             $(TD NULL or T))
-        $(TR $(TD Other types)
-             $(TD Compilation error))
-    )
-
     When using $(D peek) to retrieve a BLOB, you can use either:
         $(UL
             $(LI $(D peek!(ubyte[], PeekMode.copy)(index)),
@@ -1844,6 +1827,22 @@ struct Row
     Params:
         T = The type of the returned data. T must be a boolean, a built-in numeric type, a
         string, an array or a Variant.
+        $(TABLE
+            $(TR $(TH Condition on T)
+                 $(TH Requested database type))
+            $(TR $(TD isIntegral!T || isBoolean!T)
+                 $(TD INTEGER, via $(D sqlite3_column_int64)))
+            $(TR $(TD isFloatingPoint!T)
+                 $(TD FLOAT, via $(D sqlite3_column_double)))
+            $(TR $(TD isSomeString!T)
+                 $(TD TEXT, via $(D sqlite3_column_text)))
+            $(TR $(TD isArray!T)
+                 $(TD BLOB, via $(D sqlite3_column_blob)))
+            $(TR $(TD is(T == Nullable!U))
+                 $(TD NULL or T))
+            $(TR $(TD Other types)
+                 $(TD Compilation error))
+        )
 
         index = The index of the column in the prepared statement or
         the name of the column, as specified in the prepared statement
