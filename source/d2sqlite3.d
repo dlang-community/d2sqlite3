@@ -168,6 +168,9 @@ private:
     struct _Payload
     {
         sqlite3* handle;
+        void* updateHook;
+        void* commitHook;
+        void* rollbackHook;
         void* progressHandler;
         void* traceCallback;
         void* profileCallback;
@@ -181,10 +184,14 @@ private:
         {
             if (handle)
             {
+                sqlite3_progress_handler(handle, 0, null, null);
                 auto result = sqlite3_close(handle);
                 enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
             }
             handle = null;
+            ptrFree(updateHook);
+            ptrFree(commitHook);
+            ptrFree(rollbackHook);
             ptrFree(progressHandler);
             ptrFree(traceCallback);
             ptrFree(profileCallback);
@@ -876,11 +883,13 @@ public:
     }
 
     /++
-    Registers a delegate as the database's update hook. Any previously set hook is released.
+    Registers a delegate as the database's update hook.
+    Any previously set hook is released.
+    Pass a $(D null) value to disable the callback.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
-    void setUpdateHook(scope void delegate(int type, string dbName, string tableName, long rowid) hook)
+    void setUpdateHook(scope void delegate(int type, string dbName, string tableName, long rowid) updateHook)
     {
         extern(C) static
         void callback(void* ptr, int type, char* dbName, char* tableName, long rowid)
@@ -889,11 +898,20 @@ public:
             return dlg(type, dbName.to!string, tableName.to!string, rowid);
         }
 
-        auto ptr = delegateWrap(hook);
-        auto prev = sqlite3_update_hook(p.handle, &callback, ptr);
-        ptrFree(prev);
+        if (!updateHook)
+        {
+            ptrFree(p.updateHook);
+            sqlite3_update_hook(p.handle, null, null);
+        }
+        else
+        {
+            ptrFree(p.updateHook);
+            auto ptr = delegateWrap(updateHook);
+            sqlite3_update_hook(p.handle, &callback, ptr);
+            p.updateHook = ptr;
+        }
     }
-    ///
+
     unittest
     {
         int i;
@@ -911,16 +929,17 @@ public:
     }
 
     /++
-    Registers a delegate as the database's commit or rollback hook.
+    Registers a delegate as the database's commit hook.
     Any previously set hook is released.
 
     Params:
-        hook = For the commit hook, a delegate that should return 0 if the operation must be
-        aborted or another value if it can continue.
+        commitHook = A delegate that should return a non-zero value
+        if the operation must be rolled back, or 0 if it can commit.
+        Pass a $(D null) value to disable the callback.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
-    void setCommitHook(int delegate() hook)
+    void setCommitHook(int delegate() commitHook)
     {
         extern(C) static int callback(void* ptr)
         {
@@ -928,12 +947,28 @@ public:
             return dlg();
         }
 
-        auto ptr = delegateWrap(hook);
-        auto prev = sqlite3_commit_hook(p.handle, &callback, ptr);
-        ptrFree(prev);
+        if (!commitHook)
+        {
+            ptrFree(p.commitHook);
+            sqlite3_commit_hook(p.handle, null, null);
+        }
+        else
+        {
+            ptrFree(p.commitHook);
+            auto ptr = delegateWrap(commitHook);
+            sqlite3_commit_hook(p.handle, &callback, ptr);
+            p.commitHook = ptr;
+        }
     }
-    /// Ditto
-    void setRollbackHook(void delegate() hook)
+
+    /++
+    Registers a delegate as the database's rollback hook.
+    Any previously set hook is released.
+    Pass a $(D null) value to disable the callback.
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
+    +/
+    void setRollbackHook(void delegate() rollbackHook)
     {
         extern(C) static void callback(void* ptr)
         {
@@ -941,11 +976,20 @@ public:
             dlg();
         }
 
-        auto ptr = delegateWrap(hook);
-        auto prev = sqlite3_rollback_hook(p.handle, &callback, ptr);
-        ptrFree(prev);
+        if (!rollbackHook)
+        {
+            ptrFree(p.rollbackHook);
+            sqlite3_rollback_hook(p.handle, null, null);
+        }
+        else
+        {
+            ptrFree(p.rollbackHook);
+            auto ptr = delegateWrap(rollbackHook);
+            sqlite3_rollback_hook(p.handle, &callback, ptr);
+            p.rollbackHook = ptr;
+        }
     }
-    ///
+
     unittest
     {
         int i;
@@ -965,17 +1009,18 @@ public:
     /++
     Sets the progress handler.
     Any previously set handler is released.
+    Pass a $(D null) value to disable the callback.
 
     Params:
         pace = The approximate number of virtual machine instructions that are
         evaluated between successive invocations of the handler.
 
-        handler = A delegate that should return 0 if the operation must be
+        progressHandler = A delegate that should return 0 if the operation must be
         aborted or another value if it can continue.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/progress_handler.html).
     +/
-    void setProgressHandler(int pace, int delegate() handler)
+    void setProgressHandler(int pace, int delegate() progressHandler)
     {
         extern(C) static int callback(void* ptr)
         {
@@ -983,15 +1028,24 @@ public:
             return dlg();
         }
 
-        ptrFree(p.progressHandler);
-        auto ptr = delegateWrap(handler);
-        sqlite3_progress_handler(p.handle, pace, &callback, ptr);
-        p.progressHandler = ptr;
+        if (!progressHandler)
+        {
+            ptrFree(p.progressHandler);
+            sqlite3_trace(p.handle, null, null);
+        }
+        else
+        {
+            ptrFree(p.progressHandler);
+            auto ptr = delegateWrap(progressHandler);
+            sqlite3_progress_handler(p.handle, pace, &callback, ptr);
+            p.progressHandler = ptr;
+        }
     }
 
     /++
     Sets the trace callback.
     Any previously set trace callback is released.
+    Pass a $(D null) value to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being 
     executed.
@@ -1005,20 +1059,29 @@ public:
             auto dlg = delegateUnwrap!(void delegate(string))(ptr).dlg; 
             dlg(str.to!string);
         }
-        
-        ptrFree(p.traceCallback);
-        auto ptr = delegateWrap(traceCallback);
-        sqlite3_trace(p.handle, &callback, ptr);
-        p.traceCallback = ptr;
+
+        if (!traceCallback)
+        {
+            ptrFree(p.traceCallback);
+            sqlite3_trace(p.handle, null, null);
+        }
+        else
+        {
+            ptrFree(p.traceCallback);
+            auto ptr = delegateWrap(traceCallback);
+            sqlite3_trace(p.handle, &callback, ptr);
+            p.traceCallback = ptr;
+        }
     }
 
     /++
     Sets the profile callback.
     Any previously set profile callback is released.
+    Pass a $(D null) value to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being 
-    executed. The time unit is defined in SQLite's documentation (subject to change, as the
-    functionality is experimental).
+    executed. The time unit is defined in SQLite's documentation as nanoseconds (subject to change,
+    as the functionality is experimental).
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/profile.html).
     +/
@@ -1026,14 +1089,22 @@ public:
     {
         extern(C) static void callback(void* ptr, const char* str, sqlite3_uint64 time)
         {
-            auto dlg = delegateUnwrap!(void delegate(string, ulong))(ptr).dlg; 
+            auto dlg = delegateUnwrap!(void delegate(string, ulong))(ptr).dlg;
             dlg(str.to!string, time);
         }
-        
-        ptrFree(p.profileCallback);
-        auto ptr = delegateWrap(profileCallback);
-        sqlite3_profile(p.handle, &callback, ptr);
-        p.profileCallback = ptr;
+
+        if (!profileCallback)
+        {
+            ptrFree(p.profileCallback);
+            sqlite3_profile(p.handle, null, null);
+        }
+        else
+        {
+            ptrFree(p.profileCallback);
+            auto ptr = delegateWrap(profileCallback);
+            sqlite3_profile(p.handle, &callback, ptr);
+            p.profileCallback = ptr;
+        }
     }
 }
 ///
