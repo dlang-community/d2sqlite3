@@ -1042,9 +1042,9 @@ unittest // Documentation example
         // Retrieve "name", e.g. using opIndex(string), which returns a ColumnData.
         auto name = row["name"].as!string;
 
-        // Retrieve "score", which is at index 3, e.g. using the peek function,
+        // Retrieve "score", which is at index 2, e.g. using the peek function,
         // using a Nullable type
-        auto score = row.peek!(Nullable!double)(3);
+        auto score = row.peek!(Nullable!double)(2);
         if (!score.isNull) {
             // ...
         }
@@ -1759,8 +1759,6 @@ struct Row
     ColumnData opIndex(int index)
     {
         auto i = internalIndex(index);
-        enforce(i >= 0 && i <= backIndex,
-                new SqliteException(format("invalid column index: %d", i)));
 
         auto type = sqlite3_column_type(statement, i);
 
@@ -1785,7 +1783,7 @@ struct Row
                 return ColumnData(Variant(data.get));
 
             case SqliteType.BLOB:
-                auto data = peek!(Nullable!(ubyte[]))(index);
+                auto data = peek!(Nullable!(ubyte[]), PeekMode.copy)(index);
                 if (data.isNull)
                     return ColumnData.init;
                 return ColumnData(Variant(data.get));
@@ -2011,7 +2009,10 @@ struct Row
 private:
     int internalIndex(int index)
     {
-        return index + frontIndex;
+        auto i = index + frontIndex;
+        enforce(i >= 0 && i <= backIndex,
+            new SqliteException(format("invalid column index: %d", i)));
+        return i;
     }
 
     int indexForName(string name)
