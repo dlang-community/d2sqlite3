@@ -5,7 +5,7 @@ matrix:
     - d: dmd
       env:
         - COVERAGE=true
-        - secure: mgJNJpuloy6jncb1qf0Cvb0MBbkyMuA2TZo2jxczJv5B6axke4r+XF8WmVeg+Gm9FhFZD7mxcig4r4VvyKIFbnb/Nhlch1seagwwIBFqh86XN0FqzkTetAYn/dvbyuK7xHAgw7pdxery9vDtzjzM1osKbiwR4gd9J/+EY4xJqAU=
+        - secure: eCT5571JwRgcPq3PqOlBF7bgyJO+lhFQJyjn19ZW2xUTvoQq5Rxfjplgh2YgDD7INzaJ4vzFLVH/07+iWrQujYKjNyLTHumACPddLKBYRIAHC9glGyDkyAZ7vl53+f8Xfy0qNLcEPs56jsWRVS3QuSN1WuX1IAvQgsDcKKtYi7s=
     - d: ldc
     - d: gdc
   
