@@ -16,3 +16,6 @@ addons:
     packages:
     - libsqlite3-0
     - libsqlite3-dev
+
+script:
+  - dub test --compiler=$DC --verbose
