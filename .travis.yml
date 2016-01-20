@@ -17,5 +17,4 @@ before_install:
 install:
     - sudo apt-get -y install -t vivid libsqlite3-0 libsqlite3-dev
 
-script:
-    - dub test
+script: ./travis.sh
