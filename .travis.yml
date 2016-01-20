@@ -1,12 +1,13 @@
 language: d
 
-d:
-  - dmd
-    env:
-      - COVERAGE=true
-      - secure: "mgJNJpuloy6jncb1qf0Cvb0MBbkyMuA2TZo2jxczJv5B6axke4r+XF8WmVeg+Gm9FhFZD7mxcig4r4VvyKIFbnb/Nhlch1seagwwIBFqh86XN0FqzkTetAYn/dvbyuK7xHAgw7pdxery9vDtzjzM1osKbiwR4gd9J/+EY4xJqAU="
-  - ldc
-  - gdc
+matrix:
+  include:
+    - d: dmd
+      env:
+        - COVERAGE=true
+        - secure: mgJNJpuloy6jncb1qf0Cvb0MBbkyMuA2TZo2jxczJv5B6axke4r+XF8WmVeg+Gm9FhFZD7mxcig4r4VvyKIFbnb/Nhlch1seagwwIBFqh86XN0FqzkTetAYn/dvbyuK7xHAgw7pdxery9vDtzjzM1osKbiwR4gd9J/+EY4xJqAU=
+    - d: ldc
+    - d: gdc
   
 before_install:
   - echo 'deb http://us.archive.ubuntu.com/ubuntu/ vivid main universe' | sudo tee -a /etc/apt/sources.list
