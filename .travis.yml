@@ -1,4 +1,5 @@
 language: d
+sudo: false
 
 d:
     - dmd-2.070.0-b1
@@ -9,13 +10,12 @@ d:
     - ldc-0.16.1
     - gdc-5.2.0
     - gdc-4.9.2
-    
-before_install:
-    - echo 'deb http://us.archive.ubuntu.com/ubuntu/ vivid main universe' | sudo tee -a /etc/apt/sources.list
-    - sudo apt-get -y update
 
-install:
-    - sudo apt-get -y install -t vivid libsqlite3-0 libsqlite3-dev
+addons:
+  apt:
+    packages:
+    - libsqlite3-0
+    - libsqlite3-dev
 
 script:
-    - dub test
+  - dub test --compiler=$DC --verbose
