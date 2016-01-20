@@ -1,20 +1,18 @@
 language: d
 
 d:
-    - dmd-2.070.0-b1
-    - dmd-2.069.2
-    - dmd-2.068.2
-    - dmd-2.067.1
-    - dmd-2.066.1
-    - ldc-0.16.1
-    - gdc-5.2.0
-    - gdc-4.9.2
-    
+  - dmd
+    env:
+      - COVERAGE=true
+      - secure: "mgJNJpuloy6jncb1qf0Cvb0MBbkyMuA2TZo2jxczJv5B6axke4r+XF8WmVeg+Gm9FhFZD7mxcig4r4VvyKIFbnb/Nhlch1seagwwIBFqh86XN0FqzkTetAYn/dvbyuK7xHAgw7pdxery9vDtzjzM1osKbiwR4gd9J/+EY4xJqAU="
+  - ldc
+  - gdc
+  
 before_install:
-    - echo 'deb http://us.archive.ubuntu.com/ubuntu/ vivid main universe' | sudo tee -a /etc/apt/sources.list
-    - sudo apt-get -y update
+  - echo 'deb http://us.archive.ubuntu.com/ubuntu/ vivid main universe' | sudo tee -a /etc/apt/sources.list
+  - sudo apt-get -y update
 
 install:
-    - sudo apt-get -y install -t vivid libsqlite3-0 libsqlite3-dev
+  - sudo apt-get -y install -t vivid libsqlite3-0 libsqlite3-dev
 
 script: ./travis.sh
