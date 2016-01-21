@@ -304,15 +304,14 @@ public:
     }
 
     /++
-    Explicitly closes the database.
+    Explicitly closes the database connection.
 
-    After this function has been called successfully, using the database or one of its
-    prepared statement is an error.
+    After this function has been called successfully, using the database connection
+    or one of its prepared statement is an error.
     +/
     void close()
     {
-        check(sqlite3_close(handle));
-        p.handle = null;
+        destroy(p);
     }
 
     /++
@@ -1203,7 +1202,6 @@ unittest
     db.close();
 }
 
-
 unittest // Execute an SQL statement
 {
     auto db = Database(":memory:");
@@ -1213,7 +1211,7 @@ unittest // Execute an SQL statement
     db.run("ANALYZE; VACUUM;");
 }
 
-version (DigitalMars) unittest // Unexpected multiple statements
+version (none) unittest // Unexpected multiple statements
 {
     auto db = Database(":memory:");
     db.execute("BEGIN; CREATE TABLE test (val INTEGER); ROLLBACK;");
@@ -1344,6 +1342,14 @@ public:
     sqlite3_stmt* handle() @property
     {
         return p.handle;
+    }
+
+    /++
+    Explicitly finalizes the prepared statement.
+    +/
+    void finalize()
+    {
+        destroy(p);
     }
 
     /++
@@ -1556,14 +1562,21 @@ public:
 
 unittest
 {
-  Statement statement;
-  {
-    auto db = Database(":memory:");
-    statement = db.prepare(" SELECT 42 ");
-  }
-  assert(statement.execute.oneValue!int == 42);
+    Statement statement;
+    {
+        auto db = Database(":memory:");
+        statement = db.prepare(" SELECT 42 ");
+    }
+    assert(statement.execute.oneValue!int == 42);
 }
-    
+
+unittest
+{
+    auto db = Database(":memory:");
+    auto statement = db.prepare(" SELECT 42 ");
+    statement.finalize();
+}
+
 unittest // Simple parameters binding
 {
     auto db = Database(":memory:");
