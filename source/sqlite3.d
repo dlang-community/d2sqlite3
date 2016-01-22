@@ -39,11 +39,11 @@ extern (C) __gshared nothrow:
 /**
 ** CAPI3REF: Compile-Time Library Version Numbers
 */
-enum SQLITE_VERSION = "3.10.1";
+enum SQLITE_VERSION = "3.10.2";
 /// Ditto
-enum SQLITE_VERSION_NUMBER = 3010001;
+enum SQLITE_VERSION_NUMBER = 3010002;
 /// Ditto
-enum SQLITE_SOURCE_ID = "2016-01-13 21:41:56 254419c36766225ca542ae873ed38255e3fb8588";
+enum SQLITE_SOURCE_ID = "2016-01-20 15:27:19 17efb4209f97fb4971656086b138599a91a75ff9";
 
 /**
 ** CAPI3REF: Run-Time Library Version Numbers
@@ -108,18 +108,18 @@ int sqlite3_exec(
 */
 enum
 {
-    SQLITE_OK           = 0,   /** Successful result */
+    SQLITE_OK          = 0,    /** Successful result */
 /* beginning-of-error-codes */
 /// Ditto
-    SQLITE_ERROR        = 1,   /** SQL error or missing database */
-    SQLITE_INTERNAL     = 2,   /** Internal logic error in SQLite */
-    SQLITE_PERM         = 3,   /** Access permission denied */
-    SQLITE_ABORT        = 4,   /** Callback routine requested an abort */
-    SQLITE_BUSY         = 5,   /** The database file is locked */
-    SQLITE_LOCKED       = 6,   /** A table in the database is locked */
-    SQLITE_NOMEM        = 7,   /** A malloc() failed */
-    SQLITE_READONLY     = 8,   /** Attempt to write a readonly database */
-    SQLITE_INTERRUPT    = 9,   /** Operation terminated by sqlite3_interrupt()*/
+    SQLITE_ERROR       = 1,    /** SQL error or missing database */
+    SQLITE_INTERNAL    = 2,    /** Internal logic error in SQLite */
+    SQLITE_PERM        = 3,    /** Access permission denied */
+    SQLITE_ABORT       = 4,    /** Callback routine requested an abort */
+    SQLITE_BUSY        = 5,    /** The database file is locked */
+    SQLITE_LOCKED      = 6,    /** A table in the database is locked */
+    SQLITE_NOMEM       = 7,    /** A malloc() failed */
+    SQLITE_READONLY    = 8,    /** Attempt to write a readonly database */
+    SQLITE_INTERRUPT   = 9,    /** Operation terminated by sqlite3_interrupt()*/
     SQLITE_IOERR       = 10,   /** Some kind of disk I/O error occurred */
     SQLITE_CORRUPT     = 11,   /** The database disk image is malformed */
     SQLITE_NOTFOUND    = 12,   /** Unknown opcode in sqlite3_file_control() */
@@ -339,10 +339,10 @@ enum
     SQLITE_FCNTL_SYNC                = 21,
     SQLITE_FCNTL_COMMIT_PHASETWO     = 22,
     SQLITE_FCNTL_WIN32_SET_HANDLE    = 23,
-    SQLITE_FCNTL_WAL_BLOCK              = 24,
-    SQLITE_FCNTL_ZIPVFS                 = 25,
-    SQLITE_FCNTL_RBU                    = 26,
-    SQLITE_FCNTL_VFS_POINTER            = 27,
+    SQLITE_FCNTL_WAL_BLOCK           = 24,
+    SQLITE_FCNTL_ZIPVFS              = 25,
+    SQLITE_FCNTL_RBU                 = 26,
+    SQLITE_FCNTL_VFS_POINTER         = 27,
 }
 
 /**
@@ -660,8 +660,7 @@ enum
 */
 void *sqlite3_trace(sqlite3*, void function (void*,const char*) xTrace, void*);
 /// Ditto
-void *sqlite3_profile(sqlite3*,
-             void function (void*,const char*,sqlite3_uint64) xProfile, void*);
+void *sqlite3_profile(sqlite3*, void function (void*,const char*,sqlite3_uint64) xProfile, void*);
 
 /**
 ** CAPI3REF: Query Progress Callbacks
@@ -735,8 +734,8 @@ enum
     SQLITE_LIMIT_ATTACHED                  = 7,
     SQLITE_LIMIT_LIKE_PATTERN_LENGTH       = 8,
     SQLITE_LIMIT_VARIABLE_NUMBER           = 9,
-    SQLITE_LIMIT_TRIGGER_DEPTH            = 10,
-	SQLITE_LIMIT_WORKER_THREADS           = 11,
+    SQLITE_LIMIT_TRIGGER_DEPTH             = 10,
+    SQLITE_LIMIT_WORKER_THREADS            = 11,
 }
 
 /**
@@ -1006,8 +1005,7 @@ deprecated int sqlite3_expired(sqlite3_stmt*);
 deprecated int sqlite3_transfer_bindings(sqlite3_stmt*, sqlite3_stmt*);
 deprecated int sqlite3_global_recover();
 deprecated void sqlite3_thread_cleanup();
-deprecated int sqlite3_memory_alarm(void function(void*,sqlite3_int64,int),
-                      void*,sqlite3_int64);
+deprecated int sqlite3_memory_alarm(void function(void*,sqlite3_int64,int),void*,sqlite3_int64);
 
 /**
 ** CAPI3REF: Obtaining SQL Function Parameter Values
@@ -1399,20 +1397,20 @@ struct sqlite3_index_info
 {
     struct sqlite3_index_constraint
     {
-     int iColumn;            /** Column on left-hand side of constraint */
-     char op;                /** Constraint operator */
-     char usable;            /** True if this constraint is usable */
-     int iTermOffset;        /** Used internally - xBestIndex should ignore */
+        int iColumn;            /** Column on left-hand side of constraint */
+        char op;                /** Constraint operator */
+        char usable;            /** True if this constraint is usable */
+        int iTermOffset;        /** Used internally - xBestIndex should ignore */
     }
     struct sqlite3_index_orderby
     {
-     int iColumn;            /** Column number */
-     char desc;              /** True for DESC.  False for ASC. */
+        int iColumn;            /** Column number */
+        char desc;              /** True for DESC.  False for ASC. */
     }
     struct sqlite3_index_constraint_usage
     {
-    int argvIndex;           /** if >0, constraint is part of argv to xFilter */
-    char omit;               /** Do not code a test for this constraint */
+        int argvIndex;           /** if >0, constraint is part of argv to xFilter */
+        char omit;               /** Do not code a test for this constraint */
     }
     /* Inputs */
     int nConstraint;           /** Number of entries in aConstraint */
@@ -1436,13 +1434,13 @@ struct sqlite3_index_info
 */
 enum
 {
-    SQLITE_INDEX_SCAN_UNIQUE      = 1,
-    SQLITE_INDEX_CONSTRAINT_EQ    = 2,
-    SQLITE_INDEX_CONSTRAINT_GT    = 4,
-    SQLITE_INDEX_CONSTRAINT_LE    = 8,
-    SQLITE_INDEX_CONSTRAINT_LT    = 16,
-    SQLITE_INDEX_CONSTRAINT_GE    = 32,
-    SQLITE_INDEX_CONSTRAINT_MATCH = 64,
+    SQLITE_INDEX_SCAN_UNIQUE       = 1,
+    SQLITE_INDEX_CONSTRAINT_EQ     = 2,
+    SQLITE_INDEX_CONSTRAINT_GT     = 4,
+    SQLITE_INDEX_CONSTRAINT_LE     = 8,
+    SQLITE_INDEX_CONSTRAINT_LT     = 16,
+    SQLITE_INDEX_CONSTRAINT_GE     = 32,
+    SQLITE_INDEX_CONSTRAINT_MATCH  = 64,
     SQLITE_INDEX_CONSTRAINT_LIKE   = 65,
     SQLITE_INDEX_CONSTRAINT_GLOB   = 66,
     SQLITE_INDEX_CONSTRAINT_REGEXP = 67,
@@ -1611,12 +1609,13 @@ enum
     SQLITE_MUTEX_STATIC_PRNG      = 5,  /** sqlite3_random() */
     SQLITE_MUTEX_STATIC_LRU       = 6,  /** lru page list */
     SQLITE_MUTEX_STATIC_LRU2      = 7,  /** NOT USED */
-    SQLITE_MUTEX_STATIC_PMEM      = 7,
-    SQLITE_MUTEX_STATIC_APP1      = 8,
-    SQLITE_MUTEX_STATIC_APP2      = 9,
-    SQLITE_MUTEX_STATIC_APP3      = 10,
-    SQLITE_MUTEX_STATIC_VFS2      = 12,
-    SQLITE_MUTEX_STATIC_VFS3      = 13,
+    SQLITE_MUTEX_STATIC_PMEM      = 7,  /** sqlite3PageMalloc() */
+    SQLITE_MUTEX_STATIC_APP1      = 8,  /** For use by application */
+    SQLITE_MUTEX_STATIC_APP2      = 9,  /** For use by application */
+    SQLITE_MUTEX_STATIC_APP3      = 10, /** For use by application */
+    SQLITE_MUTEX_STATIC_VFS1      = 11, /** For use by built-in VFS */
+    SQLITE_MUTEX_STATIC_VFS2      = 12, /** For use by extension VFS */
+    SQLITE_MUTEX_STATIC_VFS3      = 13, /** For use by application VFS */
 }
 
 /**
@@ -1639,12 +1638,12 @@ int sqlite3_test_control(int op, ...);
 */
 enum
 {
-    SQLITE_TESTCTRL_FIRST                    = 5,
-    SQLITE_TESTCTRL_PRNG_SAVE                = 5,
-    SQLITE_TESTCTRL_PRNG_RESTORE             = 6,
-    SQLITE_TESTCTRL_PRNG_RESET               = 7,
-    SQLITE_TESTCTRL_BITVEC_TEST              = 8,
-    SQLITE_TESTCTRL_FAULT_INSTALL            = 9,
+    SQLITE_TESTCTRL_FIRST                   = 5,
+    SQLITE_TESTCTRL_PRNG_SAVE               = 5,
+    SQLITE_TESTCTRL_PRNG_RESTORE            = 6,
+    SQLITE_TESTCTRL_PRNG_RESET              = 7,
+    SQLITE_TESTCTRL_BITVEC_TEST             = 8,
+    SQLITE_TESTCTRL_FAULT_INSTALL           = 9,
     SQLITE_TESTCTRL_BENIGN_MALLOC_HOOKS     = 10,
     SQLITE_TESTCTRL_PENDING_BYTE            = 11,
     SQLITE_TESTCTRL_ASSERT                  = 12,
@@ -1659,8 +1658,9 @@ enum
     SQLITE_TESTCTRL_VDBE_COVERAGE           = 21,
     SQLITE_TESTCTRL_BYTEORDER               = 22,
     SQLITE_TESTCTRL_ISINIT                  = 23,
+    SQLITE_TESTCTRL_SORTER_MMAP             = 24,
     SQLITE_TESTCTRL_IMPOSTER                = 25,
-	SQLITE_TESTCTRL_LAST                    = 25,
+    SQLITE_TESTCTRL_LAST                    = 25,
 }
 
 /**
@@ -1775,7 +1775,7 @@ struct sqlite3_pcache_methods
     void  function (sqlite3_pcache*, void*, uint oldKey, uint newKey) xRekey;
     void  function (sqlite3_pcache*, uint iLimit) xTruncate;
     void  function (sqlite3_pcache*) xDestroy;
-};
+}
 
 /**
 ** CAPI3REF: Online Backup Object
@@ -1866,9 +1866,9 @@ int sqlite3_wal_checkpoint_v2(
 */
 enum
 {
-    SQLITE_CHECKPOINT_PASSIVE = 0,
-    SQLITE_CHECKPOINT_FULL    = 1,
-    SQLITE_CHECKPOINT_RESTART = 2,
+    SQLITE_CHECKPOINT_PASSIVE  = 0,
+    SQLITE_CHECKPOINT_FULL     = 1,
+    SQLITE_CHECKPOINT_RESTART  = 2,
     SQLITE_CHECKPOINT_TRUNCATE = 3,
 }
 
@@ -2026,63 +2026,66 @@ enum
 struct Fts5Context;
 /// Ditto
 alias fts5_extension_function = void function(
-  const Fts5ExtensionApi *pApi,
-  Fts5Context *pFts,
-  sqlite3_context *pCtx,
-  int nVal,
-  sqlite3_value **apVal
+    const Fts5ExtensionApi *pApi,
+    Fts5Context *pFts,
+    sqlite3_context *pCtx,
+    int nVal,
+    sqlite3_value **apVal
 );
 /// Ditto
-struct Fts5PhraseIter {
-  const(ubyte) *a;
-  const(ubyte) *b;
+struct Fts5PhraseIter
+{
+    const(ubyte) *a;
+    const(ubyte) *b;
 }
 /// Ditto
-struct Fts5ExtensionApi {
-  int iVersion;
-  void* function(Fts5Context*) xUserData;
-  int function(Fts5Context*) xColumnCount;
-  int function(Fts5Context*, sqlite3_int64 *pnRow) xRowCount;
-  int function(Fts5Context*, int iCol, sqlite3_int64 *pnToken) xColumnTotalSize;
-  int function(Fts5Context*, 
-    const char *pText, int nText,
-    void *pCtx,
-    int function(void*, int, const char*, int, int, int) xToken
-  ) xTokenize;
-  int function(Fts5Context*) xPhraseCount;
-  int function(Fts5Context*, int iPhrase) xPhraseSize;
-  int function(Fts5Context*, int *pnInst) xInstCount;
-  int function(Fts5Context*, int iIdx, int *piPhrase, int *piCol, int *piOff) xInst;
-  sqlite3_int64 function(Fts5Context*) xRowid;
-  int function(Fts5Context*, int iCol, const char **pz, int *pn) xColumnText;
-  int function(Fts5Context*, int iCol, int *pnToken) xColumnSize;
-  int function(Fts5Context*, int iPhrase, void *pUserData,
-    int function(const Fts5ExtensionApi*,Fts5Context*,void*)
-  ) xQueryPhrase;
-  int function(Fts5Context*, void *pAux, void function(void*) xDelete) xSetAuxdata;
-  void* function(Fts5Context*, int bClear) xGetAuxdata;
-  void function(Fts5Context*, int iPhrase, Fts5PhraseIter*, int*, int*) xPhraseFirst;
-  void function(Fts5Context*, Fts5PhraseIter*, int *piCol, int *piOff) xPhraseNext;
+struct Fts5ExtensionApi
+{
+    int iVersion;
+    void* function(Fts5Context*) xUserData;
+    int function(Fts5Context*) xColumnCount;
+    int function(Fts5Context*, sqlite3_int64 *pnRow) xRowCount;
+    int function(Fts5Context*, int iCol, sqlite3_int64 *pnToken) xColumnTotalSize;
+    int function(Fts5Context*, 
+        const char *pText, int nText,
+        void *pCtx,
+        int function(void*, int, const char*, int, int, int) xToken
+    ) xTokenize;
+    int function(Fts5Context*) xPhraseCount;
+    int function(Fts5Context*, int iPhrase) xPhraseSize;
+    int function(Fts5Context*, int *pnInst) xInstCount;
+    int function(Fts5Context*, int iIdx, int *piPhrase, int *piCol, int *piOff) xInst;
+    sqlite3_int64 function(Fts5Context*) xRowid;
+    int function(Fts5Context*, int iCol, const char **pz, int *pn) xColumnText;
+    int function(Fts5Context*, int iCol, int *pnToken) xColumnSize;
+    int function(Fts5Context*, int iPhrase, void *pUserData,
+        int function(const Fts5ExtensionApi*,Fts5Context*,void*)
+    ) xQueryPhrase;
+    int function(Fts5Context*, void *pAux, void function(void*) xDelete) xSetAuxdata;
+    void* function(Fts5Context*, int bClear) xGetAuxdata;
+    void function(Fts5Context*, int iPhrase, Fts5PhraseIter*, int*, int*) xPhraseFirst;
+    void function(Fts5Context*, Fts5PhraseIter*, int *piCol, int *piOff) xPhraseNext;
 }
 /// Ditto
 struct Fts5Tokenizer;
-struct fts5_tokenizer {
-  int function(void*, const char **azArg, int nArg, Fts5Tokenizer **ppOut) xCreate;
-  void function(Fts5Tokenizer*) xDelete;
-  int function(Fts5Tokenizer*, 
-      void *pCtx,
-      int flags,
-      const char *pText, int nText, 
-      int function(
+struct fts5_tokenizer
+{
+    int function(void*, const char **azArg, int nArg, Fts5Tokenizer **ppOut) xCreate;
+    void function(Fts5Tokenizer*) xDelete;
+    int function(Fts5Tokenizer*, 
         void *pCtx,
-        int tflags,
-        const char *pToken,
-        int nToken,
-        int iStart,
-        int iEnd  
-      ) xToken
-  ) xTokenize;
-};
+        int flags,
+        const char *pText, int nText, 
+        int function(
+            void *pCtx,
+            int tflags,
+            const char *pToken,
+            int nToken,
+            int iStart,
+            int iEnd  
+        ) xToken
+    ) xTokenize;
+}
 /// Ditto
 enum FTS5_TOKENIZE_QUERY     = 0x0001;
 /// Ditto
@@ -2094,29 +2097,30 @@ enum FTS5_TOKENIZE_AUX       = 0x0008;
 /// Ditto
 enum FTS5_TOKEN_COLOCATED    = 0x0001;
 /// Ditto
-struct fts5_api {
-  int iVersion;
+struct fts5_api
+{
+    int iVersion;
 
-  int function(
-    fts5_api *pApi,
-    const char *zName,
-    void *pContext,
-    fts5_tokenizer *pTokenizer,
-    void function(void*) xDestroy
-  ) xCreateTokenizer;
+    int function(
+        fts5_api *pApi,
+        const char *zName,
+        void *pContext,
+        fts5_tokenizer *pTokenizer,
+        void function(void*) xDestroy
+    ) xCreateTokenizer;
 
-  int function(
-    fts5_api *pApi,
-    const char *zName,
-    void **ppContext,
-    fts5_tokenizer *pTokenizer
-  ) xFindTokenizer;
+    int function(
+        fts5_api *pApi,
+        const char *zName,
+        void **ppContext,
+        fts5_tokenizer *pTokenizer
+    ) xFindTokenizer;
 
-  int function(
-    fts5_api *pApi,
-    const char *zName,
-    void *pContext,
-    fts5_extension_function xFunction,
-    void function(void*) xDestroy
-  ) xCreateFunction;
+    int function(
+        fts5_api *pApi,
+        const char *zName,
+        void *pContext,
+        fts5_extension_function xFunction,
+        void function(void*) xDestroy
+    ) xCreateFunction;
 }
