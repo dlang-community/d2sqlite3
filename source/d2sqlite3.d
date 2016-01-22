@@ -2167,6 +2167,9 @@ struct Row
         Determines the name of the database, table, or column that is the origin of a
         particular result column in SELECT statement.
 
+        These methods are defined only when the library is compiled with
+        $(D -version=SQLITE_ENABLE_COLUMN_METADATA).
+
         See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
         +/
         string columnDatabaseName(int index)
