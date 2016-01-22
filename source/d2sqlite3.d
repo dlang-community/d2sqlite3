@@ -104,8 +104,11 @@ import std.traits;
 import std.typecons;
 import std.typetuple;
 import std.variant;
-import core.stdc.string : memcpy;
 import core.memory : GC;
+import core.stdc.string : memcpy;
+import core.stdc.stdlib : malloc, free;
+debug import std.stdio;
+
 public import sqlite3;
 
 unittest // Documentation example
@@ -258,8 +261,7 @@ See_Also: $(LINK http://www.sqlite.org/c3ref/config.html).
 void config(Args...)(int code, Args args)
 {
     auto result = sqlite3_config(code, args);
-    enforce(result == SQLITE_OK,
-            new SqliteException("Configuration: error %s".format(result)));
+    enforce(result == SQLITE_OK, new SqliteException("Configuration: error %s".format(result)));
 }
 version (D_Ddoc)
 {
@@ -349,7 +351,7 @@ private:
         }
 
         @disable this(this);
-        void opAssign(_Payload) { assert(false); }
+        @disable void opAssign(_Payload);
     }
 
     alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
@@ -376,8 +378,7 @@ public:
     {
         sqlite3* hdl;
         auto result = sqlite3_open_v2(path.toStringz, &hdl, flags, null);
-        enforce(result == SQLITE_OK, new SqliteException(p.handle
-                ? errmsg(p.handle) : "Error opening the database", result));
+        enforce(result == SQLITE_OK, new SqliteException(p.handle ? errmsg(p.handle) : "Error opening the database", result));
         p = Payload(hdl);
     }
 
@@ -511,6 +512,13 @@ public:
                 DROP TABLE test1;
                 DROP TABLE test2;`);
     }
+    unittest
+    {
+        auto db = Database(":memory:");
+        int i;
+        db.run(`SELECT 1; SELECT 2;`, (ResultRange r) { i = r.oneValue!int; return false; });
+        assert(i == 1);
+    }
 
     /++
     Prepares (compiles) a single SQL statement and returngs it, so that it can be bound to
@@ -564,6 +572,16 @@ public:
     int errorCode() @property nothrow
     {
         return p.handle ? sqlite3_errcode(p.handle) : 0;
+    }
+    unittest
+    {
+        auto db = Database(":memory:");
+        db.run(`SELECT 1;`);
+        assert(db.errorCode == SQLITE_OK);
+        try
+            db.run(`DROP TABLE non_existent`);
+        catch (SqliteException e)
+            assert(db.errorCode == SQLITE_ERROR);
     }
 
     version (SQLITE_OMIT_LOAD_EXTENSION) {}
@@ -629,13 +647,11 @@ public:
         result is the same when called with the same parameters. Recent versions of SQLite
         perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
 
-    Bugs: Does not work with the opCall operators of structs.
-
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
     void createFunction(T)(string name, T fun, Deterministic det = Deterministic.yes)
+        if (is(T == function) || is(T == delegate))
     {
-        static assert(isCallable!fun, "expecting a callable");
         static assert(variadicFunctionStyle!(fun) == Variadic.no
                 || is(ParameterTypeTuple!fun == TypeTuple!(Variant[])),
                 "only type-safe variadic functions with Variant arguments are supported");
@@ -796,6 +812,7 @@ public:
 
     deprecated("Kept for compatibility. Use of the new createFunction method is recommended.")
     void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
+            if (is(T == function) || is(T == delegate))
     {
         createFunction(name, fun, det);
     }
@@ -977,6 +994,7 @@ public:
     See_Also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
     +/
     void createCollation(T)(string name, T fun)
+        if (is(T == function) || is(T == delegate))
     {
         static assert(isImplicitlyConvertible!(typeof(fun("a", "b")), int),
             "the collation function has a wrong signature");
@@ -1039,7 +1057,7 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
-    void setUpdateHook(scope void delegate(int type, string dbName, string tableName, long rowid) updateHook)
+    void setUpdateHook(void delegate(int type, string dbName, string tableName, long rowid) updateHook)
     {
         extern(C) static
         void callback(void* ptr, int type, char* dbName, char* tableName, long rowid)
@@ -1048,18 +1066,9 @@ public:
             return dlg(type, dbName.to!string, tableName.to!string, rowid);
         }
 
-        if (!updateHook)
-        {
-            ptrFree(p.updateHook);
-            sqlite3_update_hook(p.handle, null, null);
-        }
-        else
-        {
-            ptrFree(p.updateHook);
-            auto ptr = delegateWrap(updateHook);
-            sqlite3_update_hook(p.handle, &callback, ptr);
-            p.updateHook = ptr;
-        }
+        ptrFree(p.updateHook);
+        p.updateHook = delegateWrap(updateHook);
+        sqlite3_update_hook(p.handle, &callback, p.updateHook);
     }
 
     unittest
@@ -1076,6 +1085,7 @@ public:
         db.execute("CREATE TABLE test (val INTEGER)");
         db.execute("INSERT INTO test VALUES (100)");
         assert(i == 42);
+        db.setUpdateHook(null);
     }
 
     /++
@@ -1097,18 +1107,9 @@ public:
             return dlg();
         }
 
-        if (!commitHook)
-        {
-            ptrFree(p.commitHook);
-            sqlite3_commit_hook(p.handle, null, null);
-        }
-        else
-        {
-            ptrFree(p.commitHook);
-            auto ptr = delegateWrap(commitHook);
-            sqlite3_commit_hook(p.handle, &callback, ptr);
-            p.commitHook = ptr;
-        }
+        ptrFree(p.commitHook);
+        p.commitHook = delegateWrap(commitHook);
+        sqlite3_commit_hook(p.handle, &callback, p.commitHook);
     }
 
     /++
@@ -1126,18 +1127,9 @@ public:
             dlg();
         }
 
-        if (!rollbackHook)
-        {
-            ptrFree(p.rollbackHook);
-            sqlite3_rollback_hook(p.handle, null, null);
-        }
-        else
-        {
-            ptrFree(p.rollbackHook);
-            auto ptr = delegateWrap(rollbackHook);
-            sqlite3_rollback_hook(p.handle, &callback, ptr);
-            p.rollbackHook = ptr;
-        }
+        ptrFree(p.rollbackHook);
+        p.rollbackHook = delegateWrap(rollbackHook);
+        sqlite3_rollback_hook(p.handle, &callback, p.rollbackHook);
     }
 
     unittest
@@ -1154,6 +1146,8 @@ public:
         db.execute("CREATE TABLE test (val INTEGER)");
         db.commit();
         assert(i == 42);
+        db.setCommitHook(null);
+        db.setRollbackHook(null);
     }
 
     /++
@@ -1178,18 +1172,9 @@ public:
             return dlg();
         }
 
-        if (!progressHandler)
-        {
-            ptrFree(p.progressHandler);
-            sqlite3_trace(p.handle, null, null);
-        }
-        else
-        {
-            ptrFree(p.progressHandler);
-            auto ptr = delegateWrap(progressHandler);
-            sqlite3_progress_handler(p.handle, pace, &callback, ptr);
-            p.progressHandler = ptr;
-        }
+        ptrFree(p.progressHandler);
+        p.progressHandler = delegateWrap(progressHandler);
+        sqlite3_progress_handler(p.handle, pace, &callback, p.progressHandler);
     }
 
     /++
@@ -1210,18 +1195,9 @@ public:
             dlg(str.to!string);
         }
 
-        if (!traceCallback)
-        {
-            ptrFree(p.traceCallback);
-            sqlite3_trace(p.handle, null, null);
-        }
-        else
-        {
-            ptrFree(p.traceCallback);
-            auto ptr = delegateWrap(traceCallback);
-            sqlite3_trace(p.handle, &callback, ptr);
-            p.traceCallback = ptr;
-        }
+        ptrFree(p.traceCallback);
+        p.traceCallback = delegateWrap(traceCallback);
+        sqlite3_trace(p.handle, &callback, p.traceCallback);
     }
 
     /++
@@ -1243,18 +1219,9 @@ public:
             dlg(str.to!string, time);
         }
 
-        if (!profileCallback)
-        {
-            ptrFree(p.profileCallback);
-            sqlite3_profile(p.handle, null, null);
-        }
-        else
-        {
-            ptrFree(p.profileCallback);
-            auto ptr = delegateWrap(profileCallback);
-            sqlite3_profile(p.handle, &callback, ptr);
-            p.profileCallback = ptr;
-        }
+        ptrFree(p.profileCallback);
+        p.profileCallback = delegateWrap(profileCallback);
+        sqlite3_profile(p.handle, &callback, p.profileCallback);
     }
 }
 
@@ -1368,6 +1335,30 @@ unittest // Different Nullable argument types with createFunction
     assert(db.execute("SELECT display_blob(NULL)").oneValue!(Nullable!(ubyte[])).isNull);
 }
 
+unittest // Callable struct with createFunction
+{
+    import std.functional : toDelegate;
+
+    struct Fun
+    {
+        int factor;
+
+        this(int factor)
+        {
+            this.factor = factor;
+        }
+
+        int opCall(int value)
+        {
+            return value * factor;
+        }
+    }
+
+    auto f = Fun(2);
+    auto db = Database(":memory:");
+    db.createFunction("my_fun", toDelegate(f));
+    assert(db.execute("SELECT my_fun(4)").oneValue!int == 8);
+}
 
 /++
 An SQLite statement execution.
@@ -1391,7 +1382,7 @@ private:
         }
 
         @disable this(this);
-        void opAssign(_Payload) { assert(false); }
+        @disable void opAssign(_Payload);
     }
     alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
     Payload p;
@@ -1821,7 +1812,7 @@ private:
         int state;
 
         @disable this(this);
-        void opAssign(_Payload) { assert(false); }
+        @disable void opAssign(_Payload);
     }
     alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
     Payload p;
@@ -1902,7 +1893,13 @@ unittest // Refcount tests
 
 
 /++
-A SQLite row, implemented as a random-access range of ColumnData.
+A row returned when stepping over an SQLite prepared statement.
+
+The data of each column can be retrieved:
+$(UL
+    $(LI using Row as a random-access range of ColumnData.)
+    $(LI using the more direct peek functions.)
+)
 +/
 struct Row
 {
@@ -2017,7 +2014,7 @@ struct Row
     }
 
     /++
-    Returns the data of a column.
+    Returns the data of a column directly.
 
     Contrary to $(D opIndex), the $(D peek) functions return the data directly,
     automatically cast to T, without the overhead of using a wrapped $(D Variant)
@@ -2812,18 +2809,21 @@ struct WrappedDelegate(T)
 }
 
 void* delegateWrap(T)(T dlg, string name = null)
-    if (isCallable!T)
+    if (is(T == function) || is(T == delegate))
 {
-    import std.functional;
+    import std.functional : toDelegate;
+
+    if (dlg is null)
+        return null;
+
     alias D = typeof(toDelegate(dlg));
-    auto d = cast(WrappedDelegate!D*) GC.malloc(WrappedDelegate!D.sizeof);
-    GC.setAttr(d, GC.BlkAttr.NO_MOVE);
+    auto d = cast(WrappedDelegate!D*) malloc(WrappedDelegate!D.sizeof);
     d.dlg = toDelegate(dlg);
     d.name = name;
     return cast(void*) d;
 }
 
-auto delegateUnwrap(T)(void* ptr)
+WrappedDelegate!T* delegateUnwrap(T)(void* ptr)
     if (isCallable!T)
 {
     return cast(WrappedDelegate!T*) ptr;
@@ -2831,10 +2831,8 @@ auto delegateUnwrap(T)(void* ptr)
 
 extern(C) void ptrFree(void* ptr)
 {
-    if (ptr)
-        GC.free(ptr);
+    free(ptr);
 }
-
 
 // Anchors and returns a pointer to D memory, so that it will not
 // be moved or collected. For use with releaseMem.
