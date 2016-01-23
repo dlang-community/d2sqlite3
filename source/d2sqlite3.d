@@ -1602,7 +1602,10 @@ public:
     void inject(T)(ref const(T) obj)
         if (is(T == struct))
     {
-        foreach (i, field; FieldNameTuple!T)
+        // Copy of FieldNameTuple, as long as GDC doesn't have it.
+        alias FieldNames = staticMap!(NameOf, T.tupleof[0 .. $ - isNested!T]);
+
+        foreach (i, field; FieldNames)
             bind(i + 1, __traits(getMember, obj, field));
         execute();
         reset();
@@ -2280,7 +2283,9 @@ struct Row
     T as(T)(Flag!"checkFieldName" flag = Yes.checkFieldName)
         if (is(T == struct))
     {
-        alias FieldNames = FieldNameTuple!T;
+        // Copy of FieldNameTuple, as long as GDC doesn't have it.
+        alias FieldNames = staticMap!(NameOf, T.tupleof[0 .. $ - isNested!T]);
+
         alias FieldTypes = FieldTypeTuple!T;
 
         T obj;
@@ -3040,3 +3045,6 @@ void setResult(T : Nullable!U, U...)(sqlite3_context* context, T value)
     else
         setResult(context, value.get);
 }
+
+// Copy from std.traits, as long as GDC doesn't have it.
+enum NameOf(alias T) = T.stringof;
