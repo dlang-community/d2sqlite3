@@ -586,42 +586,42 @@ public:
             extern(C) static
             void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
-                auto args = appender!(Variant[]);
-                
-                for (int i = 0; i < argc; ++i)
-                {
-                    auto value = argv[i];
-                    auto type = sqlite3_value_type(value);
-                    
-                    final switch (type)
-                    {
-                        case SqliteType.INTEGER:
-                            args.put(Variant(getValue!long(value)));
-                            break;
-                            
-                        case SqliteType.FLOAT:
-                            args.put(Variant(getValue!double(value)));
-                            break;
-                            
-                        case SqliteType.TEXT:
-                            args.put(Variant(getValue!string(value)));
-                            break;
-                            
-                        case SqliteType.BLOB:
-                            args.put(Variant(getValue!(ubyte[])(value)));
-                            break;
-                            
-                        case SqliteType.NULL:
-                            args.put(Variant(null));
-                            break;
-                    }
-                }
-                
-                auto ptr = sqlite3_user_data(context);
-
                 string name;
                 try
                 {
+                    auto args = appender!(Variant[]);
+                
+                    for (int i = 0; i < argc; ++i)
+                    {
+                        auto value = argv[i];
+                        auto type = sqlite3_value_type(value);
+                        
+                        final switch (type)
+                        {
+                            case SqliteType.INTEGER:
+                                args.put(Variant(getValue!long(value)));
+                                break;
+                                
+                            case SqliteType.FLOAT:
+                                args.put(Variant(getValue!double(value)));
+                                break;
+                                
+                            case SqliteType.TEXT:
+                                args.put(Variant(getValue!string(value)));
+                                break;
+                                
+                            case SqliteType.BLOB:
+                                args.put(Variant(getValue!(ubyte[])(value)));
+                                break;
+                                
+                            case SqliteType.NULL:
+                                args.put(Variant(null));
+                                break;
+                        }
+                    }
+                    
+                    auto ptr = sqlite3_user_data(context);
+
                     auto wrappedDelegate = delegateUnwrap!T(ptr);
                     auto dlg = wrappedDelegate.dlg;
                     name = wrappedDelegate.name;
@@ -646,16 +646,16 @@ public:
             extern(C) static
             void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
-                PT args;
-                
-                foreach (i, type; PT)
-                    args[i] = getValue!type(argv[i]);
-                
-                auto ptr = sqlite3_user_data(context);
-
                 string name;
                 try
                 {
+                    PT args;
+                    
+                    foreach (i, type; PT)
+                        args[i] = getValue!type(argv[i]);
+                    
+                    auto ptr = sqlite3_user_data(context);
+
                     auto wrappedDelegate = delegateUnwrap!T(ptr);
                     auto dlg = wrappedDelegate.dlg;
                     name = wrappedDelegate.name;
@@ -798,11 +798,13 @@ public:
             }
 
             PT args;
-            foreach (i, type; PT)
-                args[i] = getValue!type(argv[i]);
-
             try
+            {
+                foreach (i, type; PT)
+                    args[i] = getValue!type(argv[i]);
+                
                 ctx.aggregate.accumulate(args);
+            }
             catch (Exception e)
             {
                 auto txt = "error in aggregate function %s(): %s".format(ctx.functionName, e.msg);
