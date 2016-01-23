@@ -2272,8 +2272,12 @@ struct Row
     /++
     Returns a struct with field members populated from the row's data.
 
-    The order of the struct members must be the same as the order of the columns in the
-    prepared statement.
+    Neither the names of the fields nor the names of the columns are used on checked. The fields
+    are filled with the columns' data in order. Thus, the order of the struct members must be the
+    same as the order of the columns in the prepared statement.
+
+    SQLite's conversion rules will be used. For instance, if a $(D string) field has the same rank
+    as an INTEGER column, the field's data will be the string representation of the integer.
     +/
     T as(T)()
         if (is(T == struct))
