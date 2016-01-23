@@ -66,15 +66,18 @@ unittest // Documentation example
     statement.bind(":name", "John");
     statement.bind(2, 77.5);
     statement.execute();
-
     statement.reset(); // Need to reset the statement after execution.
 
     // Bind muliple values at once
     statement.bindAll("John", null);
     statement.execute();
+    statement.reset();
+
+    // Bind, execute and reset in one call
+    statement.inject("Clara", 88.1);
 
     // Count the changes
-    assert(db.totalChanges == 2);
+    assert(db.totalChanges == 3);
 
     // Count the Johns in the table.
     auto count = db.execute("SELECT count(*) FROM person WHERE name == 'John'")
@@ -95,19 +98,10 @@ unittest // Documentation example
         // Retrieve "score", which is at index 2, e.g. using the peek function,
         // using a Nullable type
         auto score = row.peek!(Nullable!double)(2);
-        if (!score.isNull) {
+        if (!score.isNull)
+        {
             // ...
         }
-    }
-
-    // Read all the table in memory at once
-    auto data = RowCache(db.execute("SELECT * FROM person"));
-    foreach (row; data)
-    {
-        auto id = row[0].as!long;
-        auto last = row["name"].as!string;
-        auto score = row[2].as!(Nullable!double);
-        // etc.
     }
 }
 
@@ -647,10 +641,9 @@ public:
             void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
                 string name;
+                PT args;
                 try
                 {
-                    PT args;
-                    
                     foreach (i, type; PT)
                         args[i] = getValue!type(argv[i]);
                     
@@ -2349,17 +2342,8 @@ unittest // Row random-access range interface
     {
         db.execute("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER, d INTEGER)");
         auto statement = db.prepare("INSERT INTO test VALUES(?, ?, ?, ?)");
-        statement.bind(1, 1);
-        statement.bind(2, 2);
-        statement.bind(3, 3);
-        statement.bind(4, 4);
-        statement.execute();
-        statement.reset();
-        statement.bind(1, 5);
-        statement.bind(2, 6);
-        statement.bind(3, 7);
-        statement.bind(4, 8);
-        statement.execute();
+        statement.inject(1, 2, 3, 4);
+        statement.inject(5, 6, 7, 8);
     }
 
     {
@@ -2462,17 +2446,10 @@ unittest // Getting integral values
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    statement.bind(1, cast(byte) 42);
-    statement.execute();
-    statement.reset();
-    statement.bind(1, 42U);
-    statement.execute();
-    statement.reset();
-    statement.bind(1, 42UL);
-    statement.execute();
-    statement.reset();
-    statement.bind(1, '\x2A');
-    statement.execute();
+    statement.inject(cast(byte) 42);
+    statement.inject(42U);
+    statement.inject(42UL);
+    statement.inject('\x2A');
 
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
@@ -2485,17 +2462,10 @@ unittest // Getting floating point values
     db.execute("CREATE TABLE test (val FLOAT)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    statement.bind(1, 42.0F);
-    statement.execute();
-    statement.reset();
-    statement.bind(1, 42.0);
-    statement.execute();
-    statement.reset();
-    statement.bind(1, 42.0L);
-    statement.execute();
-    statement.reset();
-    statement.bind(1, "42");
-    statement.execute();
+    statement.inject(42.0F);
+    statement.inject(42.0);
+    statement.inject(42.0L);
+    statement.inject("42");
 
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
@@ -2508,8 +2478,7 @@ unittest // Getting text values
     db.execute("CREATE TABLE test (val TEXT)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    statement.bind(1, "I am a text.");
-    statement.execute();
+    statement.inject("I am a text.");
 
     auto results = db.execute("SELECT * FROM test");
     assert(results.front.peek!string(0) == "I am a text.");
@@ -2522,12 +2491,9 @@ unittest // Getting blob values
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
     ubyte[] array = [1, 2, 3];
-    statement.bind(1, array);
-    statement.execute();
-    statement.reset;
+    statement.inject(array);
     ubyte[3] sarray = [1, 2, 3];
-    statement.bind(1, sarray);
-    statement.execute();
+    statement.inject(sarray);
 
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
@@ -2542,8 +2508,7 @@ unittest // Getting null values
     db.execute("CREATE TABLE test (val TEXT)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    statement.bind(1, null);
-    statement.execute();
+    statement.inject(null);
 
     auto results = db.execute("SELECT * FROM test");
     assert(results.front.peek!bool(0) == false);
@@ -2644,13 +2609,8 @@ unittest
     db.execute("CREATE TABLE test (msg TEXT, num FLOAT)");
 
     auto statement = db.prepare("INSERT INTO test (msg, num) VALUES (?1, ?2)");
-    statement.bind(1, "ABC");
-    statement.bind(2, 123);
-    statement.execute();
-    statement.reset();
-    statement.bind(1, "DEF");
-    statement.bind(2, 456);
-    statement.execute();
+    statement.inject("ABC", 123);
+    statement.inject("DEF", 456);
 
     auto results = db.execute("SELECT * FROM test");
     auto data = RowCache(results);
@@ -2666,8 +2626,7 @@ unittest // RowCache copies
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (msg TEXT)");
     auto statement = db.prepare("INSERT INTO test (msg) VALUES (?)");
-    statement.bind(1, "ABC");
-    statement.execute();
+    statement.inject("ABC");
 
     static getdata(Database db)
     {
