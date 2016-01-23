@@ -1,8 +1,28 @@
 // Written in the D programming language
 /++
-This module provides a small wrapper around SQLite for the D programming language.
-It wraps the C API in an idiomatic manner and handles built-in D types and
-`Nullable!T` automatically.
+This module provides a thin and convenient wrapper around the SQLite C API.
+
+Features:
+$(UL
+    $(LI Use reference-counted structs (Database, Statement, ResultRange) instead of SQLite objects
+    pointers.)
+    $(LI Run multistatement SQL code with `Database.run()`.)
+    $(LI Use built-in integral types, floating point types, `string`s, `ubyte[]` and
+    `Nullable` types directly: conversions to and from SQLite types is automatic and GC-safe.)
+    $(LI Bind multiple values to a prepare statement with `Statement.bindAll()` or
+    `Statement.inject()`. It's also possible to bind the fields of a struct automatically with
+    `Statement.inject()`.)
+    $(LI Handle the results of a query as a range of `Row`s, and the columns of a row
+    as a range of `ColumnData` (equivalent of a `Variant`).)
+    $(LI Access the data in a result row directly, by index or by name,
+    with the `Row.peek!T()` methods.)
+    $(LI Make a struct out of the data of a row with `Row.as!T()`.)
+    $(LI Register D functions as SQLite callbacks, with `Database.setUpdateHook()` $(I et al).)
+    $(LI Create new SQLite functions, aggregates or collations out of D functions or delegate,
+    with automatic type converions, with `Database.createFunction()` $(I et al).)
+    $(LI Store all the rows and columns resulting from a query at once with `RowCache` (sometimes
+    useful even if not memory-friendly...).)
+)
 
 Authors:
     Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
@@ -13,9 +33,6 @@ Copyright:
 License:
     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
 
-Macros:
-    D = <tt>$0</tt>
-    DK = <strong><tt>$0</tt></strong>
 +/
 module d2sqlite3;
 
@@ -68,7 +85,7 @@ unittest // Documentation example
     statement.execute();
     statement.reset(); // Need to reset the statement after execution.
 
-    // Bind muliple values at once
+    // Bind muliple values at the same time
     statement.bindAll("John", null);
     statement.execute();
     statement.reset();
@@ -76,13 +93,16 @@ unittest // Documentation example
     // Bind, execute and reset in one call
     statement.inject("Clara", 88.1);
 
+
     // Count the changes
     assert(db.totalChanges == 3);
+
 
     // Count the Johns in the table.
     auto count = db.execute("SELECT count(*) FROM person WHERE name == 'John'")
                    .oneValue!long;
     assert(count == 2);
+
 
     // Read the data from the table lazily
     ResultRange results = db.execute("SELECT * FROM person");
@@ -377,8 +397,8 @@ public:
     /++
     Explicitly closes the database connection.
 
-    After this function has been called successfully, using the database connection
-    or one of its prepared statement is an error.
+    After a call to `close()`, using the database connection or one of its prepared statement
+    is an error. The `Database` object is destroyed and cannot be used any more.
     +/
     void close()
     {
@@ -1332,6 +1352,8 @@ public:
 
     /++
     Explicitly finalizes the prepared statement.
+
+    After a call to `finalize()`, the `Statement` object is destroyed and cannot be used.
     +/
     void finalize()
     {
@@ -1757,7 +1779,7 @@ unittest // GC anchoring test
 
 
 /++
-An input range interface to access the results of the execution of a statement.
+An input range interface to access the rows resulting from an SQL query.
 
 The elements of the range are $(D Row) structs. A $(D Row) is just a view of the current
 row when iterating the results of a $(D ResultRange). It becomes invalid as soon as $(D
@@ -2252,7 +2274,7 @@ private:
     }
 }
 
-/// Behavior of the Raw.peek method for arrays
+/// Behavior of the `Row.peek()` method for arrays
 enum PeekMode
 {
     copy, /// Return a copy of the data into a new array
@@ -2535,7 +2557,7 @@ struct ColumnMetadata
 
 
 /++
-Caches all the results of a $(D Statement) in memory as $(D ColumnData).
+Caches all the results of a $(D Statement) in memory at once.
 
 Allows to iterate on the rows and their columns with an array-like interface. The rows can
 be viewed as an array of $(D ColumnData) or as an associative array of $(D ColumnData)
