@@ -107,7 +107,6 @@ import std.variant;
 import core.memory : GC;
 import core.stdc.string : memcpy;
 import core.stdc.stdlib : malloc, free;
-debug import std.stdio;
 
 public import sqlite3;
 
@@ -1435,7 +1434,7 @@ public:
     }
 
     /++
-    Binds values to parameters of this statement.
+    Binds values to parameters of this statement, using parameter index.
 
     Params:
         index = The index of the parameter (starting from 1).
@@ -1516,7 +1515,7 @@ public:
     }
 
     /++
-    Binds values to parameters of this statement.
+    Binds values to parameters of this statement, using parameter names.
 
     Params:
         name = The name of the parameter, including the ':', '@' or '$' that introduced it.
@@ -1580,7 +1579,9 @@ public:
     }
 
     /++
-    Convenience function equivalent of:
+    Binds arguments, executes and resets the statement, in one call.
+
+    This convenience function is equivalent to:
     ---
     bindAll(args);
     execute();
@@ -1588,8 +1589,21 @@ public:
     ---
     +/
     void inject(Args...)(Args args)
+        if (!is(Args[0] == struct))
     {
         bindAll(args);
+        execute();
+        reset();
+    }
+
+    /++
+    Binds the fields of a struct in order, executes and resets the statement, in one call.
+    +/
+    void inject(T)(ref const(T) obj)
+        if (is(T == struct))
+    {
+        foreach (i, field; FieldNameTuple!T)
+            bind(i + 1, __traits(getMember, obj, field));
         execute();
         reset();
     }
@@ -1700,6 +1714,33 @@ unittest // Multiple parameters binding: tuples
     statement.execute();
 
     auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+    {
+        assert(row.length == 3);
+        assert(row.peek!int(0) == 42);
+        assert(row.peek!double(1) == 3.14);
+        assert(row.peek!string(2) == "TEXT");
+    }
+}
+
+unittest // Struct injecting
+{
+    static struct Test
+    {
+        int i;
+        double f;
+        string t;
+    }
+
+    auto test = Test(42, 3.14, "TEXT");
+
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
+    auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (?, ?, ?)");
+    statement.inject(test);
+    
+    auto results = db.execute("SELECT * FROM test");
+    assert(!results.empty);
     foreach (row; results)
     {
         assert(row.length == 3);
@@ -2144,9 +2185,9 @@ struct Row
     }
 
     /++
-    Determines the type of a particular result column in SELECT statement.
+    Determines the type of a particular column.
 
-    See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
+    See_Also: $(D http://www.sqlite.org/c3ref/column_blob.html).
     +/
     SqliteType columnType(int index)
     {
@@ -2156,6 +2197,16 @@ struct Row
     SqliteType columnType(string columnName)
     {
         return columnType(indexForName(columnName));
+    }
+
+    /++
+    Determines the name of a particular column.
+
+    See_Also: $(D http://www.sqlite.org/c3ref/column_name.html).
+    +/
+    string columnName(int index)
+    {
+        return sqlite3_column_name(statement, internalIndex(index)).to!string;
     }
 
     version (SQLITE_ENABLE_COLUMN_METADATA)
@@ -2213,6 +2264,58 @@ struct Row
     string columnDeclaredTypeName(string columnName)
     {
         return columnDeclaredTypeName(indexForName(columnName));
+    }
+
+    /++
+    Returns a struct with field members populated from the row's data.
+
+    The order of the struct members must be the same as the order of the columns in the
+    prepared statement.
+
+    Params:
+        flag = If set to Yes.checkFieldName, an exception is thrown if the name of the column
+        is not identical to the name of the field (converted to lowercase and stripped from
+        underscores). No check is done if the flag is set to No.checkFieldName (better performance).
+    +/
+    T as(T)(Flag!"checkFieldName" flag = Yes.checkFieldName)
+        if (is(T == struct))
+    {
+        alias FieldNames = FieldNameTuple!T;
+        alias FieldTypes = FieldTypeTuple!T;
+
+        T obj;
+        foreach (i, fieldName; FieldNames)
+        {
+            if (flag == Yes.checkFieldName)
+            {
+                auto columnName = columnName(i).toLower;
+                enforce(columnName == fieldName.removechars("_").toLower, new SqliteException(
+                        "Name mismatch for column #%s: the column '%s' is used for the field '%s'"
+                        .format(i, columnName, fieldName)));
+            }
+            __traits(getMember, obj, fieldName) = peek!(FieldTypes[i])(i);
+        }
+        return obj;
+    }
+    ///
+    unittest
+    {
+        struct Item
+        {
+            int _id;
+            string name;
+        }
+
+        auto db = Database(":memory:");
+        db.execute("CREATE TABLE items (name TEXT)");
+        auto statement = db.prepare("INSERT INTO items VALUES(?)");
+        statement.inject("Light bulb");
+
+        auto results = db.execute("SELECT rowid AS id, name FROM items");
+        auto row = results.front;
+        auto thing = row.as!Item();
+
+        assert(thing == Item(1, "Light bulb"));
     }
 
 private:
