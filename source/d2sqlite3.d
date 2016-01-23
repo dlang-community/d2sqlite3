@@ -575,7 +575,7 @@ public:
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
     void createFunction(T)(string name, T fun, Deterministic det = Deterministic.yes)
-        if (is(T == function) || is(T == delegate))
+        if (isFunctionPointer!T || isDelegate!T)
     {
         static assert(variadicFunctionStyle!(fun) == Variadic.no
                 || is(ParameterTypeTuple!fun == TypeTuple!(Variant[])),
@@ -737,7 +737,7 @@ public:
 
     deprecated("Kept for compatibility. Use of the new createFunction method is recommended.")
     void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
-            if (is(T == function) || is(T == delegate))
+        if (isFunctionPointer!T || isDelegate!T)
     {
         createFunction(name, fun, det);
     }
@@ -919,7 +919,7 @@ public:
     See_Also: $(LINK http://www.sqlite.org/lang_aggfunc.html)
     +/
     void createCollation(T)(string name, T fun)
-        if (is(T == function) || is(T == delegate))
+        if (isFunctionPointer!T || isDelegate!T)
     {
         static assert(isImplicitlyConvertible!(typeof(fun("a", "b")), int),
             "the collation function has a wrong signature");
@@ -2833,7 +2833,7 @@ struct WrappedDelegate(T)
 }
 
 void* delegateWrap(T)(T dlg, string name = null)
-    if (is(T == function) || is(T == delegate))
+    if (isFunctionPointer!T || isDelegate!T)
 {
     import std.functional : toDelegate;
 
