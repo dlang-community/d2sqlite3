@@ -805,8 +805,8 @@ public:
         }
         auto db = Database(":memory:");
         db.createFunction("my_list", &myList);
-        auto list = db.execute("SELECT my_list(42, 3.14, 'text', NULL)").oneValue!string;
-        assert(list == `42, 3.14, "text", null`);
+        auto list = db.execute("SELECT my_list(42, 3.14, 'text', x'00FF', NULL)").oneValue!string;
+        assert(list == `42, 3.14, "text", [0, 255], null`, list);
     }
 
     deprecated("Kept for compatibility. Use of the new createFunction method is recommended.")
