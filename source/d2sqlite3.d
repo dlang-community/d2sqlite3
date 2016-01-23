@@ -832,14 +832,13 @@ public:
         static if (is(T == class) || is(T == Interface))
             enforce(agg, "Attempt to create an aggregate function from a null reference");
 
-        auto ctx = cast(Context*) GC.malloc(Context.sizeof);
-        GC.setAttr(ctx, GC.BlkAttr.NO_MOVE);
+        auto ctx = cast(Context*) malloc(Context.sizeof);
         ctx.aggregate = agg;
         ctx.functionName = name;
 
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, PT.length, SQLITE_UTF8 | det,
-            anchorMem(cast(void*) ctx), null, &x_step, &x_final, &releaseMem));
+            cast(void*) ctx, null, &x_step, &x_final, &ptrFree));
     }
     ///
     unittest // Aggregate creation
