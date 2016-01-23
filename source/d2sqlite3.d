@@ -2274,13 +2274,8 @@ struct Row
 
     The order of the struct members must be the same as the order of the columns in the
     prepared statement.
-
-    Params:
-        flag = If set to Yes.checkFieldName, an exception is thrown if the name of the column
-        is not identical to the name of the field (converted to lowercase and stripped from
-        underscores). No check is done if the flag is set to No.checkFieldName (better performance).
     +/
-    T as(T)(Flag!"checkFieldName" flag = Yes.checkFieldName)
+    T as(T)()
         if (is(T == struct))
     {
         // Copy of FieldNameTuple, as long as GDC doesn't have it.
@@ -2290,16 +2285,7 @@ struct Row
 
         T obj;
         foreach (i, fieldName; FieldNames)
-        {
-            if (flag == Yes.checkFieldName)
-            {
-                auto columnName = columnName(i).toLower;
-                enforce(columnName == fieldName.removechars("_").toLower, new SqliteException(
-                        "Name mismatch for column #%s: the column '%s' is used for the field '%s'"
-                        .format(i, columnName, fieldName)));
-            }
             __traits(getMember, obj, fieldName) = peek!(FieldTypes[i])(i);
-        }
         return obj;
     }
     ///
