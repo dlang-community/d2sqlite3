@@ -1928,28 +1928,16 @@ struct Row
         final switch (type)
         {
             case SqliteType.INTEGER:
-                auto data = peek!(Nullable!long)(index);
-                if (data.isNull)
-                    return ColumnData.init;
-                return ColumnData(Variant(data.get));
+                return ColumnData(Variant(peek!long(index)));
 
             case SqliteType.FLOAT:
-                auto data = peek!(Nullable!double)(index);
-                if (data.isNull)
-                    return ColumnData.init;
-                return ColumnData(Variant(data.get));
+                return ColumnData(Variant(peek!double(index)));
 
             case SqliteType.TEXT:
-                auto data = peek!(Nullable!string)(index);
-                if (data.isNull)
-                    return ColumnData.init;
-                return ColumnData(Variant(data.get));
+                return ColumnData(Variant(peek!string(index)));
 
             case SqliteType.BLOB:
-                auto data = peek!(Nullable!(ubyte[]), PeekMode.copy)(index);
-                if (data.isNull)
-                    return ColumnData.init;
-                return ColumnData(Variant(data.get));
+                return ColumnData(Variant(peek!(ubyte[], PeekMode.copy)(index)));
 
             case SqliteType.NULL:
                 return ColumnData.init;
