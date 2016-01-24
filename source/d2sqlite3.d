@@ -252,7 +252,7 @@ enum Deterministic
 /++
 An SQLite database connection.
 
-This struct is a reference-counted wrapper around a $(D sqlite3*) pointer.
+This struct is a reference-counted wrapper around a `sqlite3*` pointer.
 +/
 struct Database
 {
@@ -406,8 +406,9 @@ public:
     }
 
     /++
-    Executes a single SQL statement and returns the results directly. It's the equivalent
-    of $(D prepare(sql).execute()).
+    Executes a single SQL statement and returns the results directly.
+    
+    It's the equivalent of `prepare(sql).execute()`.
 
     The results become undefined when the Database goes out of scope and is destroyed.
     +/
@@ -564,27 +565,27 @@ public:
     Params:
         name = The name that the function will have in the database.
 
-        fun = a $(D delegate) or $(D function) that implements the function. $(D_PARAM fun)
+        fun = a delegate or function that implements the function. $(D_PARAM fun)
         must satisfy the following criteria:
             $(UL
                 $(LI It must not be variadic.)
                 $(LI Its arguments must all have a type that is compatible with SQLite types:
-                it must be a boolean or numeric type, a string, an array, null,
-                or a Nullable!T where T is any of the previous types.)
+                it must be a boolean or numeric type, a string, an array, `null`,
+                or a `Nullable!T` where T is any of the previous types.)
                 $(LI Its return value must also be of a compatible type.)
             )
             or
             $(UL
                 $(LI It must be a normal or type-safe variadic function where the arguments
                 are variant. In other terms, the signature of the function must be:
-                $(D function(Variant[] args)) or $(D function(Variant[] args...)))
-                $(LI Its return value must be a boolean or numeric type, a string, an array, null,
-                or a Nullable!T where T is any of the previous types.)
+                `function(Variant[] args)` or `function(Variant[] args...)`)
+                $(LI Its return value must be a boolean or numeric type, a string, an array, `null`,
+                or a `Nullable!T` where T is any of the previous types.)
             )
 
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
-        perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
+        perform optimizations based on this. Set to `Deterministic.no` otherwise.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
@@ -761,15 +762,15 @@ public:
     Params:
         name = The name that the aggregate function will have in the database.
 
-        agg = The $(D struct) of type T implementing the aggregate. T must implement
-        at least these two methods: $(D accumulate) and $(D result).
-        Each parameter and the returned type of $(D accumulate) and $(D result) must be
-        a boolean or numeric type, a string, an array, null, or a Nullable!T
+        agg = The struct of type T implementing the aggregate. T must implement
+        at least these two methods: `accumulate()` and `result()`.
+        Each parameter and the returned type of `accumulate()` and `result()` must be
+        a boolean or numeric type, a string, an array, `null`, or a `Nullable!T`
         where T is any of the previous types. These methods cannot be variadic.
 
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
-        perform optimizations based on this. Set to $(D Deterministic.no) otherwise.
+        perform optimizations based on this. Set to `Deterministic.no` otherwise.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/create_function.html).
     +/
@@ -919,11 +920,11 @@ public:
         fun = An alias to the D implementation of the function. The function $(D_PARAM fun)
         must satisfy these criteria:
             $(UL
-                $(LI Takes two string arguments s1 and s2. )
-                $(LI Returns an integer $(D ret). )
-                $(LI If s1 is less than s2, $(D ret < 0).)
-                $(LI If s1 is equal to s2, $(D ret == 0).)
-                $(LI If s1 is greater than s2, $(D ret > 0).)
+                $(LI Takes two string arguments (s1 and s2). )
+                $(LI Returns an integer (ret). )
+                $(LI If s1 is less than s2, ret < 0.)
+                $(LI If s1 is equal to s2, ret == 0.)
+                $(LI If s1 is greater than s2, ret > 0.)
                 $(LI If s1 is equal to s2, then s2 is equal to s1.)
                 $(LI If s1 is equal to s2 and s2 is equal to s3, then s1 is equal to s3.)
                 $(LI If s1 is less than s2, then s2 is greater than s1.)
@@ -991,8 +992,9 @@ public:
 
     /++
     Registers a delegate as the database's update hook.
+    
     Any previously set hook is released.
-    Pass a $(D null) value to disable the callback.
+    Pass `null` to disable the callback.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
@@ -1034,7 +1036,7 @@ public:
     Params:
         commitHook = A delegate that should return a non-zero value
         if the operation must be rolled back, or 0 if it can commit.
-        Pass a $(D null) value to disable the callback.
+        Pass `null` to disable the callback.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
@@ -1053,8 +1055,9 @@ public:
 
     /++
     Registers a delegate as the database's rollback hook.
+    
     Any previously set hook is released.
-    Pass a $(D null) value to disable the callback.
+    Pass `null` to disable the callback.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
@@ -1091,8 +1094,9 @@ public:
 
     /++
     Sets the progress handler.
+    
     Any previously set handler is released.
-    Pass a $(D null) value to disable the callback.
+    Pass `null` to disable the callback.
 
     Params:
         pace = The approximate number of virtual machine instructions that are
@@ -1118,8 +1122,9 @@ public:
 
     /++
     Sets the trace callback.
+    
     Any previously set trace callback is released.
-    Pass a $(D null) value to disable the callback.
+    Pass `null` to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being 
     executed.
@@ -1141,8 +1146,9 @@ public:
 
     /++
     Sets the profile callback.
+    
     Any previously set profile callback is released.
-    Pass a $(D null) value to disable the callback.
+    Pass `null` to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being 
     executed. The time unit is defined in SQLite's documentation as nanoseconds (subject to change,
@@ -1302,8 +1308,8 @@ unittest // Callable struct with createFunction
 /++
 An SQLite statement execution.
 
-This struct is a reference-counted wrapper around a $(D sqlite3_stmt*) pointer. Instances
-of this struct are typically returned by $(D Database.prepare()).
+This struct is a reference-counted wrapper around a `sqlite3_stmt*` pointer. Instances
+of this struct are typically returned by `Database.prepare()`.
 +/
 struct Statement
 {
@@ -1467,9 +1473,9 @@ public:
         or a Nullable!T where T is any of the previous types.
 
     Warning:
-        While convenient, this overload of $(D bind) is less performant, because it has to
-        retrieve the column index with a call to the SQLite function $(D
-        sqlite3_bind_parameter_index).
+        While convenient, this overload of `bind` is less performant, because it has to
+        retrieve the column index with a call to the SQLite function
+        `sqlite3_bind_parameter_index`.
     +/
     void bind(T)(string name, T value)
     {
@@ -1490,7 +1496,7 @@ public:
     /++
     Clears the bindings.
 
-    This does not reset the statement. Use $(D Statement.reset()) for this.
+    This does not reset the statement. Use `Statement.reset()` for this.
     +/
     void clearBindings()
     {
@@ -1509,10 +1515,10 @@ public:
     /++
     Resets a this statement before a new execution.
 
-    Calling this method invalidates any $(D ResultRange) struct returned by a previous call
-    to $(D Database.execute()) or $(D Statement.execute()).
+    Calling this method invalidates any `ResultRange` struct returned by a previous call
+    to `Database.execute()` or `Statement.execute()`.
 
-    This does not clear the bindings. Use $(D Statement.clear()) for this.
+    This does not clear the bindings. Use `Statement.clearBindings()` for this.
     +/
     void reset()
     {
@@ -1781,13 +1787,13 @@ unittest // GC anchoring test
 /++
 An input range interface to access the rows resulting from an SQL query.
 
-The elements of the range are $(D Row) structs. A $(D Row) is just a view of the current
-row when iterating the results of a $(D ResultRange). It becomes invalid as soon as $(D
-ResultRange.popFront()) is called (it contains undefined data afterwards). Use $(D
-RowCache) to store the content of rows past the execution of the statement.
+The elements of the range are `Row` structs. A `Row` is just a view of the current
+row when iterating the results of a `ResultRange`. It becomes invalid as soon as 
+`ResultRange.popFront()` is called (it contains undefined data afterwards). Use
+`RowCache` to store the content of rows past the execution of the statement.
 
-Instances of this struct are typically returned by $(D Database.execute()) or $(D
-Statement.execute()).
+Instances of this struct are typically returned by `Database.execute()` or
+`Statement.execute()`.
 +/
 struct ResultRange
 {
@@ -1817,7 +1823,7 @@ private:
 
 public:
     /++
-    Range primitives.
+    Range interface.
     +/
     bool empty() @property
     {
@@ -1987,13 +1993,7 @@ struct Row
         }
     }
 
-    /++
-    Returns the data of a column as a $(D ColumnData).
-
-    Params:
-        columnName = The name of the column, as specified in the prepared statement with an AS
-        clause.
-    +/
+    /// Ditto
     ColumnData opIndex(string columnName)
     {
         return opIndex(indexForName(columnName));
@@ -2002,38 +2002,48 @@ struct Row
     /++
     Returns the data of a column directly.
 
-    Contrary to $(D opIndex), the $(D peek) functions return the data directly,
-    automatically cast to T, without the overhead of using a wrapped $(D Variant)
-    ($(D ColumnData)).
+    Contrary to `opIndex`, the `peek` functions return the data directly,
+    automatically cast to T, without the overhead of using a wrapped `Variant`
+    (`ColumnData`).
 
-    When using $(D peek) to retrieve a BLOB, you can use either:
+    When using `peek` to retrieve a BLOB, you can use either:
         $(UL
-            $(LI $(D peek!(ubyte[], PeekMode.copy)(index)),
+            $(LI `peek!(ubyte[], PeekMode.copy)(index)`,
               in which case the function returns a copy of the data that will outlive the step
               to the next row,
             or)
-            $(LI $(D peek!(ubyte[], PeekMode.slice)(index)),
-              in which case a slice of SQLite's internal buffer is returned (see Warnings))
+            $(LI `peek!(ubyte[], PeekMode.slice)(index)`,
+              in which case a slice of SQLite's internal buffer is returned (see Warnings).)
         )
 
     Params:
         T = The type of the returned data. T must be a boolean, a built-in numeric type, a
         string, an array or a Variant.
         $(TABLE
-            $(TR $(TH Condition on T)
-                 $(TH Requested database type))
-            $(TR $(TD isIntegral!T || isBoolean!T)
-                 $(TD INTEGER, via $(D sqlite3_column_int64)))
-            $(TR $(TD isFloatingPoint!T)
-                 $(TD FLOAT, via $(D sqlite3_column_double)))
-            $(TR $(TD isSomeString!T)
-                 $(TD TEXT, via $(D sqlite3_column_text)))
-            $(TR $(TD isArray!T)
-                 $(TD BLOB, via $(D sqlite3_column_blob)))
-            $(TR $(TD is(T == Nullable!U))
-                 $(TD NULL or T))
-            $(TR $(TD Other types)
-                 $(TD Compilation error))
+            $(TR
+                $(TH Condition on T)
+                $(TH Requested database type)
+            )
+            $(TR
+                $(TD `isIntegral!T || isBoolean!T`)
+                $(TD INTEGER)
+            )
+            $(TR
+                $(TD `isFloatingPoint!T`)
+                $(TD FLOAT)
+            )
+            $(TR
+                $(TD `isSomeString!T`)
+                $(TD TEXT)
+            )
+            $(TR
+                $(TD `isArray!T`)
+                $(TD BLOB)
+            )
+            $(TR
+                $(TD `is(T == Nullable!U, U...)`)
+                $(TD NULL or U)
+            )
         )
 
         index = The index of the column in the prepared statement or
@@ -2046,10 +2056,10 @@ struct Row
         depending on its own conversion rules;
         see $(LINK http://www.sqlite.org/c3ref/column_blob.html) and
         $(LINK http://www.sqlite.org/lang_expr.html#castexpr)), and it is converted
-        to T using $(D std.conv.to!T).
+        to T using `std.conv.to!T`.
 
     Warnings:
-        When using $(D PeekMode.slice), the data of the slice will be $(B invalidated)
+        When using `PeekMode.slice`, the data of the slice will be $(B invalidated)
         when the next row is accessed. A copy of the data has to be made somehow for it to 
         outlive the next step on the same statement.
 
@@ -2132,7 +2142,7 @@ struct Row
     /++
     Determines the type of a particular column.
 
-    See_Also: $(D http://www.sqlite.org/c3ref/column_blob.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/column_blob.html).
     +/
     SqliteType columnType(int index)
     {
@@ -2147,7 +2157,7 @@ struct Row
     /++
     Determines the name of a particular column.
 
-    See_Also: $(D http://www.sqlite.org/c3ref/column_name.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/column_name.html).
     +/
     string columnName(int index)
     {
@@ -2161,9 +2171,9 @@ struct Row
         particular result column in SELECT statement.
 
         These methods are defined only when the library is compiled with
-        $(D -version=SQLITE_ENABLE_COLUMN_METADATA).
+        `-version=SQLITE_ENABLE_COLUMN_METADATA`.
 
-        See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
+        See_Also: $(LINK http://www.sqlite.org/c3ref/column_database_name.html).
         +/
         string columnDatabaseName(int index)
         {
@@ -2199,7 +2209,7 @@ struct Row
     /++
     Determines the declared type name of a particular result column in SELECT statement.
 
-    See_Also: $(D http://www.sqlite.org/c3ref/column_database_name.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/column_database_name.html).
     +/
     string columnDeclaredTypeName(int index)
     {
@@ -2218,7 +2228,7 @@ struct Row
     are filled with the columns' data in order. Thus, the order of the struct members must be the
     same as the order of the columns in the prepared statement.
 
-    SQLite's conversion rules will be used. For instance, if a $(D string) field has the same rank
+    SQLite's conversion rules will be used. For instance, if a string field has the same rank
     as an INTEGER column, the field's data will be the string representation of the integer.
     +/
     T as(T)()
@@ -2411,7 +2421,7 @@ unittest // Row random-access range interface
 
 
 /++
-The data retrived from a column, stored internally as a $(D Variant).
+The data retrived from a column, stored internally as a `Variant`.
 +/
 struct ColumnData
 {
@@ -2557,10 +2567,10 @@ struct ColumnMetadata
 
 
 /++
-Caches all the results of a $(D Statement) in memory at once.
+Caches all the results of a `Statement` in memory at once.
 
 Allows to iterate on the rows and their columns with an array-like interface. The rows can
-be viewed as an array of $(D ColumnData) or as an associative array of $(D ColumnData)
+be viewed as an array of `ColumnData` or as an associative array of `ColumnData`
 indexed by the column names.
 +/
 struct RowCache
