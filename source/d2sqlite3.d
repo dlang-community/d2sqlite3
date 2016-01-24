@@ -190,7 +190,9 @@ void shutdown()
 }
 
 /++
-Sets a configuration option. Use before initialization, e.g. before the first
+Sets a configuration option.
+
+Use before initialization, e.g. before the first
 call to initialize and before execution of the first statement.
 
 See_Also: $(LINK http://www.sqlite.org/c3ref/config.html).
@@ -244,7 +246,7 @@ private:
         void* traceCallback;
         void* profileCallback;
 
-        this(sqlite3* handle) @safe pure nothrow
+        this(sqlite3* handle) nothrow
         {
             this.handle = handle;
         }
@@ -301,7 +303,7 @@ public:
     /++
     Gets the SQLite internal _handle of the database connection.
     +/
-    sqlite3* handle() @property @safe pure nothrow
+    sqlite3* handle() @property nothrow
     {
         return p.handle;
     }
@@ -1069,8 +1071,8 @@ public:
         pace = The approximate number of virtual machine instructions that are
         evaluated between successive invocations of the handler.
 
-        progressHandler = A delegate that should return 0 if the operation must be
-        aborted or another value if it can continue.
+        progressHandler = A delegate that should return 0 if the operation can continue
+        or another value if it must be aborted.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/progress_handler.html).
     +/
@@ -1272,6 +1274,23 @@ unittest // Callable struct with createFunction
     assert(db.execute("SELECT my_fun(4)").oneValue!int == 8);
 }
 
+unittest // Callbacks
+{
+    bool wasTraced = false;
+    bool wasProfiled = false;
+    bool hasProgressed = false;
+
+    auto db = Database(":memory:");
+    db.setTraceCallback((string s) { wasTraced = true; });
+    db.setProfileCallback((string s, ulong t) { wasProfiled = true; });
+    db.setProgressHandler(1, { hasProgressed = true; return 0; });
+    db.execute("SELECT 1;");
+    assert(wasTraced);
+    assert(wasProfiled);
+    assert(hasProgressed);
+}
+
+
 /++
 An SQLite statement execution.
 
@@ -1318,7 +1337,7 @@ public:
     /++
     Gets the SQLite internal _handle of the statement.
     +/
-    sqlite3_stmt* handle() @property
+    sqlite3_stmt* handle() @property nothrow
     {
         return p.handle;
     }
@@ -1336,7 +1355,7 @@ public:
     /++
     Tells whether the statement is empty (no SQL statement).
     +/
-    bool empty() @property
+    bool empty() @property nothrow
     {
         return p.handle is null;
     }
@@ -1536,6 +1555,9 @@ public:
     /++
     Gets the name of the bind parameter at the given index.
 
+    Params:
+        index = The index of the parameter (the first parameter has the index 1).
+
     Returns: The name of the parameter or null is not found or out of range.
     +/
     string parameterName(int index)
@@ -1580,6 +1602,8 @@ unittest // Simple parameters binding
     db.execute("CREATE TABLE test (val INTEGER)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.bind(1, 36);
+    statement.clearBindings();
     statement.bind(1, 42);
     statement.execute();
     statement.reset();
@@ -1600,7 +1624,13 @@ unittest // Multiple parameters binding
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
     auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (:i, @f, $t)");
+
     assert(statement.parameterCount == 3);
+    assert(statement.parameterName(2) == "@f");
+    assert(statement.parameterName(4) == null);
+    assert(statement.parameterIndex("$t") == 3);
+    assert(statement.parameterIndex(":foo") == 0);
+
     statement.bind("$t", "TEXT");
     statement.bind(":i", 42);
     statement.bind("@f", 3.14);
@@ -1727,6 +1757,15 @@ unittest // Nullable peek
     }
 }
 
+unittest // Bad bindings
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val INTEGER)");
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    assertThrown!SqliteException(statement.bind("foo", 1));
+    assertThrown!SqliteException(statement.bindAll(10, 11));
+}
+
 unittest // GC anchoring test
 {
     auto db = Database(":memory:");
@@ -1830,23 +1869,14 @@ public:
     }
 }
 
-unittest // Refcount tests
+unittest // Statement error
 {
     auto db = Database(":memory:");
-    {
-        db.execute("CREATE TABLE test (val INTEGER)");
-        auto tmp = db.prepare("INSERT INTO test (val) VALUES (?)");
-        tmp.bind(1, 42);
-        tmp.execute();
-    }
-
-    auto results = { return db.execute("SELECT * FROM test"); }();
-    assert(!results.empty);
-    assert(results.oneValue!int == 42);
-    results.popFront();
-    assert(results.empty);
+    db.execute("CREATE TABLE test (val INTEGER NOT NULL)");
+    auto stmt = db.prepare("INSERT INTO test (val) VALUES (?)");
+    stmt.bind(1, null);
+    assertThrown!SqliteException(stmt.execute());
 }
-
 
 /++
 A row returned when stepping over an SQLite prepared statement.
@@ -2408,7 +2438,7 @@ unittest // Row random-access range interface
 
 
 /++
-The data retrived from a column, stored internally as a `Variant`.
+The data retrieved from a column, stored internally as a `Variant`.
 +/
 struct ColumnData
 {
@@ -2424,10 +2454,7 @@ struct ColumnData
         if (!variant.hasValue)
             return defaultValue;
 
-        static if (isBoolean!T)
-            return variant.get!T; // Work around bug in 2.065
-        else
-            return variant.coerce!T;
+        return variant.coerce!T;
     }
 
     /// ditto
@@ -2436,8 +2463,14 @@ struct ColumnData
     {
         if (!variant.hasValue)
             return defaultValue;
-        
-        return cast(T) variant.get!(ubyte[]);
+
+        ubyte[] data;
+        try
+            data = variant.get!(ubyte[]);
+        catch (VariantException e)
+            throw new SqliteException("impossible to convert this column to a " ~ T.stringof);
+
+        return cast(T) data;
     }
 
     /// ditto
@@ -2454,15 +2487,14 @@ struct ColumnData
         if (variant.hasValue)
             sink(variant.toString);
         else
-            sink("NULL");
+            sink("null");
     }
 }
 
-
-unittest // Getting integral values
+unittest // Integral values
 {
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
+    db.run("CREATE TABLE test (val INTEGER)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
     statement.inject(cast(byte) 42);
@@ -2475,10 +2507,10 @@ unittest // Getting integral values
         assert(row.peek!long(0) == 42);
 }
 
-unittest // Getting floating point values
+unittest // Floating point values
 {
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val FLOAT)");
+    db.run("CREATE TABLE test (val FLOAT)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
     statement.inject(42.0F);
@@ -2491,7 +2523,7 @@ unittest // Getting floating point values
         assert(row.peek!double(0) == 42.0);
 }
 
-unittest // Getting text values
+unittest // Text values
 {
     auto db = Database(":memory:");
     db.run("CREATE TABLE test (val TEXT);
@@ -2499,9 +2531,11 @@ unittest // Getting text values
 
     auto results = db.execute("SELECT * FROM test");
     assert(results.front.peek!string(0) == "I am a text.");
+
+    assertThrown!SqliteException(results.front[0].as!(ubyte[]));
 }
 
-unittest // Getting blob values
+unittest // Blob values
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (val BLOB)");
@@ -2514,12 +2548,15 @@ unittest // Getting blob values
 
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
+    {
         assert(row.peek!(ubyte[])(0) ==  [1, 2, 3]);
+        assert(row[0].as!(ubyte[]) == [1, 2, 3]);
+    }
 }
 
-unittest // Getting null values
+unittest // Null values
 {
-    import std.math;
+    import std.math : isNaN;
 
     auto db = Database(":memory:");
     db.run("CREATE TABLE test (val TEXT);
@@ -2537,6 +2574,14 @@ unittest // Getting null values
     assert(results.front[0].as!string is null);
     assert(results.front[0].as!(ubyte[]) is null);
 }
+
+unittest // ColumnData.toString
+{
+    auto db = Database(":memory:");
+    auto rc = QueryCache(db.execute("SELECT 42, 3.14, 'foo_bar', x'00FF', NULL"));
+    assert("%(%s%)".format(rc) == "[42, 3.14, foo_bar, [0, 255], null]");
+}
+
 
 /// Information about a column.
 struct ColumnMetadata
@@ -2603,7 +2648,7 @@ struct QueryCache
             auto first = results.front;
             foreach (i; 0 .. first.length)
             {
-                auto name = sqlite3_column_name(first.statement, i).to!string;
+                auto name = sqlite3_column_name(first.statement.handle, i).to!string;
                 columnIndexes[name] = i;
             }
         }
@@ -2685,6 +2730,7 @@ unittest
     auto a = cast(ubyte[]) x"DEADBEEF";
     assert(a.literal == "'XDEADBEEF'");
 }
+
 
 /++
 Exception thrown when SQLite functions return an error.
