@@ -2126,7 +2126,8 @@ struct Row
     `columnType` returns the type of the actual data in that column, whereas
     `columnDeclaredTypeName` returns the name of the type as declared in the SELECT statement.
 
-    See_Also: $(LINK http://www.sqlite.org/c3ref/column_blob.html).
+    See_Also: $(LINK http://www.sqlite.org/c3ref/column_blob.html) and
+    $(LINK http://www.sqlite.org/c3ref/column_decltype.html).
     +/
     SqliteType columnType(int index)
     {
