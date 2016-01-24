@@ -2205,7 +2205,7 @@ struct Row
         +/
         string columnDatabaseName(int index)
         {
-            return sqlite3_column_database_name(statement, internalIndex(index)).to!string;
+            return sqlite3_column_database_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
         string columnDatabaseName(string columnName)
@@ -2215,7 +2215,7 @@ struct Row
         /// Ditto
         string columnTableName(int index)
         {
-            return sqlite3_column_database_name(statement, internalIndex(index)).to!string;
+            return sqlite3_column_database_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
         string columnTableName(string columnName)
@@ -2225,7 +2225,7 @@ struct Row
         /// Ditto
         string columnOriginName(int index)
         {
-            return sqlite3_column_origin_name(statement, internalIndex(index)).to!string;
+            return sqlite3_column_origin_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
         string columnOriginName(string columnName)
