@@ -20,7 +20,7 @@ $(UL
     $(LI Register D functions as SQLite callbacks, with `Database.setUpdateHook()` $(I et al).)
     $(LI Create new SQLite functions, aggregates or collations out of D functions or delegate,
     with automatic type converions, with `Database.createFunction()` $(I et al).)
-    $(LI Store all the rows and columns resulting from a query at once with `RowCache` (sometimes
+    $(LI Store all the rows and columns resulting from a query at once with `QueryCache` (sometimes
     useful even if not memory-friendly...).)
 )
 
@@ -1194,9 +1194,9 @@ version (none) unittest // Unexpected multiple statements
 unittest // Multiple statements with callback
 {
     auto db = Database(":memory:");
-    RowCache[] rows;
+    QueryCache[] rows;
     db.run("SELECT 1, 2, 3; SELECT 'A', 'B', 'C';", (ResultRange r) {
-        rows ~= RowCache(r);
+        rows ~= QueryCache(r);
         return true;
     });
     assert(equal!"a.as!int == b"(rows[0][0], [1, 2, 3]));
@@ -1769,7 +1769,7 @@ An input range interface to access the rows resulting from an SQL query.
 The elements of the range are `Row` structs. A `Row` is just a view of the current
 row when iterating the results of a `ResultRange`. It becomes invalid as soon as 
 `ResultRange.popFront()` is called (it contains undefined data afterwards). Use
-`RowCache` to store the content of rows past the execution of the statement.
+`QueryCache` to store the content of rows past the execution of the statement.
 
 Instances of this struct are typically returned by `Database.execute()` or
 `Statement.execute()`.
@@ -2546,13 +2546,13 @@ struct ColumnMetadata
 
 
 /++
-Caches all the results of a `Statement` in memory at once.
+Caches all the results of a query in memory at once.
 
 Allows to iterate on the rows and their columns with an array-like interface. The rows can
 be viewed as an array of `ColumnData` or as an associative array of `ColumnData`
 indexed by the column names.
 +/
-struct RowCache
+struct QueryCache
 {
     struct CachedRow
     {
@@ -2624,7 +2624,7 @@ unittest
     statement.inject("DEF", 456);
 
     auto results = db.execute("SELECT * FROM test");
-    auto data = RowCache(results);
+    auto data = QueryCache(results);
     assert(data.length == 2);
     assert(data[0].front.as!string == "ABC");
     assert(data[0][1].as!int == 123);
@@ -2632,7 +2632,10 @@ unittest
     assert(data[1]["num"].as!int == 456);
 }
 
-unittest // RowCache copies
+deprecated("Kept for compatibility. Use QueryCache instead.")
+alias RowCache = QueryCache;
+
+unittest // QueryCache copies
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (msg TEXT)");
@@ -2641,7 +2644,7 @@ unittest // RowCache copies
 
     static getdata(Database db)
     {
-        return RowCache(db.execute("SELECT * FROM test"));
+        return QueryCache(db.execute("SELECT * FROM test"));
     }
 
     auto data = getdata(db);
