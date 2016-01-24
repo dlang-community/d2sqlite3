@@ -59,7 +59,7 @@ int sqlite3_libversion_number();
 /**
 ** CAPI3REF: Run-Time Library Compilation Options Diagnostics
 */
-int sqlite3_compileoption_used(const char *zOptName);
+int sqlite3_compileoption_used(const(char)* zOptName);
 /// Ditto
 immutable(char)* sqlite3_compileoption_get(int N);
 
@@ -291,7 +291,7 @@ struct sqlite3_io_methods
     int iVersion;
     int  function (sqlite3_file*) xClose;
     int  function (sqlite3_file*, void*, int iAmt, sqlite3_int64 iOfst) xRead;
-    int  function (sqlite3_file*, const void*, int iAmt, sqlite3_int64 iOfst) xWrite;
+    int  function (sqlite3_file*, const(void)*, int iAmt, sqlite3_int64 iOfst) xWrite;
     int  function (sqlite3_file*, sqlite3_int64 size) xTruncate;
     int  function (sqlite3_file*, int flags) xSync;
     int  function (sqlite3_file*, sqlite3_int64 *pSize) xFileSize;
@@ -366,14 +366,14 @@ struct sqlite3_vfs
     sqlite3_vfs *pNext;      /** Next registered VFS */
     const(char)*zName;       /** Name of this virtual file system */
     void *pAppData;          /** Pointer to application-specific data */
-    int function (sqlite3_vfs*, const char *zName, sqlite3_file*,
+    int function (sqlite3_vfs*, const(char)* zName, sqlite3_file*,
                int flags, int *pOutFlags) xOpen;
-    int  function (sqlite3_vfs*, const char *zName, int syncDir) xDelete;
-    int  function (sqlite3_vfs*, const char *zName, int flags, int *pResOut) xAccess;
-    int  function (sqlite3_vfs*, const char *zName, int nOut, char *zOut) xFullPathname;
-    void* function (sqlite3_vfs*, const char *zFilename) xDlOpen;
+    int  function (sqlite3_vfs*, const(char)* zName, int syncDir) xDelete;
+    int  function (sqlite3_vfs*, const(char)* zName, int flags, int *pResOut) xAccess;
+    int  function (sqlite3_vfs*, const(char)* zName, int nOut, char *zOut) xFullPathname;
+    void* function (sqlite3_vfs*, const(char)* zFilename) xDlOpen;
     void  function (sqlite3_vfs*, int nByte, char *zErrMsg) xDlError;
-    xDlSymReturn function (sqlite3_vfs*,void*, const char *zSymbol) *xDlSym;
+    xDlSymReturn function (sqlite3_vfs*,void*, const(char)* zSymbol) *xDlSym;
     void  function (sqlite3_vfs*, void*) xDlClose;
     int  function (sqlite3_vfs*, int nByte, char *zOut) xRandomness;
     int  function (sqlite3_vfs*, int microseconds) xSleep;
@@ -388,9 +388,9 @@ struct sqlite3_vfs
     ** The methods above are in versions 1 and 2 of the sqlite_vfs object.
     ** Those below are for version 3 and greater.
     */
-    int function(sqlite3_vfs*, const char * zName, sqlite3_syscall_ptr) xSetSystemCall;
-    sqlite3_syscall_ptr function(sqlite3_vfs*, const char * zName) xGetSystemCall;
-    const(char)* function(sqlite3_vfs*, const char * zName) xNextSystemCall;
+    int function(sqlite3_vfs*, const(char)*  zName, sqlite3_syscall_ptr) xSetSystemCall;
+    sqlite3_syscall_ptr function(sqlite3_vfs*, const(char)*  zName) xGetSystemCall;
+    const(char)* function(sqlite3_vfs*, const(char)*  zName) xNextSystemCall;
     /*
     ** The methods above are in versions 1 through 3 of the sqlite_vfs object.
     ** New fields may be appended in figure versions.  The iVersion
@@ -533,9 +533,9 @@ void sqlite3_interrupt(sqlite3*);
 /**
 ** CAPI3REF: Determine If An SQL Statement Is Complete
 */
-int sqlite3_complete(const char *sql);
+int sqlite3_complete(const(char)* sql);
 /// Ditto
-int sqlite3_complete16(const void *sql);
+int sqlite3_complete16(const(void) *sql);
 
 /**
 ** CAPI3REF: Register A Callback To Handle SQLITE_BUSY Errors
@@ -564,10 +564,10 @@ void sqlite3_free_table(char **result);
 /**
 ** CAPI3REF: Formatted String Printing Functions
 */
-char *sqlite3_mprintf(const char*,...);
-char *sqlite3_vmprintf(const char*, va_list);
-char *sqlite3_snprintf(int,char*,const char*, ...);
-char *sqlite3_vsnprintf(int,char*,const char*, va_list);
+char *sqlite3_mprintf(const(char)*,...);
+char *sqlite3_vmprintf(const(char)*, va_list);
+char *sqlite3_snprintf(int,char*,const(char)*, ...);
+char *sqlite3_vsnprintf(int,char*,const(char)*, va_list);
 
 /**
 ** CAPI3REF: Memory Allocation Subsystem
@@ -600,7 +600,7 @@ void sqlite3_randomness(int N, void *P);
 */
 int sqlite3_set_authorizer(
     sqlite3*,
-    int function (void*,int,const char*,const char*,const char*,const char*) xAuth,
+    int function (void*,int,const(char)*,const(char)*,const(char)*,const(char)*) xAuth,
     void *pUserData
 );
 
@@ -658,9 +658,9 @@ enum
 /**
 ** CAPI3REF: Tracing And Profiling Functions
 */
-void *sqlite3_trace(sqlite3*, void function (void*,const char*) xTrace, void*);
+void *sqlite3_trace(sqlite3*, void function (void*,const(char)*) xTrace, void*);
 /// Ditto
-void *sqlite3_profile(sqlite3*, void function (void*,const char*,sqlite3_uint64) xProfile, void*);
+void *sqlite3_profile(sqlite3*, void function (void*,const(char)*,sqlite3_uint64) xProfile, void*);
 
 /**
 ** CAPI3REF: Query Progress Callbacks
@@ -694,7 +694,7 @@ const(char)* sqlite3_uri_parameter(const(char)* zFilename, const(char)* zParam);
 /// Ditto
 int sqlite3_uri_boolean(const(char)* zFile, const(char)* zParam, int bDefault);
 /// Ditto
-sqlite3_int64 sqlite3_uri_int64(const char*, const char*, sqlite3_int64);
+sqlite3_int64 sqlite3_uri_int64(const(char)*, const(char)*, sqlite3_int64);
 
 /**
 ** CAPI3REF: Error Codes And Messages
@@ -802,9 +802,9 @@ struct sqlite3_context;
 /**
 ** CAPI3REF: Binding Values To Prepared Statements
 */
-int sqlite3_bind_blob(sqlite3_stmt*, int, const void*, int n, void function (void*));
+int sqlite3_bind_blob(sqlite3_stmt*, int, const(void)*, int n, void function (void*));
 /// Ditto
-int sqlite3_bind_blob64(sqlite3_stmt*, int, const void*, sqlite3_uint64,void function (void*));
+int sqlite3_bind_blob64(sqlite3_stmt*, int, const(void)*, sqlite3_uint64,void function (void*));
 /// Ditto
 int sqlite3_bind_double(sqlite3_stmt*, int, double);
 /// Ditto
@@ -814,13 +814,13 @@ int sqlite3_bind_int64(sqlite3_stmt*, int, sqlite3_int64);
 /// Ditto
 int sqlite3_bind_null(sqlite3_stmt*, int);
 /// Ditto
-int sqlite3_bind_text(sqlite3_stmt*, int, const char*, int n, void function (void*));
+int sqlite3_bind_text(sqlite3_stmt*, int, const(char)*, int n, void function (void*));
 /// Ditto
-int sqlite3_bind_text16(sqlite3_stmt*, int, const void*, int, void function (void*));
+int sqlite3_bind_text16(sqlite3_stmt*, int, const(void)*, int, void function (void*));
 /// Ditto
-int sqlite3_bind_text64(sqlite3_stmt*, int, const char*, sqlite3_uint64,void function (void*), ubyte encoding);
+int sqlite3_bind_text64(sqlite3_stmt*, int, const(char)*, sqlite3_uint64,void function (void*), ubyte encoding);
 /// Ditto
-int sqlite3_bind_value(sqlite3_stmt*, int, const sqlite3_value*);
+int sqlite3_bind_value(sqlite3_stmt*, int, const(sqlite3_value)*);
 /// Ditto
 int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
 /// Ditto
@@ -839,7 +839,7 @@ const(char)* sqlite3_bind_parameter_name(sqlite3_stmt*, int);
 /**
 ** CAPI3REF: Index Of A Parameter With A Given Name
 */
-int sqlite3_bind_parameter_index(sqlite3_stmt*, const char *zName);
+int sqlite3_bind_parameter_index(sqlite3_stmt*, const(char)* zName);
 
 /**
 ** CAPI3REF: Reset All Bindings On A Prepared Statement
@@ -867,18 +867,18 @@ const(void)* sqlite3_column_database_name16(sqlite3_stmt*,int);
 /// Ditto
 const(char)* sqlite3_column_table_name(sqlite3_stmt*,int);
 /// Ditto
-const (void)* sqlite3_column_table_name16(sqlite3_stmt*,int);
+const(void)* sqlite3_column_table_name16(sqlite3_stmt*,int);
 /// Ditto
-const (char)* sqlite3_column_origin_name(sqlite3_stmt*,int);
+const(char)* sqlite3_column_origin_name(sqlite3_stmt*,int);
 /// Ditto
-const (void)* sqlite3_column_origin_name16(sqlite3_stmt*,int);
+const(void)* sqlite3_column_origin_name16(sqlite3_stmt*,int);
 
 /**
 ** CAPI3REF: Declared Datatype Of A Query Result
 */
-const (char)* sqlite3_column_decltype(sqlite3_stmt*,int);
+const(char)* sqlite3_column_decltype(sqlite3_stmt*,int);
 /// Ditto
-const (void)* sqlite3_column_decltype16(sqlite3_stmt*,int);
+const(void)* sqlite3_column_decltype16(sqlite3_stmt*,int);
 
 /**
 ** CAPI3REF: Evaluate An SQL Statement
@@ -905,7 +905,7 @@ enum
 /**
 ** CAPI3REF: Result Values From A Query
 */
-const (void)* sqlite3_column_blob(sqlite3_stmt*, int iCol);
+const(void)* sqlite3_column_blob(sqlite3_stmt*, int iCol);
 /// Ditto
 int sqlite3_column_bytes(sqlite3_stmt*, int iCol);
 /// Ditto
@@ -917,9 +917,9 @@ int sqlite3_column_int(sqlite3_stmt*, int iCol);
 /// Ditto
 sqlite3_int64 sqlite3_column_int64(sqlite3_stmt*, int iCol);
 /// Ditto
-const (char)* sqlite3_column_text(sqlite3_stmt*, int iCol);
+const(char)* sqlite3_column_text(sqlite3_stmt*, int iCol);
 /// Ditto
-const (void)* sqlite3_column_text16(sqlite3_stmt*, int iCol);
+const(void)* sqlite3_column_text16(sqlite3_stmt*, int iCol);
 /// Ditto
 int sqlite3_column_type(sqlite3_stmt*, int iCol);
 /// Ditto
@@ -1010,7 +1010,7 @@ deprecated int sqlite3_memory_alarm(void function(void*,sqlite3_int64,int),void*
 /**
 ** CAPI3REF: Obtaining SQL Function Parameter Values
 */
-const (void)* sqlite3_value_blob(sqlite3_value*);
+const(void)* sqlite3_value_blob(sqlite3_value*);
 /// Ditto
 int sqlite3_value_bytes(sqlite3_value*);
 /// Ditto
@@ -1022,13 +1022,13 @@ int sqlite3_value_int(sqlite3_value*);
 /// Ditto
 sqlite3_int64 sqlite3_value_int64(sqlite3_value*);
 /// Ditto
-const (char)* sqlite3_value_text(sqlite3_value*);
+const(char)* sqlite3_value_text(sqlite3_value*);
 /// Ditto
-const (void)* sqlite3_value_text16(sqlite3_value*);
+const(void)* sqlite3_value_text16(sqlite3_value*);
 /// Ditto
-const (void)* sqlite3_value_text16le(sqlite3_value*);
+const(void)* sqlite3_value_text16le(sqlite3_value*);
 /// Ditto
-const (void)* sqlite3_value_text16be(sqlite3_value*);
+const(void)* sqlite3_value_text16be(sqlite3_value*);
 /// Ditto
 int sqlite3_value_type(sqlite3_value*);
 /// Ditto
@@ -1042,7 +1042,7 @@ uint sqlite3_value_subtype(sqlite3_value*);
 /*
 ** CAPI3REF: Copy And Free SQL Values
 */
-sqlite3_value* sqlite3_value_dup(const sqlite3_value*);
+sqlite3_value* sqlite3_value_dup(const(sqlite3_value)*);
 void sqlite3_value_free(sqlite3_value*);
 
 /**
@@ -1082,15 +1082,15 @@ enum
 /**
 ** CAPI3REF: Setting The Result Of An SQL Function
 */
-void sqlite3_result_blob(sqlite3_context*, const void*, int, void function(void*));
+void sqlite3_result_blob(sqlite3_context*, const(void)*, int, void function(void*));
 /// Ditto
-void sqlite3_result_blob64(sqlite3_context*,const void*,sqlite3_uint64,void function(void*));
+void sqlite3_result_blob64(sqlite3_context*,const(void)*,sqlite3_uint64,void function(void*));
 /// Ditto
 void sqlite3_result_double(sqlite3_context*, double);
 /// Ditto
-void sqlite3_result_error(sqlite3_context*, const char*, int);
+void sqlite3_result_error(sqlite3_context*, const(char)*, int);
 /// Ditto
-void sqlite3_result_error16(sqlite3_context*, const void*, int);
+void sqlite3_result_error16(sqlite3_context*, const(void)*, int);
 /// Ditto
 void sqlite3_result_error_toobig(sqlite3_context*);
 /// Ditto
@@ -1104,15 +1104,15 @@ void sqlite3_result_int64(sqlite3_context*, sqlite3_int64);
 /// Ditto
 void sqlite3_result_null(sqlite3_context*);
 /// Ditto
-void sqlite3_result_text(sqlite3_context*, const char*, int, void function(void*));
+void sqlite3_result_text(sqlite3_context*, const(char)*, int, void function(void*));
 /// Ditto
-void sqlite3_result_text64(sqlite3_context*, const char*,sqlite3_uint64,void function(void*), ubyte encoding);
+void sqlite3_result_text64(sqlite3_context*, const(char)*,sqlite3_uint64,void function(void*), ubyte encoding);
 /// Ditto
-void sqlite3_result_text16(sqlite3_context*, const void*, int, void function(void*));
+void sqlite3_result_text16(sqlite3_context*, const(void)*, int, void function(void*));
 /// Ditto
-void sqlite3_result_text16le(sqlite3_context*, const void*, int, void function(void*));
+void sqlite3_result_text16le(sqlite3_context*, const(void)*, int, void function(void*));
 /// Ditto
-void sqlite3_result_text16be(sqlite3_context*, const void*, int, void function(void*));
+void sqlite3_result_text16be(sqlite3_context*, const(void)*, int, void function(void*));
 /// Ditto
 void sqlite3_result_value(sqlite3_context*, sqlite3_value*);
 /// Ditto
@@ -1133,7 +1133,7 @@ int sqlite3_create_collation(
     const(char)*zName,
     int eTextRep,
     void *pArg,
-    int function (void*,int,const void*,int,const void*) xCompare
+    int function (void*,int,const(void)*,int,const(void)*) xCompare
 );
 /// Ditto
 int sqlite3_create_collation_v2(
@@ -1141,7 +1141,7 @@ int sqlite3_create_collation_v2(
     const(char)*zName,
     int eTextRep,
     void *pArg,
-    int function (void*,int,const void*,int,const void*) xCompare,
+    int function (void*,int,const(void)*,int,const(void)*) xCompare,
     void function (void*) xDestroy
 );
 /// Ditto
@@ -1150,7 +1150,7 @@ int sqlite3_create_collation16(
     const(void)*zName,
     int eTextRep,
     void *pArg,
-    int function (void*,int,const void*,int,const void*) xCompare
+    int function (void*,int,const(void)*,int,const(void)*) xCompare
 );
 
 /**
@@ -1159,13 +1159,13 @@ int sqlite3_create_collation16(
 int sqlite3_collation_needed(
     sqlite3*,
     void*,
-    void function (void*,sqlite3*,int eTextRep,const char*)
+    void function (void*,sqlite3*,int eTextRep,const(char)*)
 );
 /// Ditto
 int sqlite3_collation_needed16(
     sqlite3*,
     void*,
-    void function (void*,sqlite3*,int eTextRep,const void*)
+    void function (void*,sqlite3*,int eTextRep,const(void)*)
 );
 
 ///
@@ -1242,12 +1242,12 @@ sqlite3 *sqlite3_db_handle(sqlite3_stmt*);
 /**
 ** CAPI3REF: Return The Filename For A Database Connection
 */
-const(char)* sqlite3_db_filename(sqlite3 *db, const char* zDbName);
+const(char)* sqlite3_db_filename(sqlite3 *db, const(char)* zDbName);
 
 /**
 ** CAPI3REF: Determine if a database is read-only
 */
-int sqlite3_db_readonly(sqlite3 *db, const char * zDbName);
+int sqlite3_db_readonly(sqlite3 *db, const(char)*  zDbName);
 
 /*
 ** CAPI3REF: Find the next prepared statement
@@ -1360,17 +1360,17 @@ struct sqlite3_module
 {
     int iVersion;
     int function (sqlite3*, void *pAux,
-               int argc, const char **argv,
+               int argc, const(char)* *argv,
                sqlite3_vtab **ppVTab, char**) xCreate;
     int function (sqlite3*, void *pAux,
-               int argc, const char **argv,
+               int argc, const(char)* *argv,
                sqlite3_vtab **ppVTab, char**) xConnect;
     int function (sqlite3_vtab *pVTab, sqlite3_index_info*) xBestIndex;
     int function (sqlite3_vtab *pVTab) xDisconnect;
     int function (sqlite3_vtab *pVTab) xDestroy;
     int function (sqlite3_vtab *pVTab, sqlite3_vtab_cursor **ppCursor) xOpen;
     int function (sqlite3_vtab_cursor*) xClose;
-    int function (sqlite3_vtab_cursor*, int idxNum, const char *idxStr,
+    int function (sqlite3_vtab_cursor*, int idxNum, const(char)* idxStr,
                 int argc, sqlite3_value **argv) xFilter;
     int function (sqlite3_vtab_cursor*) xNext;
     int function (sqlite3_vtab_cursor*) xEof;
@@ -1381,10 +1381,10 @@ struct sqlite3_module
     int function (sqlite3_vtab *pVTab) xSync;
     int function (sqlite3_vtab *pVTab) xCommit;
     int function (sqlite3_vtab *pVTab) xRollback;
-    int function (sqlite3_vtab *pVtab, int nArg, const char *zName,
+    int function (sqlite3_vtab *pVtab, int nArg, const(char)* zName,
                        mapFunction*,
                        void **ppArg) xFindFunction;
-    int function (sqlite3_vtab *pVtab, const char *zNew) xRename;
+    int function (sqlite3_vtab *pVtab, const(char)* zNew) xRename;
     int function (sqlite3_vtab *pVTab, int) xSavepoint;
     int function (sqlite3_vtab *pVTab, int) xRelease;
     int function (sqlite3_vtab *pVTab, int) xRollbackTo;
@@ -1487,12 +1487,12 @@ struct sqlite3_vtab_cursor
 /**
 ** CAPI3REF: Declare The Schema Of A Virtual Table
 */
-int sqlite3_declare_vtab(sqlite3*, const char *zSQL);
+int sqlite3_declare_vtab(sqlite3*, const(char)* zSQL);
 
 /**
 ** CAPI3REF: Overload A Function For A Virtual Table
 */
-int sqlite3_overload_function(sqlite3*, const char *zFuncName, int nArg);
+int sqlite3_overload_function(sqlite3*, const(char)* zFuncName, int nArg);
 
 /**
 ** The interface to the virtual-table mechanism defined above (back up
@@ -1545,12 +1545,12 @@ int sqlite3_blob_read(sqlite3_blob *, void *Z, int N, int iOffset);
 /**
 ** CAPI3REF: Write Data Into A BLOB Incrementally
 */
-int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
+int sqlite3_blob_write(sqlite3_blob *, const(void)* z, int n, int iOffset);
 
 /**
 ** CAPI3REF: Virtual File System Objects
 */
-sqlite3_vfs *sqlite3_vfs_find(const char *zVfsName);
+sqlite3_vfs *sqlite3_vfs_find(const(char)* zVfsName);
 /// Ditto
 int sqlite3_vfs_register(sqlite3_vfs*, int makeDflt);
 /// Ditto
@@ -1626,7 +1626,7 @@ sqlite3_mutex *sqlite3_db_mutex(sqlite3*);
 /**
 ** CAPI3REF: Low-Level Control Of Database Files
 */
-int sqlite3_file_control(sqlite3*, const char *zDbName, int op, void*);
+int sqlite3_file_control(sqlite3*, const(char)* zDbName, int op, void*);
 
 /**
 ** CAPI3REF: Testing Interface
@@ -1812,8 +1812,8 @@ int sqlite3_unlock_notify(
 /**
 ** CAPI3REF: String Comparison
 */
-int sqlite3_stricmp(const char * , const char * );
-int sqlite3_strnicmp(const char * , const char * , int);
+int sqlite3_stricmp(const(char)*  , const(char)*  );
+int sqlite3_strnicmp(const(char)*  , const(char)*  , int);
 
 /*
 ** CAPI3REF: String Globbing
@@ -1829,14 +1829,14 @@ int sqlite3_strlike(const(char)* zGlob, const(char)* zStr, uint cEsc);
 /**
 ** CAPI3REF: Error Logging Interface
 */
-void sqlite3_log(int iErrCode, const char *zFormat, ...);
+void sqlite3_log(int iErrCode, const(char)* zFormat, ...);
 
 /**
 ** CAPI3REF: Write-Ahead Log Commit Hook
 */
 void *sqlite3_wal_hook(
     sqlite3*,
-    int function (void *,sqlite3*,const char*,int),
+    int function (void *,sqlite3*,const(char)*,int),
     void*
 );
 
@@ -1848,7 +1848,7 @@ int sqlite3_wal_autocheckpoint(sqlite3 *db, int N);
 /**
 ** CAPI3REF: Checkpoint a database
 */
-int sqlite3_wal_checkpoint(sqlite3 *db, const char *zDb);
+int sqlite3_wal_checkpoint(sqlite3 *db, const(char)* zDb);
 
 /**
 ** CAPI3REF: Checkpoint a database
@@ -2026,7 +2026,7 @@ enum
 struct Fts5Context;
 /// Ditto
 alias fts5_extension_function = void function(
-    const Fts5ExtensionApi *pApi,
+    const(Fts5ExtensionApi)* pApi,
     Fts5Context *pFts,
     sqlite3_context *pCtx,
     int nVal,
@@ -2047,19 +2047,19 @@ struct Fts5ExtensionApi
     int function(Fts5Context*, sqlite3_int64 *pnRow) xRowCount;
     int function(Fts5Context*, int iCol, sqlite3_int64 *pnToken) xColumnTotalSize;
     int function(Fts5Context*, 
-        const char *pText, int nText,
+        const(char)* pText, int nText,
         void *pCtx,
-        int function(void*, int, const char*, int, int, int) xToken
+        int function(void*, int, const(char)*, int, int, int) xToken
     ) xTokenize;
     int function(Fts5Context*) xPhraseCount;
     int function(Fts5Context*, int iPhrase) xPhraseSize;
     int function(Fts5Context*, int *pnInst) xInstCount;
     int function(Fts5Context*, int iIdx, int *piPhrase, int *piCol, int *piOff) xInst;
     sqlite3_int64 function(Fts5Context*) xRowid;
-    int function(Fts5Context*, int iCol, const char **pz, int *pn) xColumnText;
+    int function(Fts5Context*, int iCol, const(char)* *pz, int *pn) xColumnText;
     int function(Fts5Context*, int iCol, int *pnToken) xColumnSize;
     int function(Fts5Context*, int iPhrase, void *pUserData,
-        int function(const Fts5ExtensionApi*,Fts5Context*,void*)
+        int function(const(Fts5ExtensionApi)*,Fts5Context*,void*)
     ) xQueryPhrase;
     int function(Fts5Context*, void *pAux, void function(void*) xDelete) xSetAuxdata;
     void* function(Fts5Context*, int bClear) xGetAuxdata;
@@ -2070,16 +2070,16 @@ struct Fts5ExtensionApi
 struct Fts5Tokenizer;
 struct fts5_tokenizer
 {
-    int function(void*, const char **azArg, int nArg, Fts5Tokenizer **ppOut) xCreate;
+    int function(void*, const(char)* *azArg, int nArg, Fts5Tokenizer **ppOut) xCreate;
     void function(Fts5Tokenizer*) xDelete;
     int function(Fts5Tokenizer*, 
         void *pCtx,
         int flags,
-        const char *pText, int nText, 
+        const(char)* pText, int nText, 
         int function(
             void *pCtx,
             int tflags,
-            const char *pToken,
+            const(char)* pToken,
             int nToken,
             int iStart,
             int iEnd  
@@ -2103,7 +2103,7 @@ struct fts5_api
 
     int function(
         fts5_api *pApi,
-        const char *zName,
+        const(char)* zName,
         void *pContext,
         fts5_tokenizer *pTokenizer,
         void function(void*) xDestroy
@@ -2111,14 +2111,14 @@ struct fts5_api
 
     int function(
         fts5_api *pApi,
-        const char *zName,
+        const(char)* zName,
         void **ppContext,
         fts5_tokenizer *pTokenizer
     ) xFindTokenizer;
 
     int function(
         fts5_api *pApi,
-        const char *zName,
+        const(char)* zName,
         void *pContext,
         fts5_extension_function xFunction,
         void function(void*) xDestroy

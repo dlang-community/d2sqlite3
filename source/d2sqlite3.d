@@ -202,33 +202,12 @@ void config(Args...)(int code, Args args)
     auto result = sqlite3_config(code, args);
     enforce(result == SQLITE_OK, new SqliteException("Configuration: error %s".format(result)));
 }
-version (D_Ddoc)
+unittest
 {
-    ///
-    unittest
-    {
-        config(SQLITE_CONFIG_MULTITHREAD);
-
-        // Setup a logger callback function
-        config(SQLITE_CONFIG_LOG,
-            function(void* p, int code, const(char*) msg)
-            {
-                import std.stdio;
-                writefln("%05d | %s", code, msg.to!string);
-            },
-            null);
-        initialize();
-    }
-}
-else
-{
-    unittest
-    {
-        shutdown();
-        config(SQLITE_CONFIG_MULTITHREAD);
-        config(SQLITE_CONFIG_LOG, function(void* p, int code, const(char*) msg) {}, null);
-        initialize();
-    }
+    shutdown();
+    config(SQLITE_CONFIG_MULTITHREAD);
+    config(SQLITE_CONFIG_LOG, function(void* p, int code, const(char)* msg) {}, null);
+    initialize();
 }
 
 
@@ -948,7 +927,7 @@ public:
             "function " ~ name ~ " should return a value convertible to an int");
 
         extern (C) static
-        int x_compare(void* ptr, int n1, const(void*) str1, int n2, const(void*) str2)
+        int x_compare(void* ptr, int n1, const(void)* str1, int n2, const(void)* str2)
         {
             auto dg = delegateUnwrap!T(ptr).dlg;
             char[] s1, s2;
@@ -1133,7 +1112,7 @@ public:
     +/
     void setTraceCallback(void delegate(string sql) traceCallback)
     {
-        extern(C) static void callback(void* ptr, const char* str)
+        extern(C) static void callback(void* ptr, const(char)* str)
         {
             auto dlg = delegateUnwrap!(void delegate(string))(ptr).dlg; 
             dlg(str.to!string);
@@ -1158,7 +1137,7 @@ public:
     +/
     void setProfileCallback(void delegate(string sql, ulong time) profileCallback)
     {
-        extern(C) static void callback(void* ptr, const char* str, sqlite3_uint64 time)
+        extern(C) static void callback(void* ptr, const(char)* str, sqlite3_uint64 time)
         {
             auto dlg = delegateUnwrap!(void delegate(string, ulong))(ptr).dlg;
             dlg(str.to!string, time);
@@ -1335,7 +1314,7 @@ private:
     this(Database db, string sql)
     {
         sqlite3_stmt* handle;
-        const(char*) ptail;
+        const(char)* ptail;
         auto result = sqlite3_prepare_v2(db.handle(), sql.toStringz, sql.length.to!int,
             &handle, null);
         enforce(result == SQLITE_OK, new SqliteException(errmsg(db.handle()), result, sql));
