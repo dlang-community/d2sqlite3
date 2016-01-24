@@ -1529,10 +1529,8 @@ public:
     /// Gets the count of bind parameters.
     int parameterCount() nothrow
     {
-        if (p.handle)
-            return sqlite3_bind_parameter_count(p.handle);
-        else
-            return 0;
+        assert(p.handle, "Operation on an empty statement");
+        return sqlite3_bind_parameter_count(p.handle);
     }
 
     /++
