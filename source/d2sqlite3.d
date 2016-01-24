@@ -1801,7 +1801,7 @@ public:
     {
         assert(p.state);
         enforce(!empty, new SqliteException("No rows available"));
-        return Row(p.statement.handle);
+        return Row(p.statement);
     }
 
     /// ditto
@@ -1810,8 +1810,7 @@ public:
         assert(p.state);
         enforce(!empty, new SqliteException("No rows available"));
         p.state = sqlite3_step(p.statement.handle);
-        enforce(p.state == SQLITE_DONE || p.state == SQLITE_ROW,
-                new SqliteException(errmsg(p.statement.handle), p.state));
+        enforce(p.state == SQLITE_DONE || p.state == SQLITE_ROW, new SqliteException(errmsg(p.statement.handle), p.state));
     }
 
     /++
@@ -1857,25 +1856,28 @@ $(UL
     $(LI using Row as a random-access range of ColumnData.)
     $(LI using the more direct peek functions.)
 )
+
+Warning:
+    The data of the row is invalid when the next row is accessed (after a call to
+    `ResultRange.popFront()`).
 +/
 struct Row
 {
     private
     {
-        sqlite3_stmt* statement;
+        Statement statement;
         int frontIndex;
         int backIndex;
     }
 
-    this(sqlite3_stmt* statement) nothrow
+    this(Statement statement)
     {
-        assert(statement);
         this.statement = statement;
-        backIndex = sqlite3_column_count(statement) - 1;
+        backIndex = sqlite3_column_count(statement.handle) - 1;
     }
 
     /// Range interface.
-    bool empty() @property @safe pure nothrow
+    bool empty() @property nothrow
     {
         return length == 0;
     }
@@ -1887,19 +1889,15 @@ struct Row
     }
 
     /// ditto
-    void popFront() @safe pure nothrow
+    void popFront() nothrow
     {
         frontIndex++;
     }
 
     /// ditto
-    Row save() @property @safe pure nothrow
+    Row save() @property
     {
-        Row ret;
-        ret.statement = statement;
-        ret.frontIndex = frontIndex;
-        ret.backIndex = backIndex;
-        return ret;
+        return this;
     }
 
     /// ditto
@@ -1909,13 +1907,13 @@ struct Row
     }
 
     /// ditto
-    void popBack() @safe pure nothrow
+    void popBack() nothrow
     {
         backIndex--;
     }
 
     /// ditto
-    int length() @property @safe pure nothrow
+    int length() @property nothrow
     {
         return backIndex - frontIndex + 1;
     }
@@ -1925,7 +1923,7 @@ struct Row
     {
         auto i = internalIndex(index);
 
-        auto type = sqlite3_column_type(statement, i);
+        auto type = sqlite3_column_type(statement.handle, i);
 
         final switch (type)
         {
@@ -2035,7 +2033,7 @@ struct Row
     T peek(T)(int index)
         if (isBoolean!T || isIntegral!T)
     {
-        return sqlite3_column_int64(statement, internalIndex(index)).to!T();
+        return sqlite3_column_int64(statement.handle, internalIndex(index)).to!T();
     }
 
     /// ditto
@@ -2043,16 +2041,16 @@ struct Row
         if (isFloatingPoint!T)
     {
         auto i = internalIndex(index);
-        if (sqlite3_column_type(statement, i) == SqliteType.NULL)
+        if (sqlite3_column_type(statement.handle, i) == SqliteType.NULL)
             return T.init;
-        return sqlite3_column_double(statement, i).to!T();
+        return sqlite3_column_double(statement.handle, i).to!T();
     }
 
     /// ditto
     T peek(T)(int index)
         if (isSomeString!T)
     {
-        return sqlite3_column_text(statement, internalIndex(index)).to!T;
+        return sqlite3_column_text(statement.handle, internalIndex(index)).to!T;
     }
 
     /// ditto
@@ -2060,8 +2058,8 @@ struct Row
         if (isArray!T && !isSomeString!T)
     {
         auto i = internalIndex(index);
-        auto ptr = sqlite3_column_blob(statement, i);
-        auto length = sqlite3_column_bytes(statement, i);
+        auto ptr = sqlite3_column_blob(statement.handle, i);
+        auto length = sqlite3_column_bytes(statement.handle, i);
 
         static if (mode == PeekMode.copy)
         {
@@ -2082,7 +2080,7 @@ struct Row
             && (!isArray!(TemplateArgsOf!T[0]) || isSomeString!(TemplateArgsOf!T[0])))
     {
         alias U = TemplateArgsOf!T[0];
-        if (sqlite3_column_type(statement, internalIndex(index)) == SqliteType.NULL)
+        if (sqlite3_column_type(statement.handle, internalIndex(index)) == SqliteType.NULL)
             return T();
         return T(peek!U(index));
     }
@@ -2093,7 +2091,7 @@ struct Row
             && isArray!(TemplateArgsOf!T[0]) && !isSomeString!(TemplateArgsOf!T[0]))
     {
         alias U = TemplateArgsOf!T[0];
-        if (sqlite3_column_type(statement, internalIndex(index)) == SqliteType.NULL)
+        if (sqlite3_column_type(statement.handle, internalIndex(index)) == SqliteType.NULL)
             return T();
         return T(peek!(U, mode)(index));
     }
@@ -2105,18 +2103,54 @@ struct Row
     }
 
     /++
-    Determines the type of a particular column.
+    Determines the type of the data in a particular column.
+
+    `columnType` returns the type of the actual data in that column, whereas
+    `columnDeclaredTypeName` returns the name of the type as declared in the SELECT statement.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/column_blob.html).
     +/
     SqliteType columnType(int index)
     {
-        return cast(SqliteType) sqlite3_column_type(statement, internalIndex(index));
+        return cast(SqliteType) sqlite3_column_type(statement.handle, internalIndex(index));
     }
     /// Ditto
     SqliteType columnType(string columnName)
     {
         return columnType(indexForName(columnName));
+    }
+    /// Ditto
+    string columnDeclaredTypeName(int index)
+    {
+        return sqlite3_column_decltype(statement.handle, internalIndex(index)).to!string;
+    }
+    /// Ditto
+    string columnDeclaredTypeName(string columnName)
+    {
+        return columnDeclaredTypeName(indexForName(columnName));
+    }
+    ///
+    unittest
+    {
+        auto db = Database(":memory:");
+        db.run("CREATE TABLE items (name TEXT, price REAL);
+                INSERT INTO items VALUES ('car', 20000);
+                INSERT INTO items VALUES ('air', 'free');");
+        
+        auto results = db.execute("SELECT name, price FROM items");
+
+        auto row = results.front;
+        assert(row.columnType(0) == SqliteType.TEXT);
+        assert(row.columnType("price") == SqliteType.FLOAT);
+        assert(row.columnDeclaredTypeName(0) == "TEXT");
+        assert(row.columnDeclaredTypeName("price") == "REAL");
+
+        results.popFront();
+        row = results.front;
+        assert(row.columnType(0) == SqliteType.TEXT);
+        assert(row.columnType("price") == SqliteType.TEXT);
+        assert(row.columnDeclaredTypeName(0) == "TEXT");
+        assert(row.columnDeclaredTypeName("price") == "REAL");
     }
 
     /++
@@ -2126,7 +2160,17 @@ struct Row
     +/
     string columnName(int index)
     {
-        return sqlite3_column_name(statement, internalIndex(index)).to!string;
+        return sqlite3_column_name(statement.handle, internalIndex(index)).to!string;
+    }
+    ///
+    unittest
+    {
+        auto db = Database(":memory:");
+        db.run("CREATE TABLE items (name TEXT, price REAL);
+                INSERT INTO items VALUES ('car', 20000);");
+        
+        auto row = db.execute("SELECT name, price FROM items").front;
+        assert(row.columnName(1) == "price");
     }
 
     version (SQLITE_ENABLE_COLUMN_METADATA)
@@ -2169,21 +2213,6 @@ struct Row
         {
             return columnOriginName(indexForName(columnName));
         }
-    }
-
-    /++
-    Determines the declared type name of a particular result column in SELECT statement.
-
-    See_Also: $(LINK http://www.sqlite.org/c3ref/column_database_name.html).
-    +/
-    string columnDeclaredTypeName(int index)
-    {
-        return sqlite3_column_decltype(statement, internalIndex(index)).to!string;
-    }
-    /// Ditto
-    string columnDeclaredTypeName(string columnName)
-    {
-        return columnDeclaredTypeName(indexForName(columnName));
     }
 
     /++
@@ -2241,7 +2270,7 @@ private:
     int indexForName(string name)
     {
         foreach (i; frontIndex .. backIndex + 1)
-            if (sqlite3_column_name(statement, i).to!string == name)
+            if (sqlite3_column_name(statement.handle, i).to!string == name)
                 return i;
 
         throw new SqliteException("invalid column name: '%s'".format(name));
@@ -2304,6 +2333,22 @@ unittest // Peek
     assert(row.peek!(ubyte[])(0) == cast(ubyte[]) x"DEADBEEF");
 }
 
+unittest // Row life-time
+{
+    auto db = Database(":memory:");
+    auto row = db.execute("SELECT 1 AS one").front;
+    assert(row[0].as!long == 1);
+    assert(row["one"].as!long == 1);
+}
+
+unittest // Bad column index
+{
+    auto db = Database(":memory:");
+    auto row = db.execute("SELECT 1 AS one").front;
+    assertThrown!SqliteException(row[1].as!long);
+    assertThrown!SqliteException(row["two"].as!long);
+}
+
 unittest // PeekMode
 {
     alias Blob = ubyte[];
@@ -2363,16 +2408,13 @@ unittest // Row random-access range interface
         }
     }
 
-    auto results = { return db.execute("SELECT * FROM test"); }();
-    auto values = [1, 2, 3, 4, 5, 6, 7, 8];
-    foreach (row; results)
     {
-        while (!row.empty)
-        {
-            assert(row.front.as!int == values.front);
-            row.popFront();
-            values.popFront();
-        }
+        auto row = db.execute("SELECT * FROM test").front;
+        row.popFront();
+        auto copy = row.save();
+        row.popFront();
+        assert(row.front.as!int == 3);
+        assert(copy.front.as!int == 2);
     }
 }
 
