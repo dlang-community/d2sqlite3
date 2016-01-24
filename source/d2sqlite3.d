@@ -63,13 +63,11 @@ unittest // Documentation example
     auto db = Database(":memory:");
 
     // Create a table
-    db.run(
-        "CREATE TABLE person (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            score FLOAT
-         )"
-    );
+    db.run("CREATE TABLE person (
+              id    INTEGER PRIMARY KEY,
+              name  TEXT NOT NULL,
+              score FLOAT
+            )");
 
     // Populate the table
 
@@ -866,15 +864,11 @@ public:
         }
 
         auto db = Database(":memory:");
-        db.execute("CREATE TABLE test (word TEXT)");
-        auto statement = db.prepare("INSERT INTO test VALUES (?)");
-        auto list = ["My", "cat", "is", "black"];
-        foreach (word; list)
-        {
-            statement.bind(1, word);
-            statement.execute();
-            statement.reset();
-        }
+        db.run("CREATE TABLE test (word TEXT);
+                INSERT INTO test VALUES ('My');
+                INSERT INTO test VALUES ('cat');
+                INSERT INTO test VALUES ('is');
+                INSERT INTO test VALUES ('black');");
 
         db.createAggregate("dash_join", Joiner("-"));
         auto text = db.execute("SELECT dash_join(word) FROM test").oneValue!string;
@@ -954,15 +948,9 @@ public:
 
         auto db = Database(":memory:");
         db.createCollation("my_coll", &my_collation);
-        db.execute("CREATE TABLE test (word TEXT)");
-
-        auto statement = db.prepare("INSERT INTO test (word) VALUES (?)");
-        foreach (word; ["straße", "strasses"])
-        {
-            statement.bind(1, word);
-            statement.execute();
-            statement.reset();
-        }
+        db.run("CREATE TABLE test (word TEXT);
+                INSERT INTO test (word) VALUES ('straße');
+                INSERT INTO test (word) VALUES ('strasses');");
 
         auto word = db.execute("SELECT word FROM test ORDER BY word COLLATE my_coll")
                       .oneValue!string;
@@ -1002,8 +990,8 @@ public:
             assert(rowid == 1);
             i = 42;
         });
-        db.execute("CREATE TABLE test (val INTEGER)");
-        db.execute("INSERT INTO test VALUES (100)");
+        db.run("CREATE TABLE test (val INTEGER);
+                INSERT INTO test VALUES (100)");
         assert(i == 42);
         db.setUpdateHook(null);
     }
@@ -2233,9 +2221,8 @@ struct Row
         }
 
         auto db = Database(":memory:");
-        db.execute("CREATE TABLE items (name TEXT)");
-        auto statement = db.prepare("INSERT INTO items VALUES(?)");
-        statement.inject("Light bulb");
+        db.run("CREATE TABLE items (name TEXT);
+                INSERT INTO items VALUES ('Light bulb')");
 
         auto results = db.execute("SELECT rowid AS id, name FROM items");
         auto row = results.front;
@@ -2279,14 +2266,12 @@ version (unittest)
 unittest // Peek
 {
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (value)");
-    auto statement = db.prepare("INSERT INTO test VALUES(?)");
-    statement.inject(null);
-    statement.inject(42);
-    statement.inject(3.14);
-    statement.inject("ABC");
-    auto blob = cast(ubyte[]) x"DEADBEEF";
-    statement.inject(blob);
+    db.run("CREATE TABLE test (value);
+            INSERT INTO test VALUES (NULL);
+            INSERT INTO test VALUES (42);
+            INSERT INTO test VALUES (3.14);
+            INSERT INTO test VALUES ('ABC');
+            INSERT INTO test VALUES (x'DEADBEEF');");
 
     import std.math : isNaN;
     auto results = db.execute("SELECT * FROM test");
@@ -2326,10 +2311,9 @@ unittest // PeekMode
     alias Blob = ubyte[];
 
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (value)");
-    auto statement = db.prepare("INSERT INTO test VALUES(?)");
-    statement.inject(cast(Blob) x"01020304");
-    statement.inject(cast(Blob) x"0A0B0C0D");
+    db.run("CREATE TABLE test (value);
+            INSERT INTO test VALUES (x'01020304');
+            INSERT INTO test VALUES (x'0A0B0C0D');");
 
     auto results = db.execute("SELECT * FROM test");
     auto row = results.front;
@@ -2349,13 +2333,9 @@ unittest // PeekMode
 unittest // Row random-access range interface
 {
     auto db = Database(":memory:");
-
-    {
-        db.execute("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER, d INTEGER)");
-        auto statement = db.prepare("INSERT INTO test VALUES(?, ?, ?, ?)");
-        statement.inject(1, 2, 3, 4);
-        statement.inject(5, 6, 7, 8);
-    }
+    db.run("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER, d INTEGER);
+        INSERT INTO test VALUES (1, 2, 3, 4);
+        INSERT INTO test VALUES (5, 6, 7, 8);");
 
     {
         auto results = db.execute("SELECT * FROM test");
@@ -2486,10 +2466,8 @@ unittest // Getting floating point values
 unittest // Getting text values
 {
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val TEXT)");
-
-    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    statement.inject("I am a text.");
+    db.run("CREATE TABLE test (val TEXT);
+            INSERT INTO test (val) VALUES ('I am a text.')");
 
     auto results = db.execute("SELECT * FROM test");
     assert(results.front.peek!string(0) == "I am a text.");
@@ -2516,10 +2494,8 @@ unittest // Getting null values
     import std.math;
 
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val TEXT)");
-
-    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    statement.inject(null);
+    db.run("CREATE TABLE test (val TEXT);
+            INSERT INTO test (val) VALUES (NULL)");
 
     auto results = db.execute("SELECT * FROM test");
     assert(results.front.peek!bool(0) == false);
@@ -2617,11 +2593,9 @@ struct QueryCache
 unittest
 {
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (msg TEXT, num FLOAT)");
-
-    auto statement = db.prepare("INSERT INTO test (msg, num) VALUES (?1, ?2)");
-    statement.inject("ABC", 123);
-    statement.inject("DEF", 456);
+    db.run("CREATE TABLE test (msg TEXT, num FLOAT);
+            INSERT INTO test (msg, num) VALUES ('ABC', 123);
+            INSERT INTO test (msg, num) VALUES ('DEF', 456);");
 
     auto results = db.execute("SELECT * FROM test");
     auto data = QueryCache(results);
@@ -2638,9 +2612,8 @@ alias RowCache = QueryCache;
 unittest // QueryCache copies
 {
     auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (msg TEXT)");
-    auto statement = db.prepare("INSERT INTO test (msg) VALUES (?)");
-    statement.inject("ABC");
+    db.run("CREATE TABLE test (msg TEXT);
+            INSERT INTO test (msg) VALUES ('ABC')");
 
     static getdata(Database db)
     {
