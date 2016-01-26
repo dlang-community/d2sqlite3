@@ -892,7 +892,7 @@ public:
     Params:
         name = The name that the function will have in the database.
 
-        fun = An alias to the D implementation of the function. The function $(D_PARAM fun)
+        fun = a delegate or function that implements the collation. The function $(D_PARAM fun)
         must satisfy these criteria:
             $(UL
                 $(LI Takes two string arguments (s1 and s2). )
