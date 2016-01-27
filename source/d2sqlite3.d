@@ -627,32 +627,51 @@ public:
                     sqlite3_result_error(context, txt.toStringz, -1);
                 }
             }
-
-            enum argnum = -1; // SQLite variadic
         }
         else
         {
-            alias ReturnType!fun RT;
-            static assert(!is(RT == void), "function must not return void");
-            
+            static assert(!is(ReturnType!fun == void), "function must not return void");
+
             alias PT = staticMap!(Unqual, ParameterTypeTuple!fun);
-            
-            extern(C) static
-            void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
+            alias PD = ParameterDefaults!fun;
+
+            extern (C) static void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
                 string name;
                 PT args;
                 try
                 {
-                    foreach (i, type; PT)
-                        args[i] = getValue!type(argv[i]);
-                    
+                    // Get the deledate and its name
                     auto ptr = sqlite3_user_data(context);
-
                     auto wrappedDelegate = delegateUnwrap!T(ptr);
                     auto dlg = wrappedDelegate.dlg;
                     name = wrappedDelegate.name;
-                    setResult(context, dlg(args));
+
+                    if (argc > PT.length)
+                    {
+                        auto txt = "too many arguments in function %s(), expecting at most %s"
+                            .format(name, PT.length);
+                        sqlite3_result_error(context, txt.toStringz, -1);
+                    }
+                    else if (argc < PT.length - EraseAll!(void, PD).length)
+                    {
+                        auto txt = "too few arguments in function %s(), expecting at least %s"
+                            .format(name, PT.length - EraseAll!(void, PD).length);
+                        sqlite3_result_error(context, txt.toStringz, -1);
+                    }
+                    else
+                    {
+                        foreach (i, type; PT)
+                        {
+                            if (i < argc)
+                                args[i] = getValue!type(argv[i]);
+                            else
+                                static if (is(typeof(PD[i])))
+                                    args[i] = PD[i];
+                        }
+                        
+                        setResult(context, dlg(args));
+                    }
                 }
                 catch (Exception e)
                 {
@@ -660,29 +679,27 @@ public:
                     sqlite3_result_error(context, txt.toStringz, -1);
                 }
             }
-
-            enum argnum = PT.length;
         }
 
         assert(p.handle);
-        check(sqlite3_create_function_v2(p.handle, name.toStringz, argnum, SQLITE_UTF8 | det,
-            delegateWrap(fun, name), &x_func, null, null, &ptrFree));
+        check(sqlite3_create_function_v2(p.handle, name.toStringz, -1,
+                SQLITE_UTF8 | det, delegateWrap(fun, name), &x_func, null, null, &ptrFree));
     }
     ///
     unittest
     {
-        string fmt = "Hello, %s!";
-
-        // The implementation of the new function (capturing fmt)
-        string my_msg(string name)
+        string star(int count, string starSymbol = "*")
         {
-            return fmt.format(name);
+            import std.range : repeat;
+            import std.array : join;
+            
+            return starSymbol.repeat(count).join;
         }
 
         auto db = Database(":memory:");
-        db.createFunction("msg", &my_msg);
-        auto msg = db.execute("SELECT msg('John')").oneValue!string;
-        assert(msg == "Hello, John!");
+        db.createFunction("star", &star);
+        assert(db.execute("SELECT star(5)").oneValue!string == "*****");
+        assert(db.execute("SELECT star(3, '♥')").oneValue!string == "♥♥♥");
     }
     ///
     unittest
@@ -726,6 +743,21 @@ public:
         db.createFunction("my_list", &myList);
         auto list = db.execute("SELECT my_list(42, 3.14, 'text', x'00FF', NULL)").oneValue!string;
         assert(list == `42, 3.14, "text", [0, 255], null`, list);
+    }
+
+    unittest
+    {
+        int myFun(int a, int b = 1)
+        {
+            return a * b;
+        }
+        
+        auto db = Database(":memory:");
+        db.createFunction("myFun", &myFun);
+        assertThrown!SqliteException(db.execute("SELECT myFun()"));
+        assertThrown!SqliteException(db.execute("SELECT myFun(1, 2, 3)"));
+        assert(db.execute("SELECT myFun(5)").oneValue!int == 5);
+        assert(db.execute("SELECT myFun(5, 2)").oneValue!int == 10);
     }
 
     deprecated("Kept for compatibility. Use of the new createFunction method is recommended.")
