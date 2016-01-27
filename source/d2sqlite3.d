@@ -633,7 +633,7 @@ public:
             static assert(!is(ReturnType!fun == void), "function must not return void");
 
             alias PT = staticMap!(Unqual, ParameterTypeTuple!fun);
-            alias PD = ParameterDefaults!fun;
+            alias PD = ParameterDefaultValueTuple!fun;
 
             extern (C) static void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
