@@ -412,7 +412,7 @@ public:
         ResultRange will be empty if a statement doesn't return rows. If the delegate
         return false, the execution is aborted.
     +/
-    void run(string sql, scope bool delegate(ResultRange) dg = null)
+    void run(string sql, bool delegate(ResultRange) dg = null)
     {
         foreach (statement; sql.byStatement)
         {
@@ -638,7 +638,6 @@ public:
             extern (C) static void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
                 string name;
-                PT args;
                 try
                 {
                     // Get the deledate and its name
@@ -647,20 +646,24 @@ public:
                     auto dlg = wrappedDelegate.dlg;
                     name = wrappedDelegate.name;
 
-                    if (argc > PT.length)
+                    enum maxArgc = PT.length;
+                    enum minArgc = PT.length - EraseAll!(void, PD).length;
+
+                    if (argc > maxArgc)
                     {
                         auto txt = "too many arguments in function %s(), expecting at most %s"
-                            .format(name, PT.length);
+                            .format(name, maxArgc);
                         sqlite3_result_error(context, txt.toStringz, -1);
                     }
-                    else if (argc < PT.length - EraseAll!(void, PD).length)
+                    else if (argc < minArgc)
                     {
                         auto txt = "too few arguments in function %s(), expecting at least %s"
-                            .format(name, PT.length - EraseAll!(void, PD).length);
+                            .format(name, minArgc);
                         sqlite3_result_error(context, txt.toStringz, -1);
                     }
                     else
                     {
+                        PT args;
                         foreach (i, type; PT)
                         {
                             if (i < argc)
@@ -669,7 +672,6 @@ public:
                                 static if (is(typeof(PD[i])))
                                     args[i] = PD[i];
                         }
-                        
                         setResult(context, dlg(args));
                     }
                 }
