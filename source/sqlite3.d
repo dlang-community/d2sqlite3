@@ -34,7 +34,7 @@ module sqlite3;
 
 import core.stdc.stdarg : va_list;
 
-extern (C) __gshared nothrow:
+extern (C) __gshared nothrow @nogc:
 
 /**
 ** CAPI3REF: Compile-Time Library Version Numbers
