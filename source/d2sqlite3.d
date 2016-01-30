@@ -561,6 +561,7 @@ public:
                 $(LI Its return value must be a boolean or numeric type, a string, an array, `null`,
                 or a `Nullable!T` where T is any of the previous types.)
             )
+        Pass a `null` function pointer to delete the function from the database connection.
 
         det = Tells SQLite whether the result of the function is deterministic, i.e. if the
         result is the same when called with the same parameters. Recent versions of SQLite
@@ -574,6 +575,9 @@ public:
         static assert(variadicFunctionStyle!(fun) == Variadic.no
                 || is(ParameterTypeTuple!fun == TypeTuple!(Variant[])),
                 "only type-safe variadic functions with Variant arguments are supported");
+
+        if (!fun)
+            createFunction(name, null);
 
         static if (is(ParameterTypeTuple!fun == TypeTuple!(Variant[])))
         {
@@ -747,6 +751,15 @@ public:
         assert(list == `42, 3.14, "text", [0, 255], null`, list);
     }
 
+    /// Ditto
+    void createFunction(T)(string name, T fun)
+        if (is(T == typeof(null)))
+    {
+        assert(p.handle);
+        check(sqlite3_create_function_v2(p.handle, name.toStringz, -1, SQLITE_UTF8,
+                null, null, null, null, null));
+    }
+
     unittest
     {
         int myFun(int a, int b = 1)
@@ -760,8 +773,12 @@ public:
         assertThrown!SqliteException(db.execute("SELECT myFun(1, 2, 3)"));
         assert(db.execute("SELECT myFun(5)").oneValue!int == 5);
         assert(db.execute("SELECT myFun(5, 2)").oneValue!int == 10);
-    }
 
+        db.createFunction("myFun", null);
+        assertThrown!SqliteException(db.execute("SELECT myFun(5)"));
+        assertThrown!SqliteException(db.execute("SELECT myFun(5, 2)"));
+    }
+    
     deprecated("Kept for compatibility. Use of the new createFunction method is recommended.")
     void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
         if (isFunctionPointer!T || isDelegate!T)
