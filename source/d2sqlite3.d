@@ -715,7 +715,7 @@ public:
             Appender!(string[]) app;
             foreach (arg; args)
             {
-                if (arg._type == SqliteType.TEXT)
+                if (arg.type == SqliteType.TEXT)
                     app.put(`"%s"`.format(arg));
                 else
                     app.put("%s".format(arg));
@@ -735,7 +735,7 @@ public:
             Appender!(string[]) app;
             foreach (arg; args)
             {
-                if (arg._type == SqliteType.TEXT)
+                if (arg.type == SqliteType.TEXT)
                     app.put(`"%s"`.format(arg));
                 else
                     app.put("%s".format(arg));
