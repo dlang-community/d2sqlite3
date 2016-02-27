@@ -18,4 +18,5 @@ configuration "all-included" {
     
     preBuildCommands "make -C $PACKAGE_DIR -f sqlite3.mak" platform="posix"
     sourceFiles "sqlite3.o" platform="posix"
+    libs "dl" platform="posix"
 }
