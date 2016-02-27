@@ -18,7 +18,7 @@ It wraps the C API in an idiomatic manner and handles built-in D types and
 ```json
     "lflags": ["-L/path/to/lib"]
 ```
-- **`all-included`**: on Windows, use a prebuilt SQLite DLL (bundled with this library); on Posix systems, builds SQLite from the source amalgamation (also bundled with this library).
+- **`all-included`**: on Windows, use a prebuilt SQLite DLL (bundled with this library) -- **UNFINISHED**; on Posix systems, builds SQLite from the source amalgamation (also bundled with this library).
 - **`without-lib`**: you manage linking SQLite yourself.
 
 Set the right configuration for you project in its `dub.json` file using the `subConfigurations` setting, e.g.:
