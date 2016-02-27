@@ -8,12 +8,5 @@ matrix:
         - secure: eCT5571JwRgcPq3PqOlBF7bgyJO+lhFQJyjn19ZW2xUTvoQq5Rxfjplgh2YgDD7INzaJ4vzFLVH/07+iWrQujYKjNyLTHumACPddLKBYRIAHC9glGyDkyAZ7vl53+f8Xfy0qNLcEPs56jsWRVS3QuSN1WuX1IAvQgsDcKKtYi7s=
     - d: ldc
     - d: gdc
-  
-before_install:
-  - echo 'deb http://us.archive.ubuntu.com/ubuntu/ vivid main universe' | sudo tee -a /etc/apt/sources.list
-  - sudo apt-get -y update
-
-install:
-  - sudo apt-get -y install -t vivid libsqlite3-0 libsqlite3-dev
 
 script: ./travis.sh

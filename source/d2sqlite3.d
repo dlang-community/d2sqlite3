@@ -28,7 +28,7 @@ Authors:
     Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
 
 Copyright:
-    Copyright 2011-15 Nicolas Sicard.
+    Copyright 2011-16 Nicolas Sicard.
 
 License:
     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).

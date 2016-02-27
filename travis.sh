@@ -4,10 +4,10 @@ set -ueo pipefail
 
 if [ ! -z "${COVERAGE:-}" ]; then
     dub fetch doveralls
-    dub test -b unittest-cov
+    dub test -b unittest-cov -c all-included
     dub run doveralls
 else
-    dub test
+    dub test -c all-included
 fi
 
 if [ ! -z "${GH_TOKEN:-}" ]; then

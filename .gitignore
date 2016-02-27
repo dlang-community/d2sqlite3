@@ -5,3 +5,4 @@ libd2sqlite3.a
 TODO.txt
 docs.json
 docs
+sqlite3.o
