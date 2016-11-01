@@ -45,6 +45,7 @@ import std.string;
 import std.traits;
 import std.typecons;
 import std.typetuple;
+import core.exception;
 import core.memory : GC;
 import core.stdc.string : memcpy;
 import core.stdc.stdlib : malloc, free;
@@ -256,7 +257,20 @@ private:
             {
                 sqlite3_progress_handler(handle, 0, null, null);
                 auto result = sqlite3_close(handle);
-                enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
+				
+				// Check that destructor was not call by the GC
+				// See https://p0nce.github.io/d-idioms/#GC-proof-resource-class
+				try
+				{
+	                enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
+				}
+				catch (InvalidMemoryOperationError e)
+			    {
+			        import core.stdc.stdio;
+			        fprintf(stderr, "Error: release of Database resource incorrectly"
+			                        " depends on destructors called by the GC.\n");
+			        assert(false); // crash
+			    }
             }
             handle = null;
             ptrFree(updateHook);
@@ -274,7 +288,8 @@ private:
     alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
     Payload p;
 
-    void check(int result) {
+    void check(int result)
+	{
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
 
