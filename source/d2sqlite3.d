@@ -295,7 +295,7 @@ public:
     {
         sqlite3* hdl;
         auto result = sqlite3_open_v2(path.toStringz, &hdl, flags, null);
-        enforce(result == SQLITE_OK, new SqliteException(p.handle ? errmsg(p.handle) : "Error opening the database", result));
+        enforce(result == SQLITE_OK, new SqliteException(hdl ? errmsg(hdl) : "Error opening the database", result));
         p = Payload(hdl);
     }
 
