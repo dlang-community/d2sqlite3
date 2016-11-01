@@ -1732,6 +1732,85 @@ unittest // Multiple parameters binding: tuples
     }
 }
 
+unittest // Binding/peeking integral values
+{
+    auto db = Database(":memory:");
+    db.run("CREATE TABLE test (val INTEGER)");
+
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.inject(cast(byte) 42);
+    statement.inject(42U);
+    statement.inject(42UL);
+    statement.inject('\x2A');
+
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+        assert(row.peek!long(0) == 42);
+}
+
+unittest // Binding/peeking floating point values
+{
+    auto db = Database(":memory:");
+    db.run("CREATE TABLE test (val FLOAT)");
+
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.inject(42.0F);
+    statement.inject(42.0);
+    statement.inject(42.0L);
+    statement.inject("42");
+
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+        assert(row.peek!double(0) == 42.0);
+}
+
+unittest // Binding/peeking text values
+{
+    auto db = Database(":memory:");
+    db.run("CREATE TABLE test (val TEXT);
+            INSERT INTO test (val) VALUES ('I am a text.')");
+
+    auto results = db.execute("SELECT * FROM test");
+    assert(results.front.peek!string(0) == "I am a text.");
+
+    assertThrown!SqliteException(results.front[0].as!(ubyte[]));
+}
+
+unittest // Binding/peeking blob values
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val BLOB)");
+
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    ubyte[] array = [1, 2, 3];
+    statement.inject(array);
+    ubyte[3] sarray = [1, 2, 3];
+    statement.inject(sarray);
+
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+    {
+        assert(row.peek!(ubyte[])(0) ==  [1, 2, 3]);
+        assert(row[0].as!(ubyte[]) == [1, 2, 3]);
+    }
+}
+
+unittest // Getting NULL values
+{
+    import std.math : isNaN;
+
+    auto db = Database(":memory:");
+    db.run("CREATE TABLE test (val TEXT);
+            INSERT INTO test (val) VALUES (NULL)");
+
+    auto results = db.execute("SELECT * FROM test");
+    assert(results.front.peek!bool(0) == false);
+    assert(results.front.peek!long(0) == 0);
+    assert(results.front.peek!double(0).isNaN);
+    assert(results.front.peek!string(0) is null);
+    assert(results.front.peek!(ubyte[])(0) is null);
+}
+
 unittest // Struct injecting
 {
     static struct Test
@@ -1759,29 +1838,7 @@ unittest // Struct injecting
     }
 }
 
-unittest // Static array binding
-{
-    ubyte[3] data = [1,2,3];
-
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (a BLOB)");
-    auto statement = db.prepare("INSERT INTO test (a) VALUES (?)");
-    statement.bind(1, data);
-    statement.execute();
-
-    auto results = db.execute("SELECT * FROM test");
-    foreach (row; results)
-    {
-        assert(row.length == 1);
-        auto rdata = row.peek!(ubyte[])(0);
-        assert(rdata.length == 3);
-        assert(rdata[0] == 1);
-        assert(rdata[1] == 2);
-        assert(rdata[2] == 3);
-    }
-}
-
-unittest // Nullable binding
+unittest // Binding Nullable
 {
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (a, b, c, d, e);");
@@ -1806,7 +1863,7 @@ unittest // Nullable binding
     }
 }
 
-unittest // Nullable peek
+unittest // Peeking Nullable
 {
     auto db = Database(":memory:");
     auto results = db.execute("SELECT 1, NULL, 8.5, NULL");
@@ -2643,85 +2700,6 @@ unittest // ColumnData.toString
     auto db = Database(":memory:");
     auto rc = QueryCache(db.execute("SELECT 42, 3.14, 'foo_bar', x'00FF', NULL"));
     assert("%(%s%)".format(rc) == "[42, 3.14, foo_bar, [0, 255], null]");
-}
-
-unittest // Integral values
-{
-    auto db = Database(":memory:");
-    db.run("CREATE TABLE test (val INTEGER)");
-
-    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    statement.inject(cast(byte) 42);
-    statement.inject(42U);
-    statement.inject(42UL);
-    statement.inject('\x2A');
-
-    auto results = db.execute("SELECT * FROM test");
-    foreach (row; results)
-        assert(row.peek!long(0) == 42);
-}
-
-unittest // Floating point values
-{
-    auto db = Database(":memory:");
-    db.run("CREATE TABLE test (val FLOAT)");
-
-    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    statement.inject(42.0F);
-    statement.inject(42.0);
-    statement.inject(42.0L);
-    statement.inject("42");
-
-    auto results = db.execute("SELECT * FROM test");
-    foreach (row; results)
-        assert(row.peek!double(0) == 42.0);
-}
-
-unittest // Text values
-{
-    auto db = Database(":memory:");
-    db.run("CREATE TABLE test (val TEXT);
-            INSERT INTO test (val) VALUES ('I am a text.')");
-
-    auto results = db.execute("SELECT * FROM test");
-    assert(results.front.peek!string(0) == "I am a text.");
-
-    assertThrown!SqliteException(results.front[0].as!(ubyte[]));
-}
-
-unittest // Blob values
-{
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val BLOB)");
-
-    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    ubyte[] array = [1, 2, 3];
-    statement.inject(array);
-    ubyte[3] sarray = [1, 2, 3];
-    statement.inject(sarray);
-
-    auto results = db.execute("SELECT * FROM test");
-    foreach (row; results)
-    {
-        assert(row.peek!(ubyte[])(0) ==  [1, 2, 3]);
-        assert(row[0].as!(ubyte[]) == [1, 2, 3]);
-    }
-}
-
-unittest // Null values
-{
-    import std.math : isNaN;
-
-    auto db = Database(":memory:");
-    db.run("CREATE TABLE test (val TEXT);
-            INSERT INTO test (val) VALUES (NULL)");
-
-    auto results = db.execute("SELECT * FROM test");
-    assert(results.front.peek!bool(0) == false);
-    assert(results.front.peek!long(0) == 0);
-    assert(results.front.peek!double(0).isNaN);
-    assert(results.front.peek!string(0) is null);
-    assert(results.front.peek!(ubyte[])(0) is null);
 }
 
 
