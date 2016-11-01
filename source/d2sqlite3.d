@@ -268,7 +268,7 @@ private:
 			    {
 			        import core.stdc.stdio;
 			        fprintf(stderr, "Error: release of Database resource incorrectly"
-			                        " depends on destructors called by the GC.\n");
+			                        ~ " depends on destructors called by the GC.\n");
 			        assert(false); // crash
 			    }
             }
@@ -2586,7 +2586,7 @@ struct ColumnData
     If the data is NULL, defaultValue is returned.
     +/
     auto as(T)(T defaultValue = T.init)
-        if (isBoolean!T || isNumeric!T || isSomeString!T)
+        if (isBoolean!T || std.traits.isNumeric!T || isSomeString!T)
     {
         if (_type == SqliteType.NULL)
             return defaultValue;
@@ -2862,7 +2862,7 @@ string literal(T)(T value)
         return "NULL";
     else static if (isBoolean!T)
         return value ? "1" : "0";
-    else static if (isNumeric!T)
+    else static if (std.traits.isNumeric!T)
         return value.to!string();
     else static if (isSomeString!T)
         return format("'%s'", value.replace("'", "''"));
