@@ -1865,27 +1865,22 @@ Instances of this struct are typically returned by `Database.execute()` or
 struct ResultRange
 {
 private:
-    struct _Payload
-    {
-        Statement statement;
-        int state;
-
-        @disable this(this);
-        @disable void opAssign(_Payload);
-    }
-    alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
-    Payload p;
+	Statement statement;
+	int state;
+	Row current;
 
     this(Statement statement)
     {
-        p = Payload(statement);
-        if (!p.statement.empty)
-            p.state = sqlite3_step(p.statement.handle);
+		this.statement = statement;
+        if (!statement.empty)
+            state = sqlite3_step(statement.handle);
         else
-            p.state = SQLITE_DONE;
+            state = SQLITE_DONE;
 
-        enforce(p.state == SQLITE_ROW || p.state == SQLITE_DONE,
-                new SqliteException(errmsg(p.statement.handle), p.state));
+        enforce(state == SQLITE_ROW || state == SQLITE_DONE,
+                new SqliteException(errmsg(statement.handle), state));
+		
+		current = Row(statement);
     }
 
 public:
@@ -1894,25 +1889,24 @@ public:
     +/
     bool empty() @property
     {
-        assert(p.state);
-        return p.state == SQLITE_DONE;
+        return state == SQLITE_DONE;
     }
 
     /// ditto
-    Row front() @property
+    ref Row front() @property
     {
-        assert(p.state);
         enforce(!empty, new SqliteException("No rows available"));
-        return Row(p.statement);
+        return current;
     }
 
     /// ditto
     void popFront()
     {
-        assert(p.state);
         enforce(!empty, new SqliteException("No rows available"));
-        p.state = sqlite3_step(p.statement.handle);
-        enforce(p.state == SQLITE_DONE || p.state == SQLITE_ROW, new SqliteException(errmsg(p.statement.handle), p.state));
+        state = sqlite3_step(statement.handle);
+		current = Row(statement);
+        enforce(state == SQLITE_DONE || state == SQLITE_ROW,
+			new SqliteException(errmsg(statement.handle), state));
     }
 
     /++
@@ -1956,12 +1950,10 @@ Warning:
 +/
 struct Row
 {
-    private
-    {
+private:
         Statement statement;
         int frontIndex;
         int backIndex;
-    }
 
     this(Statement statement)
     {
@@ -1969,6 +1961,7 @@ struct Row
         backIndex = sqlite3_column_count(statement.handle) - 1;
     }
 
+public:
     /// Range interface.
     bool empty() @property nothrow
     {
