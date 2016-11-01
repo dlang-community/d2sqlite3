@@ -2729,11 +2729,6 @@ unittest // Null values
     assert(results.front.peek!double(0).isNaN);
     assert(results.front.peek!string(0) is null);
     assert(results.front.peek!(ubyte[])(0) is null);
-    assert(results.front[0].as!bool == false);
-    /+assert(results.front[0].as!long == 0);
-    assert(results.front[0].as!double.isNaN);
-    assert(results.front[0].as!string is null);
-    assert(results.front[0].as!(ubyte[]) is null);+/
 }
 
 
