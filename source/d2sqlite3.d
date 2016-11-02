@@ -1371,8 +1371,22 @@ private:
         ~this()
         {
             auto result = sqlite3_finalize(handle);
-            enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
-            handle = null;
+			
+			// Check that destructor was not call by the GC
+			// See https://p0nce.github.io/d-idioms/#GC-proof-resource-class
+			try
+			{
+                enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
+			}
+			catch (InvalidMemoryOperationError e)
+		    {
+		        import core.stdc.stdio;
+		        fprintf(stderr, "Error: release of Statement resource incorrectly"
+		                        ~ " depends on destructors called by the GC.\n");
+		        assert(false); // crash
+		    }
+            
+			handle = null;
         }
 
         @disable this(this);
