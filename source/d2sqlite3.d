@@ -4,7 +4,7 @@ This module provides a thin and convenient wrapper around the SQLite C API.
 
 Features:
 $(UL
-    $(LI Use reference-counted structs (Database, Statement, ResultRange) instead of SQLite objects
+    $(LI Use reference-counted structs (Database, Statement) instead of SQLite objects
     pointers.)
     $(LI Run multistatement SQL code with `Database.run()`.)
     $(LI Use built-in integral types, floating point types, `string`s, `ubyte[]` and
@@ -69,8 +69,6 @@ unittest // Documentation example
               score FLOAT
             )");
 
-    // Populate the table
-
     // Prepare an INSERT statement
     Statement statement = db.prepare(
         "INSERT INTO person (name, score)
@@ -91,16 +89,13 @@ unittest // Documentation example
     // Bind, execute and reset in one call
     statement.inject("Clara", 88.1);
 
-
     // Count the changes
     assert(db.totalChanges == 3);
-
 
     // Count the Johns in the table.
     auto count = db.execute("SELECT count(*) FROM person WHERE name == 'John'")
                    .oneValue!long;
     assert(count == 2);
-
 
     // Read the data from the table lazily
     ResultRange results = db.execute("SELECT * FROM person");
@@ -143,7 +138,7 @@ string versionString()
 }
 
 /++
-Gets the library's version number (e.g. 3008007).
+Gets the library's version number (e.g. 3_008_007).
 +/
 int versionNumber() nothrow
 {
@@ -154,7 +149,7 @@ unittest
 {
     import std.string : startsWith;
     assert(versionString.startsWith("3."));
-    assert(versionNumber >= 3008007);
+    assert(versionNumber >= 3_008_007);
 }
 
 /++
@@ -206,7 +201,7 @@ unittest
 {
     shutdown();
     config(SQLITE_CONFIG_MULTITHREAD);
-    config(SQLITE_CONFIG_LOG, function(void* p, int code, const(char)* msg) {}, null);
+    config(SQLITE_CONFIG_LOG, function(void*, int, const(char)*) {}, null);
     initialize();
 }
 
@@ -236,7 +231,7 @@ This struct is a reference-counted wrapper around a `sqlite3*` pointer.
 struct Database
 {
 private:
-    struct _Payload
+    struct Payload
     {
         sqlite3* handle;
         void* updateHook;
@@ -257,20 +252,20 @@ private:
             {
                 sqlite3_progress_handler(handle, 0, null, null);
                 auto result = sqlite3_close(handle);
-				
-				// Check that destructor was not call by the GC
-				// See https://p0nce.github.io/d-idioms/#GC-proof-resource-class
-				try
-				{
-	                enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
-				}
-				catch (InvalidMemoryOperationError e)
-			    {
-			        import core.stdc.stdio;
-			        fprintf(stderr, "Error: release of Database resource incorrectly"
-			                        ~ " depends on destructors called by the GC.\n");
-			        assert(false); // crash
-			    }
+
+                // Check that destructor was not call by the GC
+                // See https://p0nce.github.io/d-idioms/#GC-proof-resource-class
+                try
+                {
+                    enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
+                }
+                catch (InvalidMemoryOperationError e)
+                {
+                    import core.stdc.stdio : fprintf, stderr;
+                    fprintf(stderr, "Error: release of Database resource incorrectly"
+                                    ~ " depends on destructors called by the GC.\n");
+                    assert(false); // crash
+                }
             }
             handle = null;
             ptrFree(updateHook);
@@ -282,14 +277,13 @@ private:
         }
 
         @disable this(this);
-        @disable void opAssign(_Payload);
+        @disable void opAssign(Payload);
     }
 
-    alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
-    Payload p;
+    RefCounted!(Payload, RefCountedAutoInitialize.no) p;
 
     void check(int result)
-	{
+    {
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
 
@@ -312,6 +306,17 @@ public:
         auto result = sqlite3_open_v2(path.toStringz, &hdl, flags, null);
         enforce(result == SQLITE_OK, new SqliteException(hdl ? errmsg(hdl) : "Error opening the database", result));
         p = Payload(hdl);
+    }
+
+    /++
+    Explicitly closes the database connection.
+
+    After a call to `close()`, using the database connection or one of its prepared statement
+    is an error. The `Database` object is destroyed and cannot be used any more.
+    +/
+    void close()
+    {
+        destroy(p);
     }
 
     /++
@@ -345,7 +350,7 @@ public:
     +/
     bool isReadOnly(string database = "main")
     {
-        int ret = sqlite3_db_readonly(p.handle, database.toStringz);
+        immutable ret = sqlite3_db_readonly(p.handle, database.toStringz);
         enforce(ret >= 0, new SqliteException("Database not found: %s".format(database)));
         return ret == 1;
     }
@@ -388,19 +393,8 @@ public:
     }
 
     /++
-    Explicitly closes the database connection.
-
-    After a call to `close()`, using the database connection or one of its prepared statement
-    is an error. The `Database` object is destroyed and cannot be used any more.
-    +/
-    void close()
-    {
-        destroy(p);
-    }
-
-    /++
     Executes a single SQL statement and returns the results directly.
-    
+
     It's the equivalent of `prepare(sql).execute()`.
 
     The results become undefined when the Database goes out of scope and is destroyed.
@@ -528,7 +522,7 @@ public:
             enforce(sqlite3_enable_load_extension(p.handle, enable) == SQLITE_OK,
                 new SqliteException("Could not enable loading extensions."));
         }
-        
+
         /++
         Loads an extension.
 
@@ -540,7 +534,7 @@ public:
         +/
         void loadExtension(string path, string entryPoint = null)
         {
-            auto ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
+            immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
             enforce(ret == SQLITE_OK, new SqliteException(
                     "Could not load extension: %s:%s".format(entryPoint, path)));
         }
@@ -602,36 +596,36 @@ public:
                 try
                 {
                     auto args = appender!(ColumnData[]);
-                
+
                     for (int i = 0; i < argc; ++i)
                     {
                         auto value = argv[i];
-                        auto type = sqlite3_value_type(value);
-                        
+                        immutable type = sqlite3_value_type(value);
+
                         final switch (type)
                         {
                             case SqliteType.INTEGER:
                                 args.put(ColumnData(getValue!long(value)));
                                 break;
-                                
+
                             case SqliteType.FLOAT:
                                 args.put(ColumnData(getValue!double(value)));
                                 break;
-                                
+
                             case SqliteType.TEXT:
                                 args.put(ColumnData(getValue!string(value)));
                                 break;
-                                
+
                             case SqliteType.BLOB:
                                 args.put(ColumnData(getValue!(ubyte[])(value)));
                                 break;
-                                
+
                             case SqliteType.NULL:
                                 args.put(ColumnData(null));
                                 break;
                         }
                     }
-                    
+
                     auto ptr = sqlite3_user_data(context);
 
                     auto wrappedDelegate = delegateUnwrap!T(ptr);
@@ -669,14 +663,14 @@ public:
 
                     if (argc > maxArgc)
                     {
-                        auto txt = "too many arguments in function %s(), expecting at most %s"
-                            .format(name, maxArgc);
+                        auto txt = ("too many arguments in function %s(), expecting at most %s"
+                            ).format(name, maxArgc);
                         sqlite3_result_error(context, txt.toStringz, -1);
                     }
                     else if (argc < minArgc)
                     {
-                        auto txt = "too few arguments in function %s(), expecting at least %s"
-                            .format(name, minArgc);
+                        auto txt = ("too few arguments in function %s(), expecting at least %s"
+                            ).format(name, minArgc);
                         sqlite3_result_error(context, txt.toStringz, -1);
                     }
                     else
@@ -712,7 +706,7 @@ public:
         {
             import std.range : repeat;
             import std.array : join;
-            
+
             return starSymbol.repeat(count).join;
         }
 
@@ -764,12 +758,12 @@ public:
     }
 
     /// Ditto
-    void createFunction(T)(string name, T fun)
+    void createFunction(T)(string name, T fun = null)
         if (is(T == typeof(null)))
     {
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, -1, SQLITE_UTF8,
-                null, null, null, null, null));
+                null, fun, null, null, null));
     }
 
     unittest
@@ -778,7 +772,7 @@ public:
         {
             return a * b;
         }
-        
+
         auto db = Database(":memory:");
         db.createFunction("myFun", &myFun);
         assertThrown!SqliteException(db.execute("SELECT myFun()"));
@@ -790,7 +784,7 @@ public:
         assertThrown!SqliteException(db.execute("SELECT myFun(5)"));
         assertThrown!SqliteException(db.execute("SELECT myFun(5, 2)"));
     }
-    
+
     deprecated("Kept for compatibility. Use of the new createFunction method is recommended.")
     void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
         if (isFunctionPointer!T || isDelegate!T)
@@ -834,8 +828,8 @@ public:
         static assert(variadicFunctionStyle!(T.result) == Variadic.no,
             "variadic functions are not supported");
 
-        alias staticMap!(Unqual, ParameterTypeTuple!(T.accumulate)) PT;
-        alias ReturnType!(T.result) RT;
+        alias PT = staticMap!(Unqual, ParameterTypeTuple!(T.accumulate));
+        alias RT = ReturnType!(T.result);
 
         static struct Context
         {
@@ -844,7 +838,7 @@ public:
         }
 
         extern(C) static
-        void x_step(sqlite3_context* context, int argc, sqlite3_value** argv)
+        void x_step(sqlite3_context* context, int /* argc */, sqlite3_value** argv)
         {
             auto ctx = cast(Context*) sqlite3_user_data(context);
             if (!ctx)
@@ -858,7 +852,7 @@ public:
             {
                 foreach (i, type; PT)
                     args[i] = getValue!type(argv[i]);
-                
+
                 ctx.aggregate.accumulate(args);
             }
             catch (Exception e)
@@ -977,7 +971,7 @@ public:
         static assert(isImplicitlyConvertible!(typeof(fun("a", "b")), int),
             "the collation function has a wrong signature");
 
-        alias ParameterTypeTuple!fun PT;
+        alias PT = ParameterTypeTuple!fun;
         static assert(isSomeString!(PT[0]),
             "the first argument of function " ~ name ~ " should be a string");
         static assert(isSomeString!(PT[1]),
@@ -1007,7 +1001,7 @@ public:
         // The implementation of the collation
         int my_collation(string s1, string s2)
         {
-            import std.uni;
+            import std.uni : icmp;
             return icmp(s1, s2);
         }
 
@@ -1024,7 +1018,7 @@ public:
 
     /++
     Registers a delegate as the database's update hook.
-    
+
     Any previously set hook is released.
     Pass `null` to disable the callback.
 
@@ -1076,7 +1070,7 @@ public:
     {
         extern(C) static int callback(void* ptr)
         {
-            auto dlg = delegateUnwrap!(int delegate())(ptr).dlg; 
+            auto dlg = delegateUnwrap!(int delegate())(ptr).dlg;
             return dlg();
         }
 
@@ -1087,7 +1081,7 @@ public:
 
     /++
     Registers a delegate as the database's rollback hook.
-    
+
     Any previously set hook is released.
     Pass `null` to disable the callback.
 
@@ -1097,7 +1091,7 @@ public:
     {
         extern(C) static void callback(void* ptr)
         {
-            auto dlg = delegateUnwrap!(void delegate())(ptr).dlg; 
+            auto dlg = delegateUnwrap!(void delegate())(ptr).dlg;
             dlg();
         }
 
@@ -1126,7 +1120,7 @@ public:
 
     /++
     Sets the progress handler.
-    
+
     Any previously set handler is released.
     Pass `null` to disable the callback.
 
@@ -1143,7 +1137,7 @@ public:
     {
         extern(C) static int callback(void* ptr)
         {
-            auto dlg = delegateUnwrap!(int delegate())(ptr).dlg; 
+            auto dlg = delegateUnwrap!(int delegate())(ptr).dlg;
             return dlg();
         }
 
@@ -1154,11 +1148,11 @@ public:
 
     /++
     Sets the trace callback.
-    
+
     Any previously set trace callback is released.
     Pass `null` to disable the callback.
 
-    The string parameter that is passed to the callback is the SQL text of the statement being 
+    The string parameter that is passed to the callback is the SQL text of the statement being
     executed.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/profile.html).
@@ -1167,7 +1161,7 @@ public:
     {
         extern(C) static void callback(void* ptr, const(char)* str)
         {
-            auto dlg = delegateUnwrap!(void delegate(string))(ptr).dlg; 
+            auto dlg = delegateUnwrap!(void delegate(string))(ptr).dlg;
             dlg(str.to!string);
         }
 
@@ -1178,11 +1172,11 @@ public:
 
     /++
     Sets the profile callback.
-    
+
     Any previously set profile callback is released.
     Pass `null` to disable the callback.
 
-    The string parameter that is passed to the callback is the SQL text of the statement being 
+    The string parameter that is passed to the callback is the SQL text of the statement being
     executed. The time unit is defined in SQLite's documentation as nanoseconds (subject to change,
     as the functionality is experimental).
 
@@ -1202,19 +1196,7 @@ public:
     }
 }
 
-unittest // Database construction
-{
-    Database db1;
-    auto db2 = db1;
-    db1 = Database(":memory:");
-    db2 = Database("");
-    auto db3 = Database(null);
-    db1 = db2;
-    assert(db2.p.refCountedStore.refCount == 2);
-    assert(db1.p.refCountedStore.refCount == 2);
-}
-
-unittest
+unittest // Miscellaneous functions
 {
     auto db = Database(":memory:");
     assert(db.attachedFilePath("main") is null);
@@ -1258,7 +1240,7 @@ unittest // Multiple statements with callback
 
 unittest // Different arguments and result types with createFunction
 {
-    import std.math;
+    import std.math : isNaN;
 
     auto db = Database(":memory:");
 
@@ -1285,8 +1267,6 @@ unittest // Different arguments and result types with createFunction
 
 unittest // Different Nullable argument types with createFunction
 {
-    import std.math;
-
     auto db = Database(":memory:");
 
     auto display(T : Nullable!U, U...)(T value)
@@ -1347,10 +1327,10 @@ unittest // Callbacks
     db.setTraceCallback((string s) { wasTraced = true; });
     db.setProfileCallback((string s, ulong t) { wasProfiled = true; });
     db.setProgressHandler(1, { hasProgressed = true; return 0; });
-    db.execute("SELECT 1;");
-    // assert(wasTraced);
-    // assert(wasProfiled);
-    // assert(hasProgressed);
+    db.execute("SELECT * FROM sqlite_master;");
+    assert(wasTraced);
+    assert(wasProfiled);
+    assert(hasProgressed);
 }
 
 
@@ -1363,7 +1343,7 @@ of this struct are typically returned by `Database.prepare()`.
 struct Statement
 {
 private:
-    struct _Payload
+    struct Payload
     {
         Database db;
         sqlite3_stmt* handle; // null if error or empty statement
@@ -1371,41 +1351,39 @@ private:
         ~this()
         {
             auto result = sqlite3_finalize(handle);
-			
-			// Check that destructor was not call by the GC
-			// See https://p0nce.github.io/d-idioms/#GC-proof-resource-class
-			try
-			{
+
+            // Check that destructor was not call by the GC
+            // See https://p0nce.github.io/d-idioms/#GC-proof-resource-class
+            try
+            {
                 enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
-			}
-			catch (InvalidMemoryOperationError e)
-		    {
-		        import core.stdc.stdio;
-		        fprintf(stderr, "Error: release of Statement resource incorrectly"
-		                        ~ " depends on destructors called by the GC.\n");
-		        assert(false); // crash
-		    }
-            
-			handle = null;
+            }
+            catch (InvalidMemoryOperationError e)
+            {
+                import core.stdc.stdio : fprintf, stderr;
+                fprintf(stderr, "Error: release of Statement resource incorrectly"
+                                ~ " depends on destructors called by the GC.\n");
+                assert(false); // crash
+            }
+
+            handle = null;
         }
 
         @disable this(this);
-        @disable void opAssign(_Payload);
+        @disable void opAssign(Payload);
     }
-    alias Payload = RefCounted!(_Payload, RefCountedAutoInitialize.no);
-    Payload p;
+    RefCounted!(Payload, RefCountedAutoInitialize.no) p;
 
     this(Database db, string sql)
     {
         sqlite3_stmt* handle;
-        const(char)* ptail;
         auto result = sqlite3_prepare_v2(db.handle(), sql.toStringz, sql.length.to!int,
             &handle, null);
         enforce(result == SQLITE_OK, new SqliteException(errmsg(db.handle()), result, sql));
         p = Payload(db, handle);
     }
 
-    void checkResult(int result) 
+    void checkResult(int result)
     {
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
@@ -1840,7 +1818,7 @@ unittest // Struct injecting
     db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
     auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (?, ?, ?)");
     statement.inject(test);
-    
+
     auto results = db.execute("SELECT * FROM test");
     assert(!results.empty);
     foreach (row; results)
@@ -1926,7 +1904,7 @@ unittest // GC anchoring test
 An input range interface to access the rows resulting from an SQL query.
 
 The elements of the range are `Row` structs. A `Row` is just a view of the current
-row when iterating the results of a `ResultRange`. It becomes invalid as soon as 
+row when iterating the results of a `ResultRange`. It becomes invalid as soon as
 `ResultRange.popFront()` is called (it contains undefined data afterwards). Use
 `QueryCache` to store the content of rows past the execution of the statement.
 
@@ -1936,13 +1914,13 @@ Instances of this struct are typically returned by `Database.execute()` or
 struct ResultRange
 {
 private:
-	Statement statement;
-	int state;
-	Row current;
+    Statement statement;
+    int state;
+    Row current;
 
     this(Statement statement)
     {
-		this.statement = statement;
+        this.statement = statement;
         if (!statement.empty)
             state = sqlite3_step(statement.handle);
         else
@@ -1950,8 +1928,8 @@ private:
 
         enforce(state == SQLITE_ROW || state == SQLITE_DONE,
                 new SqliteException(errmsg(statement.handle), state));
-		
-		current = Row(statement);
+
+        current = Row(statement);
     }
 
 public:
@@ -1975,9 +1953,9 @@ public:
     {
         enforce(!empty, new SqliteException("No rows available"));
         state = sqlite3_step(statement.handle);
-		current = Row(statement);
+        current = Row(statement);
         enforce(state == SQLITE_DONE || state == SQLITE_ROW,
-			new SqliteException(errmsg(statement.handle), state));
+            new SqliteException(errmsg(statement.handle), state));
     }
 
     /++
@@ -2113,13 +2091,13 @@ public:
     Contrary to `opIndex`, the `peek` functions return the data directly, automatically cast to T,
     without the overhead of using a wrapping type (`ColumnData`).
 
-    When using `peek` to retrieve a BLOB, you can use either:
+    When using `peek` to retrieve an array or a string, you can use either:
         $(UL
-            $(LI `peek!(ubyte[], PeekMode.copy)(index)`,
+            $(LI `peek!(..., PeekMode.copy)(index)`,
               in which case the function returns a copy of the data that will outlive the step
               to the next row,
             or)
-            $(LI `peek!(ubyte[], PeekMode.slice)(index)`,
+            $(LI `peek!(..., PeekMode.slice)(index)`,
               in which case a slice of SQLite's internal buffer is returned (see Warnings).)
         )
 
@@ -2167,7 +2145,7 @@ public:
 
     Warnings:
         When using `PeekMode.slice`, the data of the slice will be $(B invalidated)
-        when the next row is accessed. A copy of the data has to be made somehow for it to 
+        when the next row is accessed. A copy of the data has to be made somehow for it to
         outlive the next step on the same statement.
 
         When using referring to the column by name, the names of all the columns are
@@ -2281,7 +2259,7 @@ public:
         db.run("CREATE TABLE items (name TEXT, price REAL);
                 INSERT INTO items VALUES ('car', 20000);
                 INSERT INTO items VALUES ('air', 'free');");
-        
+
         auto results = db.execute("SELECT name, price FROM items");
 
         auto row = results.front;
@@ -2313,7 +2291,7 @@ public:
         auto db = Database(":memory:");
         db.run("CREATE TABLE items (name TEXT, price REAL);
                 INSERT INTO items VALUES ('car', 20000);");
-        
+
         auto row = db.execute("SELECT name, price FROM items").front;
         assert(row.columnName(1) == "price");
     }
@@ -2679,7 +2657,7 @@ struct ColumnData
     {
         if (_type == SqliteType.NULL)
             return defaultValue;
-        
+
         return T(as!U());
     }
 
@@ -2952,7 +2930,7 @@ auto byStatement(string sql)
             do
             {
                 auto tail = sql[pos .. $];
-                auto offset = tail.countUntil(';') + 1;
+                immutable offset = tail.countUntil(';') + 1;
                 pos += offset;
                 if (offset == 0)
                     pos = sql.length;
