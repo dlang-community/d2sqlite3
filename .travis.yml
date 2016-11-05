@@ -5,9 +5,9 @@ matrix:
   include:
     - d: dmd
       env:
-        - COVERAGE=true
+        - COVERAGE=false # disabled temporarily
         - secure: eCT5571JwRgcPq3PqOlBF7bgyJO+lhFQJyjn19ZW2xUTvoQq5Rxfjplgh2YgDD7INzaJ4vzFLVH/07+iWrQujYKjNyLTHumACPddLKBYRIAHC9glGyDkyAZ7vl53+f8Xfy0qNLcEPs56jsWRVS3QuSN1WuX1IAvQgsDcKKtYi7s=
     - d: ldc
-    - d: gdc
+    # - d: gdc # disabled temporarily
 
 script: ./travis.sh
