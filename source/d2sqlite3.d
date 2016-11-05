@@ -275,9 +275,6 @@ private:
             ptrFree(traceCallback);
             ptrFree(profileCallback);
         }
-
-        @disable this(this);
-        @disable void opAssign(Payload);
     }
 
     RefCounted!(Payload, RefCountedAutoInitialize.no) p;
@@ -1368,9 +1365,6 @@ private:
 
             handle = null;
         }
-
-        @disable this(this);
-        @disable void opAssign(Payload);
     }
     RefCounted!(Payload, RefCountedAutoInitialize.no) p;
 
