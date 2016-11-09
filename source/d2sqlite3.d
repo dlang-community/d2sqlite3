@@ -49,6 +49,7 @@ import core.exception;
 import core.memory : GC;
 import core.stdc.string : memcpy;
 import core.stdc.stdlib : malloc, free;
+import core.stdc.stdio : fprintf, stderr;
 
 public import sqlite3;
 
@@ -261,7 +262,6 @@ private:
                 }
                 catch (InvalidMemoryOperationError e)
                 {
-                    import core.stdc.stdio : fprintf, stderr;
                     fprintf(stderr, "Error: release of Database resource incorrectly"
                                     ~ " depends on destructors called by the GC.\n");
                     assert(false); // crash
@@ -586,7 +586,7 @@ public:
 
         static if (is(ParameterTypeTuple!fun == TypeTuple!(ColumnData[])))
         {
-            extern(C) static
+            extern(C) static nothrow
             void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
                 string name;
@@ -632,8 +632,8 @@ public:
                 }
                 catch (Exception e)
                 {
-                    auto txt = "error in function %s(): %s".format(name, e.msg);
-                    sqlite3_result_error(context, txt.toStringz, -1);
+                    sqlite3_result_error(context, "error in function %s(): %s"
+                        .nothrowFormat(name, e.msg).toStringz, -1);
                 }
             }
         }
@@ -644,7 +644,8 @@ public:
             alias PT = staticMap!(Unqual, ParameterTypeTuple!fun);
             alias PD = ParameterDefaultValueTuple!fun;
 
-            extern (C) static void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
+            extern (C) static nothrow
+            void x_func(sqlite3_context* context, int argc, sqlite3_value** argv)
             {
                 string name;
                 try
@@ -686,15 +687,15 @@ public:
                 }
                 catch (Exception e)
                 {
-                    auto txt = "error in function %s(): %s".format(name, e.msg);
-                    sqlite3_result_error(context, txt.toStringz, -1);
+                    sqlite3_result_error(context, "error in function %s(): %s"
+                        .nothrowFormat(name, e.msg).toStringz, -1);
                 }
             }
         }
 
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, -1,
-                SQLITE_UTF8 | det, delegateWrap(fun, name), &x_func, null, null, &ptrFree));
+              SQLITE_UTF8 | det, delegateWrap(fun, name), &x_func, null, null, &ptrFree));
     }
     ///
     unittest
@@ -765,7 +766,7 @@ public:
 
     unittest
     {
-        int myFun(int a, int b = 1)
+        int myFun(int a, int b = 1) nothrow
         {
             return a * b;
         }
@@ -818,8 +819,7 @@ public:
         static assert(is(typeof({
                 alias RT = ReturnType!(T.result);
                 setResult!RT(null, RT.init);
-            })),
-            T.stringof ~ ".result should return an SQLite-compatible type");
+            })), T.stringof ~ ".result should return an SQLite-compatible type");
         static assert(variadicFunctionStyle!(T.accumulate) == Variadic.no,
             "variadic functions are not supported");
         static assert(variadicFunctionStyle!(T.result) == Variadic.no,
@@ -834,7 +834,7 @@ public:
             string functionName;
         }
 
-        extern(C) static
+        extern(C) static nothrow
         void x_step(sqlite3_context* context, int /* argc */, sqlite3_value** argv)
         {
             auto ctx = cast(Context*) sqlite3_user_data(context);
@@ -854,12 +854,12 @@ public:
             }
             catch (Exception e)
             {
-                auto txt = "error in aggregate function %s(): %s".format(ctx.functionName, e.msg);
-                sqlite3_result_error(context, txt.toStringz, -1);
+                sqlite3_result_error(context, "error in aggregate function %s(): %s"
+                    .nothrowFormat(ctx.functionName, e.msg).toStringz, -1);
             }
         }
 
-        extern(C) static
+        extern(C) static nothrow
         void x_final(sqlite3_context* context)
         {
             auto ctx = cast(Context*) sqlite3_user_data(context);
@@ -870,11 +870,13 @@ public:
             }
 
             try
+            {
                 setResult(context, ctx.aggregate.result());
+            }
             catch (Exception e)
             {
-                auto txt = "error in aggregate function %s(): %s".format(ctx.functionName, e.msg);
-                sqlite3_result_error(context, txt.toStringz, -1);
+                sqlite3_result_error(context, "error in aggregate function %s(): %s"
+                    .nothrowFormat(ctx.functionName, e.msg).toStringz, -1);
             }
         }
 
@@ -908,12 +910,12 @@ public:
                 this.separator = separator;
             }
 
-            void accumulate(string word)
+            void accumulate(string word) nothrow
             {
                 stringList.put(word);
             }
 
-            string result()
+            string result() nothrow
             {
                 return stringList.data.join(separator);
             }
@@ -947,7 +949,7 @@ public:
         name = The name that the function will have in the database.
 
         fun = a delegate or function that implements the collation. The function $(D_PARAM fun)
-        must satisfy these criteria:
+        must be `nothrow`` and satisfy these criteria:
             $(UL
                 $(LI Takes two string arguments (s1 and s2). )
                 $(LI Returns an integer (ret). )
@@ -968,6 +970,9 @@ public:
         static assert(isImplicitlyConvertible!(typeof(fun("a", "b")), int),
             "the collation function has a wrong signature");
 
+        static assert(functionAttributes!(T) & FunctionAttribute.nothrow_,
+            "only nothrow functions are allowed as collations");
+
         alias PT = ParameterTypeTuple!fun;
         static assert(isSomeString!(PT[0]),
             "the first argument of function " ~ name ~ " should be a string");
@@ -976,30 +981,37 @@ public:
         static assert(isImplicitlyConvertible!(ReturnType!fun, int),
             "function " ~ name ~ " should return a value convertible to an int");
 
-        extern (C) static
+        extern (C) static nothrow
         int x_compare(void* ptr, int n1, const(void)* str1, int n2, const(void)* str2)
         {
-            auto dg = delegateUnwrap!T(ptr).dlg;
             char[] s1, s2;
             s1.length = n1;
             s2.length = n2;
             memcpy(s1.ptr, str1, n1);
             memcpy(s2.ptr, str2, n2);
-            return dg(cast(immutable) s1, cast(immutable) s2);
+            return delegateUnwrap!T(ptr).dlg(cast(immutable) s1, cast(immutable) s2);
         }
 
         assert(p.handle);
-        check(sqlite3_create_collation_v2(p.handle, name.toStringz, SQLITE_UTF8,
-            delegateWrap(fun, name), &x_compare, &ptrFree));
+        auto dgw = delegateWrap(fun, name);
+        auto result = sqlite3_create_collation_v2(p.handle, name.toStringz, SQLITE_UTF8,
+            delegateWrap(fun, name), &x_compare, &ptrFree);
+        if (result != SQLITE_OK)
+        {
+            ptrFree(dgw);
+            throw new SqliteException(errmsg(p.handle), result);
+        }
     }
     ///
     unittest // Collation creation
     {
         // The implementation of the collation
-        int my_collation(string s1, string s2)
+        int my_collation(string s1, string s2) nothrow
         {
             import std.uni : icmp;
-            return icmp(s1, s2);
+            import std.exception : assumeWontThrow;
+            
+            return assumeWontThrow(icmp(s1, s2));
         }
 
         auto db = Database(":memory:");
@@ -1014,20 +1026,20 @@ public:
     }
 
     /++
-    Registers a delegate as the database's update hook.
+    Registers a delegate of type `UpdateHookDelegate` as the database's update hook.
 
-    Any previously set hook is released.
-    Pass `null` to disable the callback.
+    Any previously set hook is released. Pass `null` to disable the callback.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
-    void setUpdateHook(void delegate(int type, string dbName, string tableName, long rowid) updateHook)
+    void setUpdateHook(UpdateHookDelegate updateHook)
     {
-        extern(C) static
+        extern(C) static nothrow
         void callback(void* ptr, int type, char* dbName, char* tableName, long rowid)
         {
-            auto dlg = delegateUnwrap!(void delegate(int, string, string, long))(ptr).dlg;
-            return dlg(type, dbName.to!string, tableName.to!string, rowid);
+            WrappedDelegate!UpdateHookDelegate* dg;
+            dg = delegateUnwrap!UpdateHookDelegate(ptr);
+            dg.dlg(type, dbName.to!string, tableName.to!string, rowid);
         }
 
         ptrFree(p.updateHook);
@@ -1053,7 +1065,7 @@ public:
     }
 
     /++
-    Registers a delegate as the database's commit hook.
+    Registers a delegate of type `CommitHookDelegate` as the database's commit hook.
     Any previously set hook is released.
 
     Params:
@@ -1063,11 +1075,12 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
-    void setCommitHook(int delegate() commitHook)
+    void setCommitHook(CommitHookDelegate commitHook)
     {
-        extern(C) static int callback(void* ptr)
+        extern(C) static nothrow
+        int callback(void* ptr)
         {
-            auto dlg = delegateUnwrap!(int delegate())(ptr).dlg;
+            auto dlg = delegateUnwrap!CommitHookDelegate(ptr).dlg;
             return dlg();
         }
 
@@ -1077,18 +1090,19 @@ public:
     }
 
     /++
-    Registers a delegate as the database's rollback hook.
+    Registers a delegate of type `RoolbackHookDelegate` as the database's rollback hook.
 
     Any previously set hook is released.
     Pass `null` to disable the callback.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/commit_hook.html).
     +/
-    void setRollbackHook(void delegate() rollbackHook)
+    void setRollbackHook(RoolbackHookDelegate rollbackHook)
     {
-        extern(C) static void callback(void* ptr)
+        extern(C) static nothrow
+        void callback(void* ptr)
         {
-            auto dlg = delegateUnwrap!(void delegate())(ptr).dlg;
+            auto dlg = delegateUnwrap!RoolbackHookDelegate(ptr).dlg;
             dlg();
         }
 
@@ -1116,7 +1130,7 @@ public:
     }
 
     /++
-    Sets the progress handler.
+    Registers a delegate of type `ProgressHandlerDelegate` as the progress handler.
 
     Any previously set handler is released.
     Pass `null` to disable the callback.
@@ -1130,11 +1144,12 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/progress_handler.html).
     +/
-    void setProgressHandler(int pace, int delegate() progressHandler)
+    void setProgressHandler(int pace, ProgressHandlerDelegate progressHandler)
     {
-        extern(C) static int callback(void* ptr)
+        extern(C) static nothrow
+        int callback(void* ptr)
         {
-            auto dlg = delegateUnwrap!(int delegate())(ptr).dlg;
+            auto dlg = delegateUnwrap!ProgressHandlerDelegate(ptr).dlg;
             return dlg();
         }
 
@@ -1144,7 +1159,7 @@ public:
     }
 
     /++
-    Sets the trace callback.
+    Registers a delegate of type `TraceCallbackDelegate` as the trace callback.
 
     Any previously set trace callback is released.
     Pass `null` to disable the callback.
@@ -1154,11 +1169,12 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/profile.html).
     +/
-    void setTraceCallback(void delegate(string sql) traceCallback)
+    void setTraceCallback(TraceCallbackDelegate traceCallback)
     {
-        extern(C) static void callback(void* ptr, const(char)* str)
+        extern(C) static nothrow
+        void callback(void* ptr, const(char)* str)
         {
-            auto dlg = delegateUnwrap!(void delegate(string))(ptr).dlg;
+            auto dlg = delegateUnwrap!TraceCallbackDelegate(ptr).dlg;
             dlg(str.to!string);
         }
 
@@ -1168,7 +1184,7 @@ public:
     }
 
     /++
-    Sets the profile callback.
+    Registers a delegate of type `ProfileCallbackDelegate` as the profile callback.
 
     Any previously set profile callback is released.
     Pass `null` to disable the callback.
@@ -1179,11 +1195,12 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/profile.html).
     +/
-    void setProfileCallback(void delegate(string sql, ulong time) profileCallback)
+    void setProfileCallback(ProfileCallbackDelegate profileCallback)
     {
-        extern(C) static void callback(void* ptr, const(char)* str, sqlite3_uint64 time)
+        extern(C) static nothrow
+        void callback(void* ptr, const(char)* str, sqlite3_uint64 time)
         {
-            auto dlg = delegateUnwrap!(void delegate(string, ulong))(ptr).dlg;
+            auto dlg = delegateUnwrap!ProfileCallbackDelegate(ptr).dlg;
             dlg(str.to!string, time);
         }
 
@@ -1192,6 +1209,19 @@ public:
         sqlite3_profile(p.handle, &callback, p.profileCallback);
     }
 }
+
+/// Delegate types
+alias UpdateHookDelegate = void delegate(int type, string dbName, string tableName, long rowid) nothrow;
+/// ditto
+alias CommitHookDelegate = int delegate() nothrow;
+/// ditto
+alias RoolbackHookDelegate = void delegate() nothrow;
+/// ditto
+alias ProgressHandlerDelegate = int delegate() nothrow;
+/// ditto
+alias TraceCallbackDelegate = void delegate(string sql) nothrow;
+/// ditto
+alias ProfileCallbackDelegate = void delegate(string sql, ulong time) nothrow;
 
 unittest // Miscellaneous functions
 {
@@ -1357,7 +1387,6 @@ private:
             }
             catch (InvalidMemoryOperationError e)
             {
-                import core.stdc.stdio : fprintf, stderr;
                 fprintf(stderr, "Error: release of Statement resource incorrectly"
                                 ~ " depends on destructors called by the GC.\n");
                 assert(false); // crash
@@ -2611,7 +2640,7 @@ struct ColumnData
     /++
     Returns the Sqlite type of the column.
     +/
-    SqliteType type() const
+    SqliteType type() const nothrow
     {
         return _type;
     }
@@ -3087,6 +3116,14 @@ void setResult(T : Nullable!U, U...)(sqlite3_context* context, T value)
         sqlite3_result_null(context);
     else
         setResult(context, value.get);
+}
+
+string nothrowFormat(Args...)(string fmt, Args args) nothrow
+{
+    try
+        return fmt.format(args);
+    catch (Exception e)
+        throw new Error("Error: " ~ e.msg);
 }
 
 // Copy from std.traits, as long as GDC doesn't have it.
