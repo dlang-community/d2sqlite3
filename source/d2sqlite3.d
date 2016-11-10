@@ -951,8 +951,10 @@ public:
         fun = a delegate or function that implements the collation. The function $(D_PARAM fun)
         must be `nothrow`` and satisfy these criteria:
             $(UL
-                $(LI Takes two string arguments (s1 and s2). )
-                $(LI Returns an integer (ret). )
+                $(LI Takes two string arguments (s1 and s2). These two strings are slices of C-style strings
+                  that SQLite manages internally, so there is no guarantee that they are still valid 
+                  when the function returns.)
+                $(LI Returns an integer (ret).)
                 $(LI If s1 is less than s2, ret < 0.)
                 $(LI If s1 is equal to s2, ret == 0.)
                 $(LI If s1 is greater than s2, ret > 0.)
@@ -984,12 +986,12 @@ public:
         extern (C) static nothrow
         int x_compare(void* ptr, int n1, const(void)* str1, int n2, const(void)* str2)
         {
-            char[] s1, s2;
-            s1.length = n1;
-            s2.length = n2;
-            memcpy(s1.ptr, str1, n1);
-            memcpy(s2.ptr, str2, n2);
-            return delegateUnwrap!T(ptr).dlg(cast(immutable) s1, cast(immutable) s2);
+            static string slice(const(void)* str, int n) nothrow
+            {
+                return str ? (cast(const(char)*) str)[0 .. n].assumeUnique : null;
+            }
+
+            return delegateUnwrap!T(ptr).dlg(slice(str1, n1), slice(str2, n2));
         }
 
         assert(p.handle);
