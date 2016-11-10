@@ -1967,7 +1967,7 @@ public:
     }
 
     /// ditto
-    ref Row front() @property
+    ref Row front() return @property
     {
         enforce(!empty, new SqliteException("No rows available"));
         return current;
