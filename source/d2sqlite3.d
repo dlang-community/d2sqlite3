@@ -783,13 +783,6 @@ public:
         assertThrown!SqliteException(db.execute("SELECT myFun(5, 2)"));
     }
 
-    deprecated("Kept for compatibility. Use of the new createFunction method is recommended.")
-    void createFunction(string name, T)(T fun, Deterministic det = Deterministic.yes)
-        if (isFunctionPointer!T || isDelegate!T)
-    {
-        createFunction(name, fun, det);
-    }
-
     /++
     Creates and registers a new aggregate function in the database.
 
@@ -931,15 +924,6 @@ public:
         db.createAggregate("dash_join", Joiner("-"));
         auto text = db.execute("SELECT dash_join(word) FROM test").oneValue!string;
         assert(text == "My-cat-is-black");
-    }
-
-    deprecated("Kept for compatibility. Use of the new createAggregate method is recommended.")
-    {
-        alias createAggregate(T, string name) = createAggregate!(name, T);
-        void createAggregate(string name, T)(Deterministic det = Deterministic.yes)
-        {
-            createAggregate(name, new T, det);
-        }
     }
 
     /++
@@ -2815,9 +2799,6 @@ unittest
     assert(data[1]["msg"].as!string == "DEF");
     assert(data[1]["num"].as!int == 456);
 }
-
-deprecated("Kept for compatibility. Use QueryCache instead.")
-alias RowCache = QueryCache;
 
 unittest // QueryCache copies
 {
