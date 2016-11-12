@@ -766,7 +766,7 @@ public:
 
     unittest
     {
-        int myFun(int a, int b = 1) nothrow
+        int myFun(int a, int b = 1)
         {
             return a * b;
         }
@@ -910,12 +910,12 @@ public:
                 this.separator = separator;
             }
 
-            void accumulate(string word) nothrow
+            void accumulate(string word)
             {
                 stringList.put(word);
             }
 
-            string result() nothrow
+            string result()
             {
                 return stringList.data.join(separator);
             }
