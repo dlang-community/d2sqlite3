@@ -1253,8 +1253,6 @@ unittest // Multiple statements with callback
 
 unittest // Different arguments and result types with createFunction
 {
-    import std.math : isNaN;
-
     auto db = Database(":memory:");
 
     T display(T)(T value)
@@ -1273,7 +1271,7 @@ unittest // Different arguments and result types with createFunction
     assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(ubyte[]) == cast(ubyte[]) x"ABCD");
 
     assert(db.execute("SELECT display_integer(NULL)").oneValue!int == 0);
-    assert(db.execute("SELECT display_float(NULL)").oneValue!double.isNaN);
+    assert(db.execute("SELECT display_float(NULL)").oneValue!double == 0.0);
     assert(db.execute("SELECT display_text(NULL)").oneValue!string is null);
     assert(db.execute("SELECT display_blob(NULL)").oneValue!(ubyte[]) is null);
 }
@@ -1798,8 +1796,6 @@ unittest // Binding/peeking blob values
 
 unittest // Getting NULL values
 {
-    import std.math : isNaN;
-
     auto db = Database(":memory:");
     db.run("CREATE TABLE test (val TEXT);
             INSERT INTO test (val) VALUES (NULL)");
@@ -1807,7 +1803,7 @@ unittest // Getting NULL values
     auto results = db.execute("SELECT * FROM test");
     assert(results.front.peek!bool(0) == false);
     assert(results.front.peek!long(0) == 0);
-    assert(results.front.peek!double(0).isNaN);
+    assert(results.front.peek!double(0) == 0);
     assert(results.front.peek!string(0) is null);
     assert(results.front.peek!(ubyte[])(0) is null);
 }
@@ -2145,11 +2141,9 @@ public:
         with an AS clause. The index of the first column is 0.
 
     Returns:
-        A value of type T. The returned value is T.init if the data type is NULL.
-        In all other cases, the data is fetched from SQLite (which returns a value
-        depending on its own conversion rules;
+        A value of type T. The returned value results from SQLite's own conversion rules:
         see $(LINK http://www.sqlite.org/c3ref/column_blob.html) and
-        $(LINK http://www.sqlite.org/lang_expr.html#castexpr)), and it is converted
+        $(LINK http://www.sqlite.org/lang_expr.html#castexpr)). It's then converted
         to T using `std.conv.to!T`.
 
     Warnings:
@@ -2171,10 +2165,7 @@ public:
     T peek(T)(int index)
         if (isFloatingPoint!T)
     {
-        auto i = internalIndex(index);
-        if (sqlite3_column_type(statement.handle, i) == SqliteType.NULL)
-            return T.init;
-        return sqlite3_column_double(statement.handle, i).to!T();
+        return sqlite3_column_double(statement.handle, internalIndex(index)).to!T();
     }
 
     /// ditto
@@ -2436,7 +2427,7 @@ unittest // Peek
     auto results = db.execute("SELECT * FROM test");
     auto row = results.front;
     assert(row.peek!long(0) == 0);
-    assert(row.peek!double(0).isNaN);
+    assert(row.peek!double(0) == 0);
     assert(row.peek!string(0) is null);
     assert(row.peek!(ubyte[])(0) is null);
     results.popFront();
