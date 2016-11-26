@@ -20,8 +20,8 @@ $(UL
     $(LI Register D functions as SQLite callbacks, with `Database.setUpdateHook()` $(I et al).)
     $(LI Create new SQLite functions, aggregates or collations out of D functions or delegate,
     with automatic type converions, with `Database.createFunction()` $(I et al).)
-    $(LI Store all the rows and columns resulting from a query at once with `QueryCache` (sometimes
-    useful even if not memory-friendly...).)
+    $(LI Store all the rows and columns resulting from a query at once with the `cached` function
+    (sometimes useful even if not memory-friendly...).)
 )
 
 Authors:
@@ -1242,13 +1242,14 @@ version (none) unittest // Unexpected multiple statements
 unittest // Multiple statements with callback
 {
     auto db = Database(":memory:");
-    QueryCache[] rows;
+    auto test = appender!string;
     db.run("SELECT 1, 2, 3; SELECT 'A', 'B', 'C';", (ResultRange r) {
-        rows ~= QueryCache(r);
+            auto row = r.front;
+            foreach (i; 0..3)
+                test.put(row.peek!string(i));
         return true;
     });
-    assert(equal!"a.as!int == b"(rows[0][0], [1, 2, 3]));
-    assert(equal!"a.as!string == b"(rows[1][0], ["A", "B", "C"]));
+    assert(test.data == "123ABC");
 }
 
 unittest // Different arguments and result types with createFunction
@@ -1911,7 +1912,7 @@ An input range interface to access the rows resulting from an SQL query.
 The elements of the range are `Row` structs. A `Row` is just a view of the current
 row when iterating the results of a `ResultRange`. It becomes invalid as soon as
 `ResultRange.popFront()` is called (it contains undefined data afterwards). Use
-`QueryCache` to store the content of rows past the execution of the statement.
+`cached` to store the content of rows past the execution of the statement.
 
 Instances of this struct are typically returned by `Database.execute()` or
 `Statement.execute()`.
@@ -2690,7 +2691,7 @@ unittest // ColumnData-compatible types
 unittest // ColumnData.toString
 {
     auto db = Database(":memory:");
-    auto rc = QueryCache(db.execute("SELECT 42, 3.14, 'foo_bar', x'00FF', NULL"));
+    auto rc = db.execute("SELECT 42, 3.14, 'foo_bar', x'00FF', NULL").cached;
     assert("%(%s%)".format(rc) == "[42, 3.14, foo_bar, [0, 255], null]");
 }
 
@@ -2705,15 +2706,35 @@ struct ColumnMetadata
     bool isAutoIncrement; ///
 }
 
-
 /++
-Caches all the results of a query in memory at once.
+Caches the results of a query into memory at once.
 
-Allows to iterate on the rows and their columns with an array-like interface. The rows can
-be viewed as an array of `ColumnData` or as an associative array of `ColumnData`
-indexed by the column names.
+Returnd a struct that allows to iterate on the rows and their columns with an
+array-like interface. The rows can be viewed as an array of `ColumnData` or as
+an associative array of `ColumnData` indexed by the column names.
 +/
-struct QueryCache
+CachedResults cached(ResultRange results)
+{
+    return CachedResults(results);
+}
+///
+unittest
+{
+    auto db = Database(":memory:");
+    db.run("CREATE TABLE test (msg TEXT, num FLOAT);
+            INSERT INTO test (msg, num) VALUES ('ABC', 123);
+            INSERT INTO test (msg, num) VALUES ('DEF', 456);");
+
+    auto results = db.execute("SELECT * FROM test").cached;
+    assert(results.length == 2);
+    assert(results[0].front.as!string == "ABC");
+    assert(results[0][1].as!int == 123);
+    assert(results[1]["msg"].as!string == "DEF");
+    assert(results[1]["num"].as!int == 456);
+}
+
+/// Contains the results of a query cached in memory.
+struct CachedResults
 {
     struct CachedRow
     {
@@ -2750,9 +2771,6 @@ struct QueryCache
 
     private int[string] columnIndexes;
 
-    /++
-    Creates and populates the cache from the results of the statement.
-    +/
     this(ResultRange results)
     {
         if (!results.empty)
@@ -2774,24 +2792,11 @@ struct QueryCache
         rows = rowapp.data;
     }
 }
-///
-unittest
-{
-    auto db = Database(":memory:");
-    db.run("CREATE TABLE test (msg TEXT, num FLOAT);
-            INSERT INTO test (msg, num) VALUES ('ABC', 123);
-            INSERT INTO test (msg, num) VALUES ('DEF', 456);");
 
-    auto results = db.execute("SELECT * FROM test");
-    auto data = QueryCache(results);
-    assert(data.length == 2);
-    assert(data[0].front.as!string == "ABC");
-    assert(data[0][1].as!int == 123);
-    assert(data[1]["msg"].as!string == "DEF");
-    assert(data[1]["num"].as!int == 456);
-}
+/// Old name kept for compatibility
+alias QueryCache = CachedResults;
 
-unittest // QueryCache copies
+unittest // CachedResults copies
 {
     auto db = Database(":memory:");
     db.run("CREATE TABLE test (msg TEXT);
@@ -2799,7 +2804,7 @@ unittest // QueryCache copies
 
     static getdata(Database db)
     {
-        return QueryCache(db.execute("SELECT * FROM test"));
+        return db.execute("SELECT * FROM test").cached;
     }
 
     auto data = getdata(db);
