@@ -2144,7 +2144,7 @@ public:
     Returns:
         A value of type T. The returned value results from SQLite's own conversion rules:
         see $(LINK http://www.sqlite.org/c3ref/column_blob.html) and
-        $(LINK http://www.sqlite.org/lang_expr.html#castexpr)). It's then converted
+        $(LINK http://www.sqlite.org/lang_expr.html#castexpr). It's then converted
         to T using `std.conv.to!T`.
 
     Warnings:
