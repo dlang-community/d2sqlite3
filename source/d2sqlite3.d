@@ -1244,9 +1244,8 @@ unittest // Multiple statements with callback
     auto db = Database(":memory:");
     auto test = appender!string;
     db.run("SELECT 1, 2, 3; SELECT 'A', 'B', 'C';", (ResultRange r) {
-            auto row = r.front;
-            foreach (i; 0..3)
-                test.put(row.peek!string(i));
+        foreach (col; r.front)
+            test.put(col.as!string);
         return true;
     });
     assert(test.data == "123ABC");
