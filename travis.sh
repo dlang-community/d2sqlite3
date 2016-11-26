@@ -11,15 +11,7 @@ else
 fi
 
 if [ ! -z "${GH_TOKEN:-}" ]; then
-    # build docs, TODO: replace w/ ddoxTool in dub.json
-    DFLAGS='-c -o- -Df__dummy.html -Xfdocs.json -version=SQLITE_ENABLE_COLUMN_METADATA' dub build
-    dub fetch scod
-    dub run scod -- filter --min-protection=Protected --only-documented docs.json
-    dub run scod -- generate-html --navigation-type=ModuleTree docs.json docs
-    pkg_path=$(dub list | sed -n 's|.*scod.*: ||p')
-    rsync -ru "$pkg_path"public/ docs/
-
-    # push docs to gh-pages branch
+    dub build -d ddox
     cd docs
     git init
     git config user.name 'Travis-CI'
