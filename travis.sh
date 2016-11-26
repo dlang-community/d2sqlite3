@@ -11,7 +11,7 @@ else
 fi
 
 if [ ! -z "${GH_TOKEN:-}" ]; then
-    dub build -d ddox
+    dub build -b ddox
     cd docs
     git init
     git config user.name 'Travis-CI'
