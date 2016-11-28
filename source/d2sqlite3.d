@@ -336,6 +336,7 @@ public:
     +/
     string attachedFilePath(string database = "main")
     {
+        assert(p.handle);
         return sqlite3_db_filename(p.handle, database.toStringz).to!string;
     }
 
@@ -467,6 +468,7 @@ public:
     +/
     long lastInsertRowid()
     {
+        assert(p.handle);
         return sqlite3_last_insert_rowid(p.handle);
     }
 
@@ -581,9 +583,6 @@ public:
             || is(ParameterTypeTuple!fun == TypeTuple!(ColumnData[])),
             "only type-safe variadic functions with ColumnData arguments are supported");
 
-        if (!fun)
-            createFunction(name, null);
-
         static if (is(ParameterTypeTuple!fun == TypeTuple!(ColumnData[])))
         {
             extern(C) static nothrow
@@ -693,6 +692,11 @@ public:
             }
         }
 
+        assert(name.length, "function has an empty name");
+
+        if (!fun)
+            createFunction(name, null);
+
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, -1,
               SQLITE_UTF8 | det, delegateWrap(fun, name), &x_func, null, null, &ptrFree));
@@ -759,6 +763,7 @@ public:
     void createFunction(T)(string name, T fun = null)
         if (is(T == typeof(null)))
     {
+        assert(name.length, "function has an empty name");
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, -1, SQLITE_UTF8,
                 null, fun, null, null, null));
@@ -874,7 +879,7 @@ public:
         }
 
         static if (is(T == class) || is(T == Interface))
-            enforce(agg, "Attempt to create an aggregate function from a null reference");
+            assert(agg, "Attempt to create an aggregate function from a null reference");
 
         auto ctx = cast(Context*) malloc(Context.sizeof);
         ctx.aggregate = agg;
@@ -1358,6 +1363,7 @@ private:
     {
         Database db;
         sqlite3_stmt* handle; // null if error or empty statement
+        int paramCount;
 
         ~this()
         {
@@ -1388,6 +1394,7 @@ private:
             &handle, null);
         enforce(result == SQLITE_OK, new SqliteException(errmsg(db.handle()), result, sql));
         p = Payload(db, handle);
+        p.paramCount = sqlite3_bind_parameter_count(p.handle);
     }
 
     void checkResult(int result)
@@ -1441,40 +1448,65 @@ public:
     +/
     void bind(T)(int index, T value)
         if (is(T == typeof(null)) || is(T == void*))
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
+    {
+        assert(p.handle);
         checkResult(sqlite3_bind_null(p.handle, index));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isIntegral!T || isSomeChar!T)
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
+    {
+        assert(p.handle);
         checkResult(sqlite3_bind_int64(p.handle, index, value.to!long));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isBoolean!T)
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
+    {
+        assert(p.handle);
         checkResult(sqlite3_bind_int(p.handle, index, value.to!T));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isFloatingPoint!T)
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
+    {
+        assert(p.handle);
         checkResult(sqlite3_bind_double(p.handle, index, value.to!double));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isSomeString!T)
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
+    {
+        assert(p.handle);
         string str = value.to!string;
         auto ptr = anchorMem(cast(void*) str.ptr);
         checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr, str.length, &releaseMem, SQLITE_UTF8));
@@ -1483,16 +1515,26 @@ public:
     /// ditto
     void bind(T)(int index, T value)
         if (isStaticArray!T)
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
+    {
+        assert(p.handle);
         checkResult(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr, value.sizeof, SQLITE_TRANSIENT));
     }
 
     /// ditto
     void bind(T)(int index, T value)
         if (isDynamicArray!T && !isSomeString!T)
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
+    {
+        assert(p.handle);
         auto arr = cast(void[]) value;
         checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr), arr.length, &releaseMem));
     }
@@ -1500,10 +1542,15 @@ public:
     /// ditto
     void bind(T)(int index, T value)
         if (is(T == Nullable!U, U...))
+    in
+    {
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
     {
         if (value.isNull)
         {
-            assert(p.handle, "Operation on an empty statement");
+            assert(p.handle);
             checkResult(sqlite3_bind_null(p.handle, index));
         }
         else
@@ -1526,9 +1573,15 @@ public:
         `sqlite3_bind_parameter_index`.
     +/
     void bind(T)(string name, T value)
+    in
     {
+        assert(name.length);
+    }
+    body
+    {
+        assert(p.handle);
         auto index = sqlite3_bind_parameter_index(p.handle, name.toStringz);
-        enforce(index > 0, new SqliteException(format("no parameter named '%s'", name)));
+        assert(index > 0, "no parameter named '%s'".format(name));
         bind(index, value);
     }
 
@@ -1536,6 +1589,11 @@ public:
     Binds all the arguments at once in order.
     +/
     void bindAll(Args...)(Args args)
+    in
+    {
+        assert(Args.length == this.parameterCount, "parameter count mismatch");
+    }
+    body
     {
         foreach (index, _; Args)
             bind(index + 1, args[index]);
@@ -1548,7 +1606,7 @@ public:
     +/
     void clearBindings()
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(p.handle);
         checkResult(sqlite3_clear_bindings(p.handle));
     }
 
@@ -1570,7 +1628,7 @@ public:
     +/
     void reset()
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(p.handle);
         checkResult(sqlite3_reset(p.handle));
     }
 
@@ -1600,6 +1658,8 @@ public:
     {
         // Copy of FieldNameTuple, as long as GDC doesn't have it.
         alias FieldNames = staticMap!(NameOf, T.tupleof[0 .. $ - isNested!T]);
+        
+        assert(FieldNames.length == this.parameterCount, "parameter count mismatch");
 
         foreach (i, field; FieldNames)
             bind(i + 1, __traits(getMember, obj, field));
@@ -1610,8 +1670,8 @@ public:
     /// Gets the count of bind parameters.
     int parameterCount() nothrow
     {
-        assert(p.handle, "Operation on an empty statement");
-        return sqlite3_bind_parameter_count(p.handle);
+        assert(p.handle);
+        return p.paramCount;
     }
 
     /++
@@ -1623,8 +1683,13 @@ public:
     Returns: The name of the parameter or null is not found or out of range.
     +/
     string parameterName(int index)
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
+    }
+    body
+    {
+        assert(p.handle);
         return sqlite3_bind_parameter_name(p.handle, index).to!string;
     }
 
@@ -1635,8 +1700,13 @@ public:
     or 0 is not found or out of range.
     +/
     int parameterIndex(string name)
+    in
     {
-        assert(p.handle, "Operation on an empty statement");
+        assert(name.length);
+    }
+    body
+    {
+        assert(p.handle);
         return sqlite3_bind_parameter_index(p.handle, name.toStringz);
     }
 }
@@ -1689,7 +1759,6 @@ unittest // Multiple parameters binding
 
     assert(statement.parameterCount == 3);
     assert(statement.parameterName(2) == "@f");
-    assert(statement.parameterName(4) == null);
     assert(statement.parameterIndex("$t") == 3);
     assert(statement.parameterIndex(":foo") == 0);
 
@@ -1874,15 +1943,6 @@ unittest // Peeking Nullable
     }
 }
 
-unittest // Bad bindings
-{
-    auto db = Database(":memory:");
-    db.execute("CREATE TABLE test (val INTEGER)");
-    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    assertThrown!SqliteException(statement.bind("foo", 1));
-    assertThrown!SqliteException(statement.bindAll(10, 11));
-}
-
 unittest // GC anchoring test
 {
     auto db = Database(":memory:");
@@ -1949,14 +2009,14 @@ public:
     /// ditto
     ref Row front() return @property
     {
-        enforce(!empty, new SqliteException("No rows available"));
+        assert(!empty, "no rows available");
         return current;
     }
 
     /// ditto
     void popFront()
     {
-        enforce(!empty, new SqliteException("No rows available"));
+        assert(!empty, "no rows available");
         state = sqlite3_step(statement.handle);
         current = Row(statement);
         enforce(state == SQLITE_DONE || state == SQLITE_ROW,
@@ -1978,6 +2038,12 @@ public:
         auto count = db.execute("SELECT count(*) FROM test").oneValue!long;
         assert(count == 0);
     }
+}
+
+version (unittest)
+{
+    static assert(isInputRange!ResultRange);
+    static assert(is(ElementType!ResultRange == Row));
 }
 
 unittest // Statement error
@@ -2005,9 +2071,9 @@ Warning:
 struct Row
 {
 private:
-        Statement statement;
-        int frontIndex;
-        int backIndex;
+    Statement statement;
+    int frontIndex;
+    int backIndex;
 
     this(Statement statement)
     {
@@ -2062,9 +2128,8 @@ public:
     ColumnData opIndex(int index)
     {
         auto i = internalIndex(index);
-
+        assert(statement.handle, "operation on an empty statement");
         auto type = sqlite3_column_type(statement.handle, i);
-
         final switch (type)
         {
             case SqliteType.INTEGER:
@@ -2158,6 +2223,7 @@ public:
     T peek(T)(int index)
         if (isBoolean!T || isIntegral!T)
     {
+        assert(statement.handle, "operation on an empty statement");
         return sqlite3_column_int64(statement.handle, internalIndex(index)).to!T();
     }
 
@@ -2165,6 +2231,7 @@ public:
     T peek(T)(int index)
         if (isFloatingPoint!T)
     {
+        assert(statement.handle, "operation on an empty statement");
         return sqlite3_column_double(statement.handle, internalIndex(index)).to!T();
     }
 
@@ -2172,6 +2239,7 @@ public:
     T peek(T)(int index)
         if (isSomeString!T)
     {
+        assert(statement.handle, "operation on an empty statement");
         return sqlite3_column_text(statement.handle, internalIndex(index)).to!T;
     }
 
@@ -2180,6 +2248,7 @@ public:
         if (isArray!T && !isSomeString!T)
     {
         auto i = internalIndex(index);
+        assert(statement.handle, "operation on an empty statement");
         auto ptr = sqlite3_column_blob(statement.handle, i);
         auto length = sqlite3_column_bytes(statement.handle, i);
 
@@ -2202,6 +2271,7 @@ public:
             && (!isArray!(TemplateArgsOf!T[0]) || isSomeString!(TemplateArgsOf!T[0])))
     {
         alias U = TemplateArgsOf!T[0];
+        assert(statement.handle, "operation on an empty statement");
         if (sqlite3_column_type(statement.handle, internalIndex(index)) == SqliteType.NULL)
             return T();
         return T(peek!U(index));
@@ -2213,6 +2283,7 @@ public:
             && isArray!(TemplateArgsOf!T[0]) && !isSomeString!(TemplateArgsOf!T[0]))
     {
         alias U = TemplateArgsOf!T[0];
+        assert(statement.handle, "operation on an empty statement");
         if (sqlite3_column_type(statement.handle, internalIndex(index)) == SqliteType.NULL)
             return T();
         return T(peek!(U, mode)(index));
@@ -2235,6 +2306,7 @@ public:
     +/
     SqliteType columnType(int index)
     {
+        assert(statement.handle, "operation on an empty statement");
         return cast(SqliteType) sqlite3_column_type(statement.handle, internalIndex(index));
     }
     /// Ditto
@@ -2245,6 +2317,7 @@ public:
     /// Ditto
     string columnDeclaredTypeName(int index)
     {
+        assert(statement.handle, "operation on an empty statement");
         return sqlite3_column_decltype(statement.handle, internalIndex(index)).to!string;
     }
     /// Ditto
@@ -2283,6 +2356,7 @@ public:
     +/
     string columnName(int index)
     {
+        assert(statement.handle, "operation on an empty statement");
         return sqlite3_column_name(statement.handle, internalIndex(index)).to!string;
     }
     ///
@@ -2309,6 +2383,7 @@ public:
         +/
         string columnDatabaseName(int index)
         {
+            assert(statement.handle, "operation on an empty statement");
             return sqlite3_column_database_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
@@ -2319,6 +2394,7 @@ public:
         /// Ditto
         string columnTableName(int index)
         {
+            assert(statement.handle, "operation on an empty statement");
             return sqlite3_column_database_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
@@ -2329,6 +2405,7 @@ public:
         /// Ditto
         string columnOriginName(int index)
         {
+            assert(statement.handle, "operation on an empty statement");
             return sqlite3_column_origin_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
@@ -2385,18 +2462,22 @@ private:
     int internalIndex(int index)
     {
         auto i = index + frontIndex;
-        enforce(i >= 0 && i <= backIndex,
-            new SqliteException(format("invalid column index: %d", i)));
+        assert(i >= 0 && i <= backIndex, "invalid column index: %d".format(i));
         return i;
     }
 
     int indexForName(string name)
+    in
+    {
+        assert(name.length, "column with no name");
+    }
+    body
     {
         foreach (i; frontIndex .. backIndex + 1)
             if (sqlite3_column_name(statement.handle, i).to!string == name)
                 return i;
 
-        throw new SqliteException("invalid column name: '%s'".format(name));
+        assert(false, "invalid column name: '%s'".format(name));
     }
 }
 
@@ -2462,14 +2543,6 @@ unittest // Row life-time
     auto row = db.execute("SELECT 1 AS one").front;
     assert(row[0].as!long == 1);
     assert(row["one"].as!long == 1);
-}
-
-unittest // Bad column index
-{
-    auto db = Database(":memory:");
-    auto row = db.execute("SELECT 1 AS one").front;
-    assertThrown!SqliteException(row[1].as!long);
-    assertThrown!SqliteException(row["two"].as!long);
 }
 
 unittest // PeekMode
@@ -2752,7 +2825,7 @@ struct CachedResults
             columns = colapp.data;
         }
 
-        ColumnData opIndex(int index)
+        ColumnData opIndex(int index) nothrow
         {
             return columns[index];
         }
@@ -2760,7 +2833,7 @@ struct CachedResults
         ColumnData opIndex(string name)
         {
             auto index = name in columnIndexes;
-            enforce(index, new SqliteException("Unknown column name: %s".format(name)));
+            assert(index, "unknown column name: %s".format(name));
             return columns[*index];
         }
     }
