@@ -1,4 +1,4 @@
-module sqlite3;
+module d2sqlite3.sqlite3;
 /*
 ** 2001 September 15
 **
