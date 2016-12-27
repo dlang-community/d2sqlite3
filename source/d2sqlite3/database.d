@@ -1,3 +1,15 @@
+/++
+This module is part of d2sqlite3.
+
+Authors:
+    Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
+
+Copyright:
+    Copyright 2011-16 Nicolas Sicard.
+
+License:
+    $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
++/
 module d2sqlite3.database;
 
 import d2sqlite3.statement;
@@ -96,7 +108,7 @@ enum Deterministic
 }
 
 /++
-An SQLite database connection.
+An database connection.
 
 This struct is a reference-counted wrapper around a `sqlite3*` pointer.
 +/
@@ -277,7 +289,7 @@ public:
     Runs an SQL script that can contain multiple statements.
 
     Params:
-        sql = The code of the script.
+        script = The code of the SQL script.
 
         dg = A delegate to call for each statement to handle the results. The passed
         ResultRange will be empty if a statement doesn't return rows. If the delegate

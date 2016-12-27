@@ -1,3 +1,15 @@
+/+
+This module is part of d2sqlite3.
+
+Authors:
+    Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
+
+Copyright:
+    Copyright 2011-16 Nicolas Sicard.
+
+License:
+    $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
++/
 module d2sqlite3.internal.memory;
 
 import std.traits : isFunctionPointer, isDelegate, isCallable;

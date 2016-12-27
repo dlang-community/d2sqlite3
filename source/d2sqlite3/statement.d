@@ -1,3 +1,15 @@
+/++
+This module is part of d2sqlite3.
+
+Authors:
+    Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
+
+Copyright:
+    Copyright 2011-16 Nicolas Sicard.
+
+License:
+    $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
++/
 module d2sqlite3.statement;
 
 import d2sqlite3.database;
@@ -12,10 +24,10 @@ import std.string : format, toStringz;
 import std.typecons : Nullable;
 
 /++
-An SQLite statement execution.
+A prepared statement.
 
-This struct is a reference-counted wrapper around a `sqlite3_stmt*` pointer. Instances
-of this struct are typically returned by `Database.prepare()`.
+This struct is a reference-counted wrapper around a `sqlite3_stmt*` pointer.
+Instances of this struct are typically returned by `Database.prepare()`.
 +/
 struct Statement
 {

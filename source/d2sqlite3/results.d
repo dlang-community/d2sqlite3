@@ -1,3 +1,15 @@
+/++
+This module is part of d2sqlite3.
+
+Authors:
+    Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
+
+Copyright:
+    Copyright 2011-16 Nicolas Sicard.
+
+License:
+    $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
++/
 module d2sqlite3.results;
 
 import d2sqlite3.database;
@@ -79,13 +91,30 @@ public:
         return front.peek!T(0);
     }
     ///
-    unittest // One value
+    unittest
     {
         auto db = Database(":memory:");
         db.execute("CREATE TABLE test (val INTEGER)");
         auto count = db.execute("SELECT count(*) FROM test").oneValue!long;
         assert(count == 0);
     }
+}
+///
+unittest
+{
+    auto db = Database(":memory:");
+    db.run("CREATE TABLE test (i INTEGER);
+            INSERT INTO test VALUES (1);
+            INSERT INTO test VALUES (2);");
+
+    auto results = db.execute("SELECT * FROM test");
+    assert(!results.empty);
+    assert(results.front.peek!long(0) == 1);
+    results.popFront();
+    assert(!results.empty);
+    assert(results.front.peek!long(0) == 2);
+    results.popFront();
+    assert(results.empty);
 }
 
 /++
@@ -99,7 +128,7 @@ $(UL
 
 Warning:
     The data of the row is invalid when the next row is accessed (after a call to
-    `ResultRange.popFront()`) or when the ResultRange it comes from goes out of scope.
+    `ResultRange.popFront()`).
 +/
 struct Row
 {
@@ -667,7 +696,7 @@ struct ColumnMetadata
 /++
 Caches the results of a query into memory at once.
 
-Returnd a struct that allows to iterate on the rows and their columns with an
+Returns a struct that allows to iterate on the rows and their columns with an
 array-like interface. The rows can be viewed as an array of `ColumnData` or as
 an associative array of `ColumnData` indexed by the column names.
 +/
