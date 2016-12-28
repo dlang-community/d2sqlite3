@@ -694,11 +694,18 @@ struct ColumnMetadata
 }
 
 /++
-Caches the results of a query into memory at once.
+Caches all the results of a query into memory at once.
 
-Returns a struct that allows to iterate on the rows and their columns with an
-array-like interface. The rows can be viewed as an array of `ColumnData` or as
-an associative array of `ColumnData` indexed by the column names.
+This allows to keep all the rows returned from a query accessible in any order
+and indefinitely.
+
+Returns:
+    A `CachedResults` struct that allows to iterate on the rows and their
+    columns with an array-like interface.
+
+    The `CachedResults` struct is equivalent to an array of 'rows', which in
+    turn can be viewed as either an array of `ColumnData` or as an associative
+    array of `ColumnData` indexed by the column names.
 +/
 CachedResults cached(ResultRange results)
 {
@@ -720,11 +727,24 @@ unittest
     assert(results[1]["num"].as!int == 456);
 }
 
-/// Contains the results of a query cached in memory.
+/++
+Stores all the results of a query.
+
+The `CachedResults` struct is equivalent to an array of 'rows', which in
+turn can be viewed as either an array of `ColumnData` or as an associative
+array of `ColumnData` indexed by the column names.
+
+Unlike `ResultRange`, `CachedResults` is a random-access range of rows, and its
+data always remain available.
+
+See_Also:
+    `cached` for an example.
++/
 struct CachedResults
 {
     import std.array : appender;
 
+    // A row of retrieved data
     struct CachedRow
     {
         ColumnData[] columns;
@@ -742,11 +762,13 @@ struct CachedResults
             columns = colapp.data;
         }
 
-        ColumnData opIndex(int index) nothrow
+        // Returns the data at the given index in the row.
+        ColumnData opIndex(int index)
         {
             return columns[index];
         }
 
+        // Returns the data at the given column.
         ColumnData opIndex(string name)
         {
             auto index = name in columnIndexes;
@@ -755,6 +777,7 @@ struct CachedResults
         }
     }
 
+    // All the rows returned by the query.
     CachedRow[] rows;
     alias rows this;
 
@@ -782,5 +805,5 @@ struct CachedResults
     }
 }
 
-/// Old name kept for compatibility
+// Old name kept for compatibility
 alias QueryCache = CachedResults;
