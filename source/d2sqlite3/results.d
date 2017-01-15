@@ -304,7 +304,7 @@ public:
         if (isSomeString!T)
     {
         assert(statement.handle, "operation on an empty statement");
-        return sqlite3_column_text(statement.handle, internalIndex(index)).to!T;
+        return (cast(const(char)*) sqlite3_column_text(statement.handle, internalIndex(index))).to!T;
     }
 
     /// ditto

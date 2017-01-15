@@ -132,7 +132,7 @@ auto getValue(T)(sqlite3_value* argv)
     if (isSomeString!T)
 {
     import std.conv : to;
-    return sqlite3_value_text(argv).to!T;
+    return (cast(const(char)*) sqlite3_value_text(argv)).to!T;
 }
 
 auto getValue(T)(sqlite3_value* argv)

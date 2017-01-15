@@ -866,7 +866,7 @@ public:
     void setUpdateHook(UpdateHookDelegate updateHook)
     {
         extern(C) static nothrow
-        void callback(void* ptr, int type, char* dbName, char* tableName, long rowid)
+        void callback(void* ptr, int type, const(char)* dbName, const(char)* tableName, long rowid)
         {
             WrappedDelegate!UpdateHookDelegate* dg;
             dg = delegateUnwrap!UpdateHookDelegate(ptr);
