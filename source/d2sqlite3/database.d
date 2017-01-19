@@ -5,7 +5,7 @@ Authors:
     Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
 
 Copyright:
-    Copyright 2011-16 Nicolas Sicard.
+    Copyright 2011-17 Nicolas Sicard.
 
 License:
     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
@@ -137,7 +137,7 @@ private:
         {
             if (!handle)
                 return;
-        
+
             sqlite3_progress_handler(handle, 0, null, null);
             auto result = sqlite3_close(handle);
             // Check that destructor was not call by the GC
@@ -776,7 +776,7 @@ public:
         must be `nothrow`` and satisfy these criteria:
             $(UL
                 $(LI Takes two string arguments (s1 and s2). These two strings are slices of C-style strings
-                  that SQLite manages internally, so there is no guarantee that they are still valid 
+                  that SQLite manages internally, so there is no guarantee that they are still valid
                   when the function returns.)
                 $(LI Returns an integer (ret).)
                 $(LI If s1 is less than s2, ret < 0.)
@@ -795,7 +795,7 @@ public:
     {
         import std.traits : isImplicitlyConvertible, functionAttributes, FunctionAttribute,
             ParameterTypeTuple, isSomeString, ReturnType;
-        
+
         static assert(isImplicitlyConvertible!(typeof(fun("a", "b")), int),
             "the collation function has a wrong signature");
 
@@ -841,7 +841,7 @@ public:
         {
             import std.uni : icmp;
             import std.exception : assumeWontThrow;
-            
+
             return assumeWontThrow(icmp(s1, s2));
         }
 
