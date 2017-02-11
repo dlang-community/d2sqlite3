@@ -77,6 +77,11 @@ private:
 
         ~this()
         {
+            close();
+        }
+
+        void close()
+        {
             if (!handle)
                 return;
 
@@ -142,6 +147,7 @@ public:
     +/
     void close()
     {
+        p.close();
         destroy(p);
     }
 

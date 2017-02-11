@@ -44,6 +44,11 @@ private:
 
         ~this()
         {
+            finalize();
+        }
+
+        void finalize()
+        {
             if (!handle)
                 return;
 
@@ -100,6 +105,7 @@ public:
     +/
     void finalize()
     {
+        p.finalize();
         destroy(p);
     }
 
