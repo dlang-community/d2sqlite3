@@ -34,64 +34,6 @@ enum SqliteType
 }
 
 /++
-Gets the library's version string (e.g. "3.8.7").
-+/
-string versionString()
-{
-    return to!string(sqlite3_libversion());
-}
-
-/++
-Gets the library's version number (e.g. 3_008_007).
-+/
-int versionNumber() nothrow
-{
-    return sqlite3_libversion_number();
-}
-
-/++
-Tells whether SQLite was compiled with the thread-safe options.
-
-See_also: ($LINK http://www.sqlite.org/c3ref/threadsafe.html).
-+/
-bool threadSafe() nothrow
-{
-    return cast(bool) sqlite3_threadsafe();
-}
-
-/++
-Manually initializes (or shuts down) SQLite.
-
-SQLite initializes itself automatically on the first request execution, so this
-usually wouldn't be called. Use for instance before a call to config().
-+/
-void initialize()
-{
-    auto result = sqlite3_initialize();
-    enforce(result == SQLITE_OK, new SqliteException("Initialization: error %s".format(result)));
-}
-/// Ditto
-void shutdown()
-{
-    auto result = sqlite3_shutdown();
-    enforce(result == SQLITE_OK, new SqliteException("Shutdown: error %s".format(result)));
-}
-
-/++
-Sets a configuration option.
-
-Use before initialization, e.g. before the first
-call to initialize and before execution of the first statement.
-
-See_Also: $(LINK http://www.sqlite.org/c3ref/config.html).
-+/
-void config(Args...)(int code, Args args)
-{
-    auto result = sqlite3_config(code, args);
-    enforce(result == SQLITE_OK, new SqliteException("Configuration: error %s".format(result)));
-}
-
-/++
 A caracteristic of user-defined functions or aggregates.
 +/
 enum Deterministic
