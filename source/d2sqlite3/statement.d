@@ -32,7 +32,7 @@ Instances of this struct are typically returned by `Database.prepare()`.
 struct Statement
 {
     import std.traits : isIntegral, isSomeChar, isBoolean, isFloatingPoint,
-        isSomeString, isStaticArray, isDynamicArray;    
+        isSomeString, isStaticArray, isDynamicArray;
     import std.typecons : RefCounted, RefCountedAutoInitialize;
 
 private:
@@ -46,7 +46,7 @@ private:
         {
             if (!handle)
                 return;
-            
+
             auto result = sqlite3_finalize(handle);
             // Check that destructor was not call by the GC
             // See https://p0nce.github.io/d-idioms/#GC-proof-resource-class
@@ -88,7 +88,7 @@ public:
     /++
     Gets the SQLite internal _handle of the statement.
     +/
-    sqlite3_stmt* handle() @safe @property nothrow
+    sqlite3_stmt* handle() @property nothrow
     {
         return p.handle;
     }
