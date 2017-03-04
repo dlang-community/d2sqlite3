@@ -1,4 +1,4 @@
-# Module `d2sqlite3`
+# `D2Sqlite3`
 
 [![Build Status](https://travis-ci.org/biozic/d2sqlite3.svg)](https://travis-ci.org/biozic/d2sqlite3)
 [![Coverage Status](https://coveralls.io/repos/github/biozic/d2sqlite3/badge.svg?branch=master)](https://coveralls.io/github/biozic/d2sqlite3?branch=master)
@@ -19,8 +19,8 @@ It wraps the C API in an idiomatic manner and handles built-in D types and
 ```json
     "lflags": ["-L/path/to/lib"]
 ```
-- **`all-included`**: on Windows, use a prebuilt SQLite DLL (bundled with this library) -- **UNFINISHED**; on Posix systems, builds SQLite from the source amalgamation (also bundled with this library).
 - **`without-lib`**: you manage linking SQLite yourself.
+- **`all-included`** (work in progress): on Windows, use a prebuilt SQLite DLL (bundled with this library); on Posix systems, builds SQLite from the source amalgamation (also bundled with this library), using a minimal building configuration.
 
 Set the right configuration for you project in its `dub.json` file using the `subConfigurations` setting, e.g.:
 ```json
@@ -28,3 +28,7 @@ Set the right configuration for you project in its `dub.json` file using the `su
         "d2sqlite3": "all-included"
     }
 ```
+
+## C binding generation
+
+The D binding file `sqlite3.d` is generated from the C header file `sqlite3.h`, using [jacob-carlborg/dstep](https://github.com/jacob-carlborg/dstep). I try to keep it up to date.
