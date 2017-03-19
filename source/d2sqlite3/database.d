@@ -332,6 +332,32 @@ public:
         return p.handle ? sqlite3_errcode(p.handle) : 0;
     }
 
+    /++
+    Sets a connection configuration option.
+
+    See_Also: $(LINK http://www.sqlite.org/c3ref/db_config.html).
+    +/
+    void config(Args...)(int code, Args args)
+    {
+        auto result = sqlite3_db_config(p.handle, code, args);
+        enforce(result == SQLITE_OK, new SqliteException("Database configuration: error %s".format(result)));
+    }
+    unittest
+    {
+        auto db = Database(":memory:");
+        db.run(`
+            CREATE TABLE test (val INTEGER);
+            CREATE TRIGGER test_trig BEFORE INSERT ON test
+            BEGIN
+                SELECT RAISE(FAIL, 'Test failed');
+            END;
+        `);
+        int res = 42;
+        db.config(SQLITE_DBCONFIG_ENABLE_TRIGGER, 0, &res);
+        assert(res == 0);
+        db.execute("INSERT INTO test (val) VALUES (1)");
+    }
+
     version (SQLITE_OMIT_LOAD_EXTENSION) {}
     else
     {
