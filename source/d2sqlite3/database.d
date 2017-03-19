@@ -219,18 +219,32 @@ public:
     Executes a single SQL statement and returns the results directly.
 
     It's the equivalent of `prepare(sql).execute()`.
+    Or when used with args the equivalent of:
+    ---
+    auto stm = prepare(sql);
+    stm.bindAll(args);
+    stm.execute();
+    ---
 
     The results become undefined when the Database goes out of scope and is destroyed.
+    
+    Params:
+        sql = The code of the SQL statement.
+        args = Optional arguments to bind to the SQL statement.
     +/
-    ResultRange execute(string sql)
+    ResultRange execute(Args...)(string sql, Args args)
     {
-        return prepare(sql).execute();
+        auto stm = prepare(sql);
+        static if (Args.length) stm.bindAll(args);
+        return stm.execute();
     }
     ///
     unittest
     {
         auto db = Database(":memory:");
-        db.execute("VACUUM");
+        db.execute("CREATE TABLE test (val INTEGER)");
+        db.execute("INSERT INTO test (val) VALUES (:v)", 1);
+        assert(db.execute("SELECT val FROM test WHERE val=:v", 1).oneValue!int == 1);
     }
 
     /++
