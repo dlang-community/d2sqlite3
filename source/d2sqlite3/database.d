@@ -333,6 +333,19 @@ public:
     }
 
     /++
+    Interrupts any pending database operations.
+
+    It's safe to call this function from anouther thread.
+
+    See_also: $(LINK http://www.sqlite.org/c3ref/interrupt.html).
+    +/
+    void interrupt()
+    {
+        assert(p.handle);
+        sqlite3_interrupt(p.handle);
+    }
+
+    /++
     Sets a connection configuration option.
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/db_config.html).
