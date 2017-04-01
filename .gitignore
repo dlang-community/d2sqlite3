@@ -1,6 +1,7 @@
 .dub
 dub.selections.json
 __test__*
+d2sqlite3-test*
 libd2sqlite3.a
 TODO.txt
 docs.json
