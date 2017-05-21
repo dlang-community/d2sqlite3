@@ -432,6 +432,7 @@ unittest // Struct injecting
         int i;
         double f;
         string t;
+        private bool _notused;
     }
 
     auto test = Test(42, 3.14, "TEXT");
@@ -449,6 +450,83 @@ unittest // Struct injecting
         assert(row.peek!int(0) == 42);
         assert(row.peek!double(1) == 3.14);
         assert(row.peek!string(2) == "TEXT");
+    }
+}
+
+unittest // Iterable struct injecting
+{
+    import std.range : iota;
+
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (a INTEGER, b INTEGER, c INTEGER)");
+    auto statement = db.prepare("INSERT INTO test (a, b, c) VALUES (?, ?, ?)");
+    statement.inject(iota(0, 3));
+
+    auto results = db.execute("SELECT * FROM test");
+    assert(!results.empty);
+    foreach (row; results)
+    {
+        assert(row.length == 3);
+        assert(row.peek!int(0) == 0);
+        assert(row.peek!int(1) == 1);
+        assert(row.peek!int(2) == 2);
+    }
+}
+
+unittest // Injecting nullable
+{
+    import std.algorithm : map;
+    import std.array : array;
+
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (i INTEGER, s TEXT)");
+    auto statement = db.prepare("INSERT INTO test (i, s) VALUES (?, ?)");
+    statement.inject(Nullable!int(1), "one");
+    statement = db.prepare("INSERT INTO test (i) VALUES (?)");
+    statement.inject(Nullable!int.init);
+
+    auto results = db.execute("SELECT i FROM test ORDER BY rowid")
+        .map!(a => a.peek!(Nullable!int)(0))
+        .array;
+
+    assert(results.length == 2);
+    assert(results[0] == 1);
+    assert(results[1].isNull);
+}
+
+unittest // Injecting tuple
+{
+    import std.typecons : tuple;
+
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
+    auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (?, ?, ?)");
+    statement.inject(tuple(42, 3.14, "TEXT"));
+
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+    {
+        assert(row.length == 3);
+        assert(row.peek!int(0) == 42);
+        assert(row.peek!double(1) == 3.14);
+        assert(row.peek!string(2) == "TEXT");
+    }
+}
+
+unittest // Injecting dict
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (a TEXT, b TEXT, c TEXT)");
+    auto statement = db.prepare("INSERT INTO test (c, b, a) VALUES (:c, :b, :a)");
+    statement.inject([":a":"a", ":b":"b", ":c":"c"]);
+
+    auto results = db.execute("SELECT * FROM test");
+    foreach (row; results)
+    {
+        assert(row.length == 3);
+        assert(row.peek!string(0) == "a");
+        assert(row.peek!string(1) == "b");
+        assert(row.peek!string(2) == "c");
     }
 }
 

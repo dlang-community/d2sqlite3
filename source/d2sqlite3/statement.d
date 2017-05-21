@@ -31,11 +31,19 @@ Instances of this struct are typically returned by `Database.prepare()`.
 +/
 struct Statement
 {
+    import std.meta : allSatisfy;
     import std.traits : isIntegral, isSomeChar, isBoolean, isFloatingPoint,
-        isSomeString, isStaticArray, isDynamicArray;
+        isSomeString, isStaticArray, isDynamicArray, isIterable;
     import std.typecons : RefCounted, RefCountedAutoInitialize;
 
 private:
+
+    /// Returns $(D true) if the value can be directly bound to the statement
+    enum bool isBindable(T) =
+        is(T == typeof(null)) || is(T == void*) || isIntegral!T || isSomeChar!T
+        || isBoolean!T || isFloatingPoint!T || isSomeString!T || isStaticArray!T
+        || isDynamicArray!T || is(T == Nullable!U, U...);
+
     struct Payload
     {
         Database db;
@@ -331,7 +339,7 @@ public:
     ---
     +/
     void inject(Args...)(Args args)
-        if (!is(Args[0] == struct))
+        if (allSatisfy!(isBindable, Args))
     {
         bindAll(args);
         execute();
@@ -344,13 +352,41 @@ public:
     void inject(T)(ref const(T) obj)
         if (is(T == struct))
     {
-        import std.meta : staticMap;
-        import std.traits : FieldNameTuple, isNested;
+        import std.meta : Filter;
+        import std.traits : FieldNameTuple;
 
-        alias FieldNames = FieldNameTuple!T;
+        enum accesible(string F) = __traits(compiles, __traits(getMember, obj, F));
+        enum bindable(string F) = isBindable!(typeof(__traits(getMember, obj, F)));
+
+        alias FieldNames = Filter!(bindable, Filter!(accesible, FieldNameTuple!T));
         assert(FieldNames.length == this.parameterCount, "parameter count mismatch");
         foreach (i, field; FieldNames)
             bind(i + 1, __traits(getMember, obj, field));
+        execute();
+        reset();
+    }
+
+    /++
+    Binds iterable values in order, executes and resets the statement, in one call.
+    +/
+    void inject(T)(auto ref T obj)
+        if (!isBindable!T && isIterable!T)
+    in
+    {
+        static if (__traits(compiles, obj.length))
+            assert(obj.length == this.parameterCount, "parameter count mismatch");
+    }
+    body
+    {
+        static if (__traits(compiles, { foreach (string k, ref v; obj) {} }))
+        {
+            foreach (string k, ref v; obj) bind(k, v);
+        }
+        else
+        {
+            int i = 1;
+            foreach (ref v; obj) bind(i++, v);
+        }
         execute();
         reset();
     }
