@@ -44,7 +44,6 @@ private:
 package(d2sqlite3):
     this(Statement statement)
     {
-        this.statement = statement;
         if (!statement.empty)
             state = sqlite3_step(statement.handle);
         else
@@ -56,6 +55,7 @@ package(d2sqlite3):
             throw new SqliteException(errmsg(statement.handle), state);
         }
 
+        this.statement = statement;
         colCount = sqlite3_column_count(statement.handle);
         current = Row(statement, colCount);
     }
