@@ -19,6 +19,7 @@ import d2sqlite3.internal.util;
 
 import std.conv : to;
 import std.exception : enforce;
+import std.json : JSONValue;
 import std.string : format;
 import std.typecons : Nullable;
 
@@ -305,6 +306,14 @@ public:
     {
         assert(statement.handle, "operation on an empty statement");
         return (cast(const(char)*) sqlite3_column_text(statement.handle, internalIndex(index))).to!T;
+    }
+
+    /// ditto
+    T peek(T)(int index)
+        if (is(T == JSONValue))
+    {
+        import std.json : parseJSON;
+        return peek!string(index).parseJSON();
     }
 
     /// ditto

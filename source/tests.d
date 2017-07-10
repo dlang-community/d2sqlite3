@@ -441,6 +441,21 @@ unittest // Binding/peeking blob values
     }
 }
 
+unittest // Binding/peeking JSONValue values
+{
+    import std.json : JSONValue;
+
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val TEXT)");
+
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    JSONValue value = JSONValue([1]);
+    statement.inject(value);
+
+    auto results = db.execute("SELECT * FROM test");
+    assert(results.front.peek!JSONValue(0) == value);
+}
+
 unittest // Struct injecting
 {
     static struct Test

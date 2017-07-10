@@ -20,6 +20,7 @@ import d2sqlite3.internal.util;
 
 import std.conv : to;
 import std.exception : enforce;
+import std.json : JSONValue;
 import std.string : format, toStringz;
 import std.typecons : Nullable;
 
@@ -42,7 +43,7 @@ private:
     enum bool isBindable(T) =
         is(T == typeof(null)) || is(T == void*) || isIntegral!T || isSomeChar!T
         || isBoolean!T || isFloatingPoint!T || isSomeString!T || isStaticArray!T
-        || isDynamicArray!T || is(T == Nullable!U, U...);
+        || isDynamicArray!T || is(T == Nullable!U, U...) || is(T == JSONValue);
 
     struct Payload
     {
@@ -210,6 +211,14 @@ public:
 
     /// ditto
     void bind(T)(int index, T value)
+        if (is(T == JSONValue))
+    {
+        import std.json : toJSON;
+        bind(index, value.toJSON);
+    }
+
+    /// ditto
+    void bind(T)(int index, T value)
         if (isStaticArray!T)
     in
     {
@@ -350,7 +359,7 @@ public:
     Binds the fields of a struct in order, executes and resets the statement, in one call.
     +/
     void inject(T)(ref const(T) obj)
-        if (is(T == struct))
+        if (is(T == struct) && !is(T == JSONValue))
     {
         import std.meta : Filter;
         import std.traits : FieldNameTuple;
