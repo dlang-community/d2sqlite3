@@ -49,11 +49,8 @@ package(d2sqlite3):
         else
             state = SQLITE_DONE;
 
-        if (state != SQLITE_ROW && state != SQLITE_DONE)
-        {
-            statement.reset();
-            throw new SqliteException(errmsg(statement.handle), state);
-        }
+        enforce(state == SQLITE_ROW || state == SQLITE_DONE,
+                new SqliteException(errmsg(statement.handle), state));
 
         this.statement = statement;
         colCount = sqlite3_column_count(statement.handle);
