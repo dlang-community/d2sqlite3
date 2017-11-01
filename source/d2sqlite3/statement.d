@@ -57,24 +57,7 @@ private:
 
         void finalize()
         {
-            if (!handle)
-                return;
-
-            auto result = sqlite3_finalize(handle);
-            // Check that destructor was not call by the GC
-            // See https://p0nce.github.io/d-idioms/#GC-proof-resource-class
-            import core.exception : InvalidMemoryOperationError;
-            try
-            {
-                enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
-            }
-            catch (InvalidMemoryOperationError e)
-            {
-                import core.stdc.stdio : fprintf, stderr;
-                fprintf(stderr, "Error: release of Statement resource incorrectly"
-                                ~ " depends on destructors called by the GC.\n");
-                assert(false); // crash
-            }
+            sqlite3_finalize(handle);
             handle = null;
         }
     }
