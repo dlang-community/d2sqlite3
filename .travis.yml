@@ -10,4 +10,4 @@ matrix:
     - d: ldc
     # - d: gdc # disabled temporarily
 
-script: ./travis.sh
+script: ./travis-simple.sh
