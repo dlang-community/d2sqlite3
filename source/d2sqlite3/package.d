@@ -35,7 +35,7 @@ Authors:
     Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
 
 Copyright:
-    Copyright 2011-16 Nicolas Sicard.
+    Copyright 2011-17 Nicolas Sicard.
 
 License:
     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
@@ -123,9 +123,9 @@ or source ID.
 
 These values are returned by the linked SQLite C library. They can be checked against
 the values of the enums defined by the `d2sqlite3` package (`SQLITE_VERSION`,
-`SQLITE_VERSION_NUMBE` and `SQLITE_SOURCE_ID`.
+`SQLITE_VERSION_NUMBER` and `SQLITE_SOURCE_ID`).
 
-See_Also: ($LINK http://www.sqlite.org/c3ref/libversion.html).
+See_Also: $(LINK http://www.sqlite.org/c3ref/libversion.html).
 +/
 string versionString()
 {
@@ -149,7 +149,7 @@ string sourceID()
 /++
 Tells whether SQLite was compiled with the thread-safe options.
 
-See_also: ($LINK http://www.sqlite.org/c3ref/threadsafe.html).
+See_also: $(LINK http://www.sqlite.org/c3ref/threadsafe.html).
 +/
 bool threadSafe() nothrow
 {
