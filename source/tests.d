@@ -451,12 +451,14 @@ unittest // Struct injecting
         private bool _notused;
     }
 
-    auto test = Test(42, 3.14, "TEXT");
-
     auto db = Database(":memory:");
     db.execute("CREATE TABLE test (i INTEGER, f FLOAT, t TEXT)");
     auto statement = db.prepare("INSERT INTO test (i, f, t) VALUES (?, ?, ?)");
+    auto test = Test(42, 3.14, "TEXT");
     statement.inject(test);
+    statement.inject(Test(42, 3.14, "TEXT"));
+    auto itest = cast(immutable) Test(42, 3.14, "TEXT");
+    statement.inject(itest);
 
     auto results = db.execute("SELECT * FROM test");
     assert(!results.empty);

@@ -332,7 +332,7 @@ public:
     /++
     Binds the fields of a struct in order, executes and resets the statement, in one call.
     +/
-    void inject(T)(ref const(T) obj)
+    void inject(T)(auto ref const T obj)
         if (is(T == struct))
     {
         import std.meta : Filter;
