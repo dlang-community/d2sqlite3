@@ -136,10 +136,10 @@ struct Row
     import std.traits : isInstanceOf, TemplateArgsOf;
 private:
     Statement statement;
-    int frontIndex;
-    int backIndex;
+    size_t frontIndex;
+    size_t backIndex;
 
-    this(Statement statement, int colCount)
+    this(Statement statement, size_t colCount)
     {
         this.statement = statement;
         backIndex = colCount - 1;
@@ -147,7 +147,7 @@ private:
 
 public:
     /// Range interface.
-    bool empty() @property nothrow
+    bool empty() const @property nothrow
     {
         return length == 0;
     }
@@ -183,13 +183,13 @@ public:
     }
 
     /// ditto
-    int length() @property nothrow
+    size_t length() const @property nothrow
     {
         return backIndex - frontIndex + 1;
     }
 
     /// ditto
-    ColumnData opIndex(int index)
+    ColumnData opIndex(size_t index)
     {
         auto i = internalIndex(index);
         assert(statement.handle, "operation on an empty statement");
@@ -284,7 +284,7 @@ public:
         tested each time this function is called: use
         numeric indexing for better performance.
     +/
-    T peek(T)(int index)
+    T peek(T)(size_t index)
         if (isBoolean!T || isIntegral!T || isSomeChar!T)
     {
         assert(statement.handle, "operation on an empty statement");
@@ -292,7 +292,7 @@ public:
     }
 
     /// ditto
-    T peek(T)(int index)
+    T peek(T)(size_t index)
         if (isFloatingPoint!T)
     {
         assert(statement.handle, "operation on an empty statement");
@@ -300,7 +300,7 @@ public:
     }
 
     /// ditto
-    T peek(T, PeekMode mode = PeekMode.copy)(int index)
+    T peek(T, PeekMode mode = PeekMode.copy)(size_t index)
         if (isSomeString!T)
     {
         import core.stdc.string : strlen, memcpy;
@@ -327,7 +327,7 @@ public:
     }
 
     /// ditto
-    T peek(T, PeekMode mode = PeekMode.copy)(int index)
+    T peek(T, PeekMode mode = PeekMode.copy)(size_t index)
         if (isArray!T && !isSomeString!T)
     {
         assert(statement.handle, "operation on an empty statement");
@@ -349,7 +349,7 @@ public:
     }
 
     /// ditto
-    T peek(T)(int index)
+    T peek(T)(size_t index)
         if (isInstanceOf!(Nullable, T)
             && !isArray!(TemplateArgsOf!T[0]) && !isSomeString!(TemplateArgsOf!T[0]))
     {
@@ -361,7 +361,7 @@ public:
     }
 
     /// ditto
-    T peek(T, PeekMode mode = PeekMode.copy)(int index)
+    T peek(T, PeekMode mode = PeekMode.copy)(size_t index)
         if (isInstanceOf!(Nullable, T)
             && (isArray!(TemplateArgsOf!T[0]) || isSomeString!(TemplateArgsOf!T[0])))
     {
@@ -387,7 +387,7 @@ public:
     See_Also: $(LINK http://www.sqlite.org/c3ref/column_blob.html) and
     $(LINK http://www.sqlite.org/c3ref/column_decltype.html).
     +/
-    SqliteType columnType(int index)
+    SqliteType columnType(size_t index)
     {
         assert(statement.handle, "operation on an empty statement");
         return cast(SqliteType) sqlite3_column_type(statement.handle, internalIndex(index));
@@ -398,7 +398,7 @@ public:
         return columnType(indexForName(columnName));
     }
     /// Ditto
-    string columnDeclaredTypeName(int index)
+    string columnDeclaredTypeName(size_t index)
     {
         assert(statement.handle, "operation on an empty statement");
         return sqlite3_column_decltype(statement.handle, internalIndex(index)).to!string;
@@ -437,7 +437,7 @@ public:
 
     See_Also: $(LINK http://www.sqlite.org/c3ref/column_name.html).
     +/
-    string columnName(int index)
+    string columnName(size_t index)
     {
         assert(statement.handle, "operation on an empty statement");
         return sqlite3_column_name(statement.handle, internalIndex(index)).to!string;
@@ -464,7 +464,7 @@ public:
 
         See_Also: $(LINK http://www.sqlite.org/c3ref/column_database_name.html).
         +/
-        string columnDatabaseName(int index)
+        string columnDatabaseName(size_t index)
         {
             assert(statement.handle, "operation on an empty statement");
             return sqlite3_column_database_name(statement.handle, internalIndex(index)).to!string;
@@ -475,7 +475,7 @@ public:
             return columnDatabaseName(indexForName(columnName));
         }
         /// Ditto
-        string columnTableName(int index)
+        string columnTableName(size_t index)
         {
             assert(statement.handle, "operation on an empty statement");
             return sqlite3_column_database_name(statement.handle, internalIndex(index)).to!string;
@@ -486,7 +486,7 @@ public:
             return columnTableName(indexForName(columnName));
         }
         /// Ditto
-        string columnOriginName(int index)
+        string columnOriginName(size_t index)
         {
             assert(statement.handle, "operation on an empty statement");
             return sqlite3_column_origin_name(statement.handle, internalIndex(index)).to!string;
@@ -541,14 +541,15 @@ public:
     }
 
 private:
-    int internalIndex(int index)
+    int internalIndex(size_t index)
     {
         auto i = index + frontIndex;
         assert(i >= 0 && i <= backIndex, "invalid column index: %d".format(i));
-        return i;
+        assert(i <= int.max, "invalid index value: %d".format(i));
+        return cast(int) i;
     }
 
-    int indexForName(string name)
+    size_t indexForName(string name)
     in
     {
         assert(name.length, "column with no name");
@@ -556,8 +557,11 @@ private:
     body
     {
         foreach (i; frontIndex .. backIndex + 1)
-            if (sqlite3_column_name(statement.handle, i).to!string == name)
+        {
+            assert(i <= int.max, "invalid index value: %d".format(i));
+            if (sqlite3_column_name(statement.handle, cast(int) i).to!string == name)
                 return i;
+        }
 
         assert(false, "invalid column name: '%s'".format(name));
     }
@@ -776,9 +780,9 @@ struct CachedResults
         ColumnData[] columns;
         alias columns this;
 
-        int[string] columnIndexes;
+        size_t[string] columnIndexes;
 
-        private this(Row row, int[string] columnIndexes)
+        private this(Row row, size_t[string] columnIndexes)
         {
             this.columnIndexes = columnIndexes;
 
@@ -789,7 +793,7 @@ struct CachedResults
         }
 
         // Returns the data at the given index in the row.
-        ColumnData opIndex(int index)
+        ColumnData opIndex(size_t index)
         {
             return columns[index];
         }
@@ -807,7 +811,7 @@ struct CachedResults
     CachedRow[] rows;
     alias rows this;
 
-    private int[string] columnIndexes;
+    private size_t[string] columnIndexes;
 
     this(ResultRange results)
     {
@@ -816,7 +820,8 @@ struct CachedResults
             auto first = results.front;
             foreach (i; 0 .. first.length)
             {
-                auto name = sqlite3_column_name(results.statement.handle, i).to!string;
+                assert(i <= int.max, "invalid column index value: %d".format(i));
+                auto name = sqlite3_column_name(results.statement.handle, cast(int) i).to!string;
                 columnIndexes[name] = i;
             }
         }
