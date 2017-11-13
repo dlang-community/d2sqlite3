@@ -139,7 +139,7 @@ public:
 
     /// ditto
     void bind(T)(int index, T value)
-        if (isIntegral!T || isSomeChar!T)
+        if (isIntegral!T || isSomeChar!T || isBoolean!T)
     in
     {
         assert(index > 0 && index <= p.paramCount, "parameter index out of range");
@@ -148,19 +148,6 @@ public:
     {
         assert(p.handle);
         checkResult(sqlite3_bind_int64(p.handle, index, value.to!long));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isBoolean!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        checkResult(sqlite3_bind_int(p.handle, index, value.to!T));
     }
 
     /// ditto

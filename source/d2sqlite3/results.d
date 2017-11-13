@@ -132,7 +132,7 @@ Warning:
 +/
 struct Row
 {
-    import std.traits : isBoolean, isIntegral, isFloatingPoint, isSomeString, isArray;
+    import std.traits : isBoolean, isIntegral, isSomeChar, isFloatingPoint, isSomeString, isArray;
     import std.traits : isInstanceOf, TemplateArgsOf;
 private:
     Statement statement;
@@ -285,7 +285,7 @@ public:
         numeric indexing for better performance.
     +/
     T peek(T)(int index)
-        if (isBoolean!T || isIntegral!T)
+        if (isBoolean!T || isIntegral!T || isSomeChar!T)
     {
         assert(statement.handle, "operation on an empty statement");
         return sqlite3_column_int64(statement.handle, internalIndex(index)).to!T;
