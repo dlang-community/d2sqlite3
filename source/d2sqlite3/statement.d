@@ -422,7 +422,7 @@ string literal(T)(T value)
     else static if (isSomeString!T)
         return format("'%s'", value.replace("'", "''"));
     else static if (isArray!T)
-        return "'X%(%X%)'".format(cast(ubyte[]) value);
+        return "'X%(%X%)'".format(cast(Blob) value);
     else
         static assert(false, "cannot make a literal of a value of type " ~ T.stringof);
 }
@@ -436,6 +436,6 @@ unittest
     assert(4.1.literal == "4.1");
     assert("foo".literal == "'foo'");
     assert("a'b'".literal == "'a''b'''");
-    auto a = cast(ubyte[]) x"DEADBEEF";
+    auto a = cast(Blob) x"DEADBEEF";
     assert(a.literal == "'XDEADBEEF'");
 }

@@ -207,17 +207,17 @@ unittest // Different arguments and result types with createFunction
     db.createFunction("display_integer", &display!int);
     db.createFunction("display_float", &display!double);
     db.createFunction("display_text", &display!string);
-    db.createFunction("display_blob", &display!(ubyte[]));
+    db.createFunction("display_blob", &display!Blob);
 
     assert(db.execute("SELECT display_integer(42)").oneValue!int == 42);
     assert(db.execute("SELECT display_float(3.14)").oneValue!double == 3.14);
     assert(db.execute("SELECT display_text('ABC')").oneValue!string == "ABC");
-    assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(ubyte[]) == cast(ubyte[]) x"ABCD");
+    assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!Blob == cast(Blob) x"ABCD");
 
     assert(db.execute("SELECT display_integer(NULL)").oneValue!int == 0);
     assert(db.execute("SELECT display_float(NULL)").oneValue!double == 0.0);
     assert(db.execute("SELECT display_text(NULL)").oneValue!string is null);
-    assert(db.execute("SELECT display_blob(NULL)").oneValue!(ubyte[]) is null);
+    assert(db.execute("SELECT display_blob(NULL)").oneValue!(Blob) is null);
 }
 
 unittest // Different Nullable argument types with createFunction
@@ -234,17 +234,17 @@ unittest // Different Nullable argument types with createFunction
     db.createFunction("display_integer", &display!(Nullable!int));
     db.createFunction("display_float", &display!(Nullable!double));
     db.createFunction("display_text", &display!(Nullable!string));
-    db.createFunction("display_blob", &display!(Nullable!(ubyte[])));
+    db.createFunction("display_blob", &display!(Nullable!Blob));
 
     assert(db.execute("SELECT display_integer(42)").oneValue!(Nullable!int) == 42);
     assert(db.execute("SELECT display_float(3.14)").oneValue!(Nullable!double) == 3.14);
     assert(db.execute("SELECT display_text('ABC')").oneValue!(Nullable!string) == "ABC");
-    assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(Nullable!(ubyte[])) == cast(ubyte[]) x"ABCD");
+    assert(db.execute("SELECT display_blob(x'ABCD')").oneValue!(Nullable!Blob) == cast(Blob) x"ABCD");
 
     assert(db.execute("SELECT display_integer(NULL)").oneValue!(Nullable!int).isNull);
     assert(db.execute("SELECT display_float(NULL)").oneValue!(Nullable!double).isNull);
     assert(db.execute("SELECT display_text(NULL)").oneValue!(Nullable!string).isNull);
-    assert(db.execute("SELECT display_blob(NULL)").oneValue!(Nullable!(ubyte[])).isNull);
+    assert(db.execute("SELECT display_blob(NULL)").oneValue!(Nullable!Blob).isNull);
 }
 
 unittest // Callable struct with createFunction
@@ -419,7 +419,7 @@ unittest // Binding/peeking text values
     assert(results.front.peek!string(0) == "I am a text.");
 
     import std.exception : assertThrown;
-    assertThrown!SqliteException(results.front[0].as!(ubyte[]));
+    assertThrown!SqliteException(results.front[0].as!Blob);
 }
 
 unittest // Binding/peeking blob values
@@ -428,7 +428,7 @@ unittest // Binding/peeking blob values
     db.execute("CREATE TABLE test (val BLOB)");
 
     auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
-    ubyte[] array = [1, 2, 3];
+    auto array = cast(Blob) [1, 2, 3];
     statement.inject(array);
     ubyte[3] sarray = [1, 2, 3];
     statement.inject(sarray);
@@ -436,8 +436,8 @@ unittest // Binding/peeking blob values
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
     {
-        assert(row.peek!(ubyte[])(0) ==  [1, 2, 3]);
-        assert(row[0].as!(ubyte[]) == [1, 2, 3]);
+        assert(row.peek!Blob(0) ==  [1, 2, 3]);
+        assert(row[0].as!Blob == [1, 2, 3]);
     }
 }
 
@@ -652,31 +652,31 @@ unittest // Peek
     assert(row.peek!long(0) == 0);
     assert(row.peek!double(0) == 0);
     assert(row.peek!string(0) is null);
-    assert(row.peek!(ubyte[])(0) is null);
+    assert(row.peek!Blob(0) is null);
     results.popFront();
     row = results.front;
     assert(row.peek!long(0) == 42);
     assert(row.peek!double(0) == 42);
     assert(row.peek!string(0) == "42");
-    assert(row.peek!(ubyte[])(0) == cast(ubyte[]) "42");
+    assert(row.peek!Blob(0) == cast(Blob) "42");
     results.popFront();
     row = results.front;
     assert(row.peek!long(0) == 3);
     assert(row.peek!double(0) == 3.14);
     assert(row.peek!string(0) == "3.14");
-    assert(row.peek!(ubyte[])(0) == cast(ubyte[]) "3.14");
+    assert(row.peek!Blob(0) == cast(Blob) "3.14");
     results.popFront();
     row = results.front;
     assert(row.peek!long(0) == 0);
     assert(row.peek!double(0) == 0.0);
     assert(row.peek!string(0) == "ABC");
-    assert(row.peek!(ubyte[])(0) == cast(ubyte[]) "ABC");
+    assert(row.peek!Blob(0) == cast(Blob) "ABC");
     results.popFront();
     row = results.front;
     assert(row.peek!long(0) == 0);
     assert(row.peek!double(0) == 0.0);
     assert(row.peek!string(0) == x"DEADBEEF");
-    assert(row.peek!(ubyte[])(0) == cast(ubyte[]) x"DEADBEEF");
+    assert(row.peek!Blob(0) == cast(Blob) x"DEADBEEF");
 }
 
 unittest // Peeking NULL values
@@ -690,7 +690,7 @@ unittest // Peeking NULL values
     assert(results.front.peek!long(0) == 0);
     assert(results.front.peek!double(0) == 0);
     assert(results.front.peek!string(0) is null);
-    assert(results.front.peek!(ubyte[])(0) is null);
+    assert(results.front.peek!Blob(0) is null);
 }
 
 unittest // Row life-time
@@ -703,8 +703,6 @@ unittest // Row life-time
 
 unittest // PeekMode
 {
-    alias Blob = ubyte[];
-
     auto db = Database(":memory:");
     db.run("CREATE TABLE test (value);
             INSERT INTO test VALUES (x'01020304');

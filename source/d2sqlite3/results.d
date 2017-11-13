@@ -206,7 +206,7 @@ public:
                 return ColumnData(peek!string(index));
 
             case SqliteType.BLOB:
-                return ColumnData(peek!(ubyte[], PeekMode.copy)(index));
+                return ColumnData(peek!(Blob, PeekMode.copy)(index));
 
             case SqliteType.NULL:
                 return ColumnData(null);
@@ -562,7 +562,7 @@ struct ColumnData
         isSomeString, isArray;
     import std.variant : Algebraic, VariantException;
 
-    alias SqliteVariant = Algebraic!(long, double, string, ubyte[], typeof(null));
+    alias SqliteVariant = Algebraic!(long, double, string, Blob, typeof(null));
 
     private
     {
@@ -615,7 +615,7 @@ struct ColumnData
         }
         else
         {
-            _value = SqliteVariant(value.to!(ubyte[]));
+            _value = SqliteVariant(value.to!Blob);
             _type = SqliteType.BLOB;
         }
     }
@@ -656,9 +656,9 @@ struct ColumnData
         if (_type == SqliteType.NULL)
             return defaultValue;
 
-        ubyte[] data;
+        Blob data;
         try
-            data = _value.get!(ubyte[]);
+            data = _value.get!Blob;
         catch (VariantException e)
             throw new SqliteException("impossible to convert this column to a " ~ T.stringof);
 

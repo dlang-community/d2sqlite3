@@ -145,7 +145,7 @@ auto getValue(T)(sqlite3_value* argv)
     ubyte[] blob;
     blob.length = n;
     memcpy(blob.ptr, sqlite3_value_blob(argv), n);
-    return blob.to!T;
+    return cast(T) blob;
 }
 
 auto getValue(T : Nullable!U, U...)(sqlite3_value* argv)

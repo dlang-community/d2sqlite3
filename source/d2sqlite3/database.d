@@ -23,6 +23,9 @@ import std.exception : enforce;
 import std.string : format, toStringz;
 import std.typecons : Nullable;
 
+/// Type for the internal representation of blobs
+alias Blob = immutable(ubyte)[];
+
 /// SQLite type codes
 enum SqliteType
 {
@@ -464,7 +467,7 @@ public:
                                 break;
 
                             case SqliteType.BLOB:
-                                args.put(ColumnData(getValue!(ubyte[])(value)));
+                                args.put(ColumnData(getValue!Blob(value)));
                                 break;
 
                             case SqliteType.NULL:

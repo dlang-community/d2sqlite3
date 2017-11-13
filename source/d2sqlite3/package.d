@@ -6,7 +6,7 @@ $(UL
     $(LI Use reference-counted structs (`Database`, `Statement`) instead of SQLite objects
     pointers.)
     $(LI Run multistatement SQL code with `Database.run()`.)
-    $(LI Use built-in integral types, floating point types, `string`, `ubyte[]` and
+    $(LI Use built-in integral types, floating point types, `string`, `immutable(ubyte)[]` and
     `Nullable` types directly: conversions to and from SQLite types is automatic and GC-safe.)
     $(LI Bind multiple values to a prepare statement with `Statement.bindAll()` or
     `Statement.inject()`. It's also possible to bind the fields of a struct automatically with
