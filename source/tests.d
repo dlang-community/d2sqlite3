@@ -416,7 +416,8 @@ unittest // Binding/peeking text values
             INSERT INTO test (val) VALUES ('I am a text.')");
 
     auto results = db.execute("SELECT * FROM test");
-    assert(results.front.peek!string(0) == "I am a text.");
+    assert(results.front.peek!(string, PeekMode.slice)(0) == "I am a text.");
+    assert(results.front.peek!(string, PeekMode.copy)(0) == "I am a text.");
 
     import std.exception : assertThrown;
     assertThrown!SqliteException(results.front[0].as!Blob);
@@ -436,7 +437,7 @@ unittest // Binding/peeking blob values
     auto results = db.execute("SELECT * FROM test");
     foreach (row; results)
     {
-        assert(row.peek!Blob(0) ==  [1, 2, 3]);
+        assert(row.peek!(Blob, PeekMode.slice)(0) ==  [1, 2, 3]);
         assert(row[0].as!Blob == [1, 2, 3]);
     }
 }

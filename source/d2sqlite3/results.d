@@ -300,26 +300,43 @@ public:
     }
 
     /// ditto
-    T peek(T)(int index)
+    T peek(T, PeekMode mode = PeekMode.copy)(int index)
         if (isSomeString!T)
     {
+        import core.stdc.string : strlen, memcpy;
+
         assert(statement.handle, "operation on an empty statement");
-        return (cast(const(char)*) sqlite3_column_text(statement.handle, internalIndex(index))).to!T;
+        auto i = internalIndex(index);
+        auto str = cast(const(char)*) sqlite3_column_text(statement.handle, i);
+        
+        if (str is null)
+            return null;
+        
+        auto length = strlen(str);
+        static if (mode == PeekMode.copy)
+        {
+            char[] text;
+            text.length = length;
+            memcpy(text.ptr, str, length);
+            return text.to!T;
+        }
+        else static if (mode == PeekMode.slice)
+            return cast(T) str[0..length];
+        else
+            static assert(false);
     }
 
     /// ditto
     T peek(T, PeekMode mode = PeekMode.copy)(int index)
         if (isArray!T && !isSomeString!T)
     {
-        auto i = internalIndex(index);
         assert(statement.handle, "operation on an empty statement");
+        auto i = internalIndex(index);
         auto ptr = sqlite3_column_blob(statement.handle, i);
         auto length = sqlite3_column_bytes(statement.handle, i);
-
         static if (mode == PeekMode.copy)
         {
             import core.stdc.string : memcpy;
-
             ubyte[] blob;
             blob.length = length;
             memcpy(blob.ptr, ptr, length);
@@ -334,7 +351,7 @@ public:
     /// ditto
     T peek(T)(int index)
         if (isInstanceOf!(Nullable, T)
-            && (!isArray!(TemplateArgsOf!T[0]) || isSomeString!(TemplateArgsOf!T[0])))
+            && !isArray!(TemplateArgsOf!T[0]) && !isSomeString!(TemplateArgsOf!T[0]))
     {
         alias U = TemplateArgsOf!T[0];
         assert(statement.handle, "operation on an empty statement");
@@ -346,7 +363,7 @@ public:
     /// ditto
     T peek(T, PeekMode mode = PeekMode.copy)(int index)
         if (isInstanceOf!(Nullable, T)
-            && isArray!(TemplateArgsOf!T[0]) && !isSomeString!(TemplateArgsOf!T[0]))
+            && (isArray!(TemplateArgsOf!T[0]) || isSomeString!(TemplateArgsOf!T[0])))
     {
         alias U = TemplateArgsOf!T[0];
         assert(statement.handle, "operation on an empty statement");
@@ -546,11 +563,20 @@ private:
     }
 }
 
-/// Behavior of the `Row.peek()` method for arrays
+/// Behavior of the `Row.peek()` method for arrays/strings
 enum PeekMode
 {
-    copy, /// Return a copy of the data into a new array
-    slice /// Return a slice of the data
+    /++
+    Return a copy of the data into a new array/string.
+    The copy is safe to use after stepping to the next row.
+    +/
+    copy,
+
+    /++
+    Return a slice of the data.
+    The slice can point to invalid data after stepping to the next row.
+    +/
+    slice
 }
 
 /++
