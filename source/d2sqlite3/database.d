@@ -444,7 +444,7 @@ public:
                     import std.array : appender;
                     auto args = appender!(ColumnData[]);
 
-                    for (int i = 0; i < argc; ++i)
+                    foreach (i; 0 .. argc)
                     {
                         auto value = argv[i];
                         immutable type = sqlite3_value_type(value);
