@@ -69,15 +69,32 @@ private:
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
 
+    auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
+    {
+        int rc;
+        while(SQLITE_LOCKED == (rc = sqlite3_prepare_v2(db.handle(), zSql, nByte, ppStmt, pzTail)))
+        {
+            rc = db.waitForUnlockNotify();
+            if(rc != SQLITE_OK) break;
+        }
+        return rc;
+    }
+
 package(d2sqlite3):
     this(Database db, string sql)
     {
         sqlite3_stmt* handle;
-        auto result = sqlite3_prepare_v2(db.handle(), sql.toStringz, sql.length.to!int,
+        auto result = sqlite3_blocking_prepare_v2(db, sql.toStringz, sql.length.to!int,
             &handle, null);
         enforce(result == SQLITE_OK, new SqliteException(errmsg(db.handle()), result, sql));
         p = Payload(db, handle);
         p.paramCount = sqlite3_bind_parameter_count(p.handle);
+    }
+
+    /// Setup and waits for unlock notify using the provided `IUnlockNotifyHandler`
+    auto waitForUnlockNotify()
+    {
+        return p.db.waitForUnlockNotify();
     }
 
 public:

@@ -45,7 +45,7 @@ package(d2sqlite3):
     this(Statement statement)
     {
         if (!statement.empty)
-            state = sqlite3_step(statement.handle);
+            state = sqlite3_blocking_step(statement);
         else
             state = SQLITE_DONE;
 
@@ -55,6 +55,18 @@ package(d2sqlite3):
         this.statement = statement;
         colCount = sqlite3_column_count(statement.handle);
         current = Row(statement, colCount);
+    }
+
+    auto sqlite3_blocking_step(Statement statement)
+    {
+        int rc;
+        while(SQLITE_LOCKED == (rc = sqlite3_step(statement.handle)))
+        {
+            rc = statement.waitForUnlockNotify();
+            if(rc != SQLITE_OK) break;
+            sqlite3_reset(statement.handle);
+        }
+        return rc;
     }
 
 public:
@@ -77,7 +89,7 @@ public:
     void popFront()
     {
         assert(!empty, "no rows available");
-        state = sqlite3_step(statement.handle);
+        state = sqlite3_blocking_step(statement);
         current = Row(statement, colCount);
         enforce(state == SQLITE_DONE || state == SQLITE_ROW,
             new SqliteException(errmsg(statement.handle), state));
