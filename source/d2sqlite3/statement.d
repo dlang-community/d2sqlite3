@@ -23,6 +23,10 @@ import std.exception : enforce;
 import std.string : format, toStringz;
 import std.typecons : Nullable;
 
+/// Set UNLOCK_NOTIFY version if compiled with SQLITE_ENABLE_UNLOCK_NOTIFY or SQLITE_FAKE_UNLOCK_NOTIFY
+version (SQLITE_ENABLE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
+else version (SQLITE_FAKE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
+
 /++
 A prepared statement.
 
@@ -69,32 +73,46 @@ private:
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
 
-    auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
+    version (UNLOCK_NOTIFY)
     {
-        int rc;
-        while(SQLITE_LOCKED == (rc = sqlite3_prepare_v2(db.handle(), zSql, nByte, ppStmt, pzTail)))
+        auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
         {
-            rc = db.waitForUnlockNotify();
-            if(rc != SQLITE_OK) break;
+            int rc;
+            while(SQLITE_LOCKED == (rc = sqlite3_prepare_v2(db.handle(), zSql, nByte, ppStmt, pzTail)))
+            {
+                rc = db.waitForUnlockNotify();
+                if(rc != SQLITE_OK) break;
+            }
+            return rc;
         }
-        return rc;
     }
 
 package(d2sqlite3):
     this(Database db, string sql)
     {
         sqlite3_stmt* handle;
-        auto result = sqlite3_blocking_prepare_v2(db, sql.toStringz, sql.length.to!int,
-            &handle, null);
+        version (UNLOCK_NOTIFY)
+        {
+            auto result = sqlite3_blocking_prepare_v2(db, sql.toStringz, sql.length.to!int,
+                &handle, null);
+        }
+        else
+        {
+            auto result = sqlite3_prepare_v2(db.handle(), sql.toStringz, sql.length.to!int,
+                &handle, null);
+        }
         enforce(result == SQLITE_OK, new SqliteException(errmsg(db.handle()), result, sql));
         p = Payload(db, handle);
         p.paramCount = sqlite3_bind_parameter_count(p.handle);
     }
 
-    /// Setup and waits for unlock notify using the provided `IUnlockNotifyHandler`
-    auto waitForUnlockNotify()
+    version (UNLOCK_NOTIFY)
     {
-        return p.db.waitForUnlockNotify();
+        /// Setup and waits for unlock notify using the provided `IUnlockNotifyHandler`
+        auto waitForUnlockNotify()
+        {
+            return p.db.waitForUnlockNotify();
+        }
     }
 
 public:

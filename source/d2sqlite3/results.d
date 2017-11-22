@@ -22,6 +22,10 @@ import std.exception : enforce;
 import std.string : format;
 import std.typecons : Nullable;
 
+/// Set UNLOCK_NOTIFY version if compiled with SQLITE_ENABLE_UNLOCK_NOTIFY or SQLITE_FAKE_UNLOCK_NOTIFY
+version (SQLITE_ENABLE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
+else version (SQLITE_FAKE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
+
 /++
 An input range interface to access the rows resulting from an SQL query.
 
@@ -45,7 +49,10 @@ package(d2sqlite3):
     this(Statement statement)
     {
         if (!statement.empty)
-            state = sqlite3_blocking_step(statement);
+        {
+            version (UNLOCK_NOTIFY) state = sqlite3_blocking_step(statement);
+            else state = sqlite3_step(statement.handle);
+        }
         else
             state = SQLITE_DONE;
 
@@ -57,16 +64,19 @@ package(d2sqlite3):
         current = Row(statement, colCount);
     }
 
-    auto sqlite3_blocking_step(Statement statement)
+    version (UNLOCK_NOTIFY)
     {
-        int rc;
-        while(SQLITE_LOCKED == (rc = sqlite3_step(statement.handle)))
+        auto sqlite3_blocking_step(Statement statement)
         {
-            rc = statement.waitForUnlockNotify();
-            if(rc != SQLITE_OK) break;
-            sqlite3_reset(statement.handle);
+            int rc;
+            while(SQLITE_LOCKED == (rc = sqlite3_step(statement.handle)))
+            {
+                rc = statement.waitForUnlockNotify();
+                if(rc != SQLITE_OK) break;
+                sqlite3_reset(statement.handle);
+            }
+            return rc;
         }
-        return rc;
     }
 
 public:
@@ -89,7 +99,8 @@ public:
     void popFront()
     {
         assert(!empty, "no rows available");
-        state = sqlite3_blocking_step(statement);
+        version (UNLOCK_NOTIFY) state = sqlite3_blocking_step(statement);
+        else state = sqlite3_step(statement.handle);
         current = Row(statement, colCount);
         enforce(state == SQLITE_DONE || state == SQLITE_ROW,
             new SqliteException(errmsg(statement.handle), state));
@@ -320,10 +331,10 @@ public:
         assert(statement.handle, "operation on an empty statement");
         auto i = internalIndex(index);
         auto str = cast(const(char)*) sqlite3_column_text(statement.handle, i);
-        
+
         if (str is null)
             return null;
-        
+
         auto length = strlen(str);
         static if (mode == PeekMode.copy)
         {

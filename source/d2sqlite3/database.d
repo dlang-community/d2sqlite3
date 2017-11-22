@@ -72,7 +72,7 @@ private:
         void* progressHandler;
         void* traceCallback;
         void* profileCallback;
-        IUnlockNotifyHandler unlockNotifyHandler;
+        version (UNLOCK_NOTIFY) IUnlockNotifyHandler unlockNotifyHandler;
 
         this(sqlite3* handle) nothrow
         {
@@ -995,92 +995,70 @@ public:
         sqlite3_profile(p.handle, &callback, p.profileCallback);
     }
 
-    /++
-    Registers a `IUnlockNotifyHandler` used to handle database locks.
-
-    When running in shared-cache mode, a database operation may fail with an SQLITE_LOCKED error if
-    the required locks on the shared-cache or individual tables within the shared-cache cannot be obtained.
-    See SQLite Shared-Cache Mode for a description of shared-cache locking.
-    This API may be used to register a callback that SQLite will invoke when the connection currently
-    holding the required lock relinquishes it.
-    This API can be used only if the SQLite library was compiled with the SQLITE_ENABLE_UNLOCK_NOTIFY C-preprocessor symbol defined.
-
-    See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
-
-    Parameters:
-        unlockNotifyHandler - custom handler used to control the unlocking mechanism
-    +/
-    void setUnlockNotifyHandler(IUnlockNotifyHandler unlockNotifyHandler)
+    version (UNLOCK_NOTIFY)
     {
-        p.unlockNotifyHandler = unlockNotifyHandler;
-    }
+        /++
+        Registers a `IUnlockNotifyHandler` used to handle database locks.
 
-    /// Setup and waits for unlock notify using the provided `IUnlockNotifyHandler`
-    package (d2sqlite3) auto waitForUnlockNotify()
-    {
-        if (p.unlockNotifyHandler is null) return SQLITE_LOCKED;
+        When running in shared-cache mode, a database operation may fail with an SQLITE_LOCKED error if
+        the required locks on the shared-cache or individual tables within the shared-cache cannot be obtained.
+        See SQLite Shared-Cache Mode for a description of shared-cache locking.
+        This API may be used to register a callback that SQLite will invoke when the connection currently
+        holding the required lock relinquishes it.
+        This API can be used only if the SQLite library was compiled with the SQLITE_ENABLE_UNLOCK_NOTIFY C-preprocessor symbol defined.
 
-        scope (exit) p.unlockNotifyHandler.reset();
+        See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
 
-        version (SQLITE_ENABLE_UNLOCK_NOTIFY)
+        Parameters:
+            unlockNotifyHandler - custom handler used to control the unlocking mechanism
+        +/
+        void setUnlockNotifyHandler(IUnlockNotifyHandler unlockNotifyHandler)
         {
-            extern(C) static nothrow
-            void callback(void** ntfPtr, int nPtr)
+            p.unlockNotifyHandler = unlockNotifyHandler;
+        }
+
+        /// Setup and waits for unlock notify using the provided `IUnlockNotifyHandler`
+        package (d2sqlite3) auto waitForUnlockNotify()
+        {
+            if (p.unlockNotifyHandler is null) return SQLITE_LOCKED;
+
+            version (SQLITE_ENABLE_UNLOCK_NOTIFY)
             {
-                for (int i=0; i<nPtr; i++)
+                extern(C) static nothrow
+                void callback(void** ntfPtr, int nPtr)
                 {
-                    auto handler = cast(IUnlockNotifyHandler*)ntfPtr[i];
-                    handler.emit(SQLITE_OK);
+                    for (int i=0; i<nPtr; i++)
+                    {
+                        auto handler = cast(IUnlockNotifyHandler*)ntfPtr[i];
+                        handler.emit(SQLITE_OK);
+                    }
                 }
+
+                int rc = sqlite3_unlock_notify(p.handle, &callback, &p.unlockNotifyHandler);
+                assert(rc==SQLITE_LOCKED || rc==SQLITE_OK);
+
+                /+ The call to sqlite3_unlock_notify() always returns either SQLITE_LOCKED or SQLITE_OK.
+
+                If SQLITE_LOCKED was returned, then the system is deadlocked. In this case this function
+                needs to return SQLITE_LOCKED to the caller so that the current transaction can be rolled
+                back. Otherwise, block until the unlock-notify callback is invoked, then return SQLITE_OK.
+                +/
+                if(rc == SQLITE_OK)
+                {
+                    p.unlockNotifyHandler.wait();
+                    scope (exit) p.unlockNotifyHandler.reset();
+                    return p.unlockNotifyHandler.result;
+                }
+                return rc;
             }
-
-            int rc = sqlite3_unlock_notify(p.handle, &callback, &p.unlockNotifyHandler);
-            assert(rc==SQLITE_LOCKED || rc==SQLITE_OK);
-
-            /+ The call to sqlite3_unlock_notify() always returns either SQLITE_LOCKED or SQLITE_OK.
-
-            If SQLITE_LOCKED was returned, then the system is deadlocked. In this case this function
-            needs to return SQLITE_LOCKED to the caller so that the current transaction can be rolled
-            back. Otherwise, block until the unlock-notify callback is invoked, then return SQLITE_OK.
-            +/
-            if(rc==SQLITE_OK)
+            else
             {
-                p.unlockNotifyHandler.wait();
-                return p.unlockNotifyHandler.result;
+                p.unlockNotifyHandler.waitOne();
+                auto res = p.unlockNotifyHandler.result;
+                if (res != SQLITE_OK) p.unlockNotifyHandler.reset();
+                return res;
             }
-            return rc;
         }
-        else
-        {
-            p.unlockNotifyHandler.waitOne();
-            return p.unlockNotifyHandler.result;
-        }
-    }
-
-    unittest
-    {
-        import core.thread : Thread;
-        import core.time : msecs, seconds;
-        import std.concurrency : spawn;
-
-        static void test(int n)
-        {
-            auto db = Database("file::memory:?cache=shared", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI | SQLITE_OPEN_MEMORY);
-            db.setUnlockNotifyHandler = new UnlockNotifyHandler();
-            db.execute("BEGIN IMMEDIATE");
-            Thread.sleep(1.seconds);
-            db.execute("INSERT INTO foo (bar) VALUES (?)", n);
-            db.commit();
-        }
-
-        auto db = Database("file::memory:?cache=shared", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI | SQLITE_OPEN_MEMORY);
-        db.execute(`CREATE TABLE foo (bar INTEGER);`);
-
-        spawn(&test, 1);
-        Thread.sleep(500.msecs);
-        spawn(&test, 2);
-        Thread.sleep(1600.msecs);
-        assert(db.execute("SELECT sum(bar) FROM foo").oneValue!int == 3);
     }
 }
 
@@ -1097,194 +1075,231 @@ alias TraceCallbackDelegate = void delegate(string sql) nothrow;
 /// ditto
 alias ProfileCallbackDelegate = void delegate(string sql, ulong time) nothrow;
 
-/++
-UnlockNotifyHandler interface to be used for custom implementations of UnlockNotify pattern with SQLite.
+/// Set UNLOCK_NOTIFY version if compiled with SQLITE_ENABLE_UNLOCK_NOTIFY or SQLITE_FAKE_UNLOCK_NOTIFY
+version (SQLITE_ENABLE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
+else version (SQLITE_FAKE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
 
-Note:
-For sqlite3_unlock_notify to be used the library is need to be compiled with
-    `-version=SQLITE_ENABLE_COLUMN_METADATA`.
-Otherwise only emulated solution is provided, that is based on retries for the defined amount of time.
-
-Note:
-Implementation must be able to handle situation when emit is called sooner than the wait itself.
-
-See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
-See_Also: $(LINK http://www.sqlite.org/unlock_notify.html).
-+/
-interface IUnlockNotifyHandler
+version (UNLOCK_NOTIFY)
 {
+    /++
+    UnlockNotifyHandler interface to be used for custom implementations of UnlockNotify pattern with SQLite.
+
+    Note:
+    For sqlite3_unlock_notify to be used the library is need to be compiled with
+        `-version=SQLITE_ENABLE_COLUMN_METADATA`.
+    Otherwise only emulated solution is provided, that is based on retries for the defined amount of time.
+
+    Note:
+    Implementation must be able to handle situation when emit is called sooner than the wait itself.
+
+    See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
+    See_Also: $(LINK http://www.sqlite.org/unlock_notify.html).
+    +/
+    interface IUnlockNotifyHandler
+    {
+        version (SQLITE_ENABLE_UNLOCK_NOTIFY)
+        {
+            /// Blocks until emit is called
+            void wait();
+
+            /++
+            Unlocks the handler.
+            This is called from registered callback from SQLite.
+
+            Params:
+                state - Value to set as a handler result. It can be SQLITE_LOCKED or SQLITE_OK.
+            +/
+            void emit(int state) nothrow;
+        }
+        else
+        {
+            /++
+            This is used as an alternative to sqlite3_unlock_notify when SQLite is not compiled with ENABLE_UNLOCK_NOTIFY.
+            Using this, handler tries to wait out the SQLITE_LOCKED state for some time.
+            Implementation has to block for some amount of time and check if total amount is not greater than some constant afterwards.
+            If there is still some time to try again, handler must set the result to SQLITE_OK. SQLITE_LOCKED otherwise.
+            +/
+            void waitOne();
+        }
+
+        /// Resets the handler for the next use
+        void reset();
+
+        /// Result after wait is finished
+        @property int result() const;
+    }
+
     version (SQLITE_ENABLE_UNLOCK_NOTIFY)
     {
-        /// Blocks until emit is called
-        void wait();
-
         /++
-        Unlocks the handler.
-        This is called from registered callback from SQLite.
+        UnlockNotifyHandler implemented using Phobos core.sync package
+        Use setUnlockNotifyHandler method to handle the database lock.
 
-        Params:
-            state - Value to set as a handler result. It can be SQLITE_LOCKED or SQLITE_OK.
+        See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
+        See_Also: $(LINK http://www.sqlite.org/unlock_notify.html).
         +/
-        void emit(int state) nothrow;
+        final class UnlockNotifyHandler : IUnlockNotifyHandler
+        {
+            import core.sync.condition : Condition;
+            import core.sync.mutex : Mutex;
+
+            private
+            {
+                __gshared Mutex mtx;
+                __gshared Condition cond;
+                __gshared int res;
+                __gshared bool fired;
+            }
+
+            /// Constructor
+            this()
+            {
+                mtx = new Mutex();
+                cond = new Condition(mtx);
+            }
+
+            /// Blocks until emit is called
+            void wait()
+            {
+                synchronized (mtx)
+                {
+                    if (!fired) cond.wait();
+                }
+            }
+
+            /// Unlocks the handler, state is one of SQLITE_LOCKED or SQLITE_OK
+            void emit(int res) nothrow
+            in { assert(res == SQLITE_LOCKED || res == SQLITE_OK); }
+            body
+            {
+                try
+                {
+                    synchronized (mtx)
+                    {
+                        this.res = res;
+                        fired = true;
+                        cond.notify();
+                    }
+                }
+                catch (Exception) {}
+            }
+
+            /// Resets the handler for the next use
+            void reset()
+            {
+                res = SQLITE_LOCKED;
+                fired = false;
+            }
+
+            /// Result after wait is finished
+            @property int result() const
+            out (result) { assert(result == SQLITE_OK || result == SQLITE_LOCKED); }
+            body { return res; }
+        }
     }
     else
     {
         /++
-        This is used as an alternative to sqlite3_unlock_notify when SQLite is not compiled with ENABLE_UNLOCK_NOTIFY.
-        Using this, handler tries to wait out the SQLITE_LOCKED state for some time.
-        Implementation has to block for some amount of time and check if total amount is not greater than some constant afterwards.
-        If there is still some time to try again, handler must set the result to SQLITE_OK. SQLITE_LOCKED otherwise.
+        UnlockNotifyHandler that can be used when SQLite is not compiled with SQLITE_ENABLE_UNLOCK_NOTIFY.
+        It retries the statement execution for the provided amount of time before the SQLITE_LOCKED is returned.
+        Use setUnlockNotifyHandler method to handle the database lock.
+
+        See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
+        See_Also: $(LINK http://www.sqlite.org/unlock_notify.html).
         +/
-        void waitOne();
-    }
-
-    /// Resets the handler for the next use
-    void reset();
-
-    /// Result after wait is finished
-    @property int result() const;
-}
-
-version (SQLITE_ENABLE_UNLOCK_NOTIFY)
-{
-    /++
-    UnlockNotifyHandler implemented using Phobos core.sync package
-    Use setUnlockNotifyHandler method to handle the database lock.
-
-    See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
-    See_Also: $(LINK http://www.sqlite.org/unlock_notify.html).
-    +/
-    final class UnlockNotifyHandler : IUnlockNotifyHandler
-    {
-        import core.sync.condition : Condition;
-        import core.sync.mutex : Mutex;
-        import std.concurrency : thisTid, Tid;
-
-        private
+        final class UnlockNotifyHandler : IUnlockNotifyHandler
         {
-            __gshared Mutex mtx;
-            __gshared Condition cond;
-            __gshared int res;
-            __gshared bool fired;
-            __gshared Tid creator;
-        }
+            import core.time : Duration, msecs;
+            import std.datetime.stopwatch : StopWatch;
 
-        /// Constructor
-        this()
-        {
-            creator = thisTid();
-            mtx = new Mutex();
-            cond = new Condition(mtx);
-        }
-
-        /// Blocks until emit is called
-        void wait()
-        in { assert(creator == thisTid); }
-        body
-        {
-            synchronized (mtx)
+            private
             {
-                if (!fired) cond.wait();
+                int res;
+                Duration maxDuration;
+                StopWatch sw;
             }
-        }
 
-        /// Unlocks the handler, state is one of SQLITE_LOCKED or SQLITE_OK
-        void emit(int res) nothrow
-        in { assert(res == SQLITE_LOCKED || res == SQLITE_OK); }
-        body
-        {
-            try
+            /// Constructor
+            this(Duration max = 1000.msecs)
+            in { assert(max > Duration.zero); }
+            body
             {
-                synchronized (mtx)
+                maxDuration = max;
+            }
+
+            /// Blocks for some time to retry the statement
+            void waitOne()
+            {
+                import core.thread : Thread;
+                import std.random : uniform;
+
+                if (!sw.running) sw.start;
+
+                Thread.sleep(uniform(50, 100).msecs);
+
+                if (sw.peek > maxDuration)
                 {
-                    this.res = res;
-                    fired = true;
-                    cond.notify();
+                    sw.stop;
+                    res = SQLITE_LOCKED;
                 }
+                else res = SQLITE_OK;
             }
-            catch (Exception) {}
-        }
 
-        /// Resets the handler for the next use
-        void reset()
-        {
-            assert(creator == thisTid);
-            res = SQLITE_LOCKED;
-            fired = false;
-        }
+            /// Resets the handler for the next use
+            void reset()
+            {
+                res = SQLITE_LOCKED;
+                sw.reset();
+            }
 
-        /// Result after wait is finished
-        @property int result() const
-        out (result) { assert(result == SQLITE_OK || result == SQLITE_LOCKED); }
-        body
-        {
-            assert(creator == thisTid);
-            return res;
+            /// Result after wait is finished
+            @property int result() const
+            out (result) { assert(result == SQLITE_OK || result == SQLITE_LOCKED); }
+            body
+            {
+                return res;
+            }
         }
     }
-}
-else
-{
-    /++
-    UnlockNotifyHandler that can be used when SQLite is not compiled with SQLITE_ENABLE_UNLOCK_NOTIFY.
-    It retries the statement execution for the provided amount of time before the SQLITE_LOCKED is returned.
-    Use setUnlockNotifyHandler method to handle the database lock.
 
-    See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
-    See_Also: $(LINK http://www.sqlite.org/unlock_notify.html).
-    +/
-    final class UnlockNotifyHandler : IUnlockNotifyHandler
+    unittest
     {
         import core.time : Duration, msecs;
-        import std.datetime.stopwatch : StopWatch;
 
-        private
-        {
-            int res;
-            Duration maxDuration;
-            StopWatch sw;
-        }
-
-        /// Constructor
-        this(Duration max = 1000.msecs)
-        in { assert(max > Duration.zero); }
-        body
-        {
-            maxDuration = max;
-        }
-
-        /// Blocks for some time to retry the statement
-        void waitOne()
+        /++
+        Tests the unlock notify facility.
+        Params:
+            delay - time to wait in the transaction to block the other one
+            expected - expected result (can be used to test timeout when fake unlock notify is used)
+        +/
+        void testUnlockNotify(Duration delay = 500.msecs, int expected = 3)
         {
             import core.thread : Thread;
-            import std.random : uniform;
+            import core.time : msecs, seconds;
+            import std.concurrency : spawn;
 
-            if (!sw.running) sw.start;
-
-            Thread.sleep(uniform(50,100).msecs);
-
-            if (sw.peek > maxDuration)
+            static void test(int n, Duration delay)
             {
-                sw.stop;
-                res = SQLITE_LOCKED;
+                auto db = Database("file::memory:?cache=shared", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI | SQLITE_OPEN_MEMORY);
+                db.setUnlockNotifyHandler = new UnlockNotifyHandler();
+                db.execute("BEGIN IMMEDIATE");
+                Thread.sleep(delay);
+                db.execute("INSERT INTO foo (bar) VALUES (?)", n);
+                db.commit();
             }
-            else res = SQLITE_OK;
+
+            auto db = Database("file::memory:?cache=shared", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI | SQLITE_OPEN_MEMORY);
+            db.execute(`CREATE TABLE foo (bar INTEGER);`);
+
+            spawn(&test, 1, delay);
+            Thread.sleep(100.msecs);
+            spawn(&test, 2, delay);
+            Thread.sleep(2*delay + 100.msecs);
+            assert(db.execute("SELECT sum(bar) FROM foo").oneValue!int == expected, format!"%s != %s"(db.execute("SELECT sum(bar) FROM foo").oneValue!int, expected));
         }
 
-        /// Resets the handler for the next use
-        void reset()
-        {
-            res = SQLITE_LOCKED;
-            sw.reset();
-        }
-
-        /// Result after wait is finished
-        @property int result() const
-        out (result) { assert(result == SQLITE_OK || result == SQLITE_LOCKED); }
-        body
-        {
-            return res;
-        }
+        testUnlockNotify();
+        version (SQLITE_FAKE_UNLOCK_NOTIFY) testUnlockNotify(1500.msecs, 1); //timeout test
     }
 }
 
