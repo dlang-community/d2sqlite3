@@ -22,7 +22,9 @@ It wraps the C API in an idiomatic manner and handles built-in D types and
 
 - **`without-lib`**: you manage linking SQLite yourself.
 
-- **`all-included`**: on Windows, use a prebuilt SQLite DLL (bundled with this library); on Posix systems, builds SQLite from the source amalgamation (bundled with this library), using a minimal building configuration.
+- **`all-included`**: on Windows, use a prebuilt SQLite DLL (bundled with this library); on Posix systems, builds SQLite from the source amalgamation (bundled with this library), using the default building configuration with these options defined:
+  - SQLITE_ENABLE_COLUMN_METADATA
+  - SQLITE_ENABLE_UNLOCK_NOTIFY
 
 Set the right configuration for you project in its `dub.json` file using the `subConfigurations` setting, e.g.:
 
@@ -31,6 +33,14 @@ Set the right configuration for you project in its `dub.json` file using the `su
         "d2sqlite3": "all-included"
     }
 ```
+
+## Library versions
+
+These versions can be used to build the library:
+
+- `SqliteEnableColumnMetadata`: to enable corresponding special methods of `Row`.
+- `SqliteEnableUnlockNotify`: to enable SQLite's builtin unlock notification mechanism.
+- `SqliteFakeUnlockNotify`: to emulate an unlock notification mechanism.
 
 ## C binding generation
 
