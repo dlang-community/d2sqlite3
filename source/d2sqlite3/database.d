@@ -208,9 +208,9 @@ public:
         are searched for the table using the same algorithm used by the database engine
         to resolve unqualified table references.
     +/
-    ColumnMetadata tableColumnMetadata(string table, string column, string database = "main")
+    TableColumnMetadata tableColumnMetadata(string table, string column, string database = "main")
     {
-        ColumnMetadata data;
+        TableColumnMetadata data;
         char* pzDataType, pzCollSeq;
         int notNull, primaryKey, autoIncrement;
         check(sqlite3_table_column_metadata(p.handle, database.toStringz, table.toStringz,
@@ -1080,6 +1080,15 @@ alias TraceCallbackDelegate = void delegate(string sql) nothrow;
 /// ditto
 alias ProfileCallbackDelegate = void delegate(string sql, ulong time) nothrow;
 
+/// Information about a table column.
+struct TableColumnMetadata
+{
+    string declaredTypeName; ///
+    string collationSequenceName; ///
+    bool isNotNull; ///
+    bool isPrimaryKey; ///
+    bool isAutoIncrement; ///
+}
 
 version (_UnlockNotify)
 {

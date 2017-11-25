@@ -738,16 +738,6 @@ struct ColumnData
     }
 }
 
-/// Information about a column.
-struct ColumnMetadata
-{
-    string declaredTypeName; ///
-    string collationSequenceName; ///
-    bool isNotNull; ///
-    bool isPrimaryKey; ///
-    bool isAutoIncrement; ///
-}
-
 /++
 Caches all the results of a query into memory at once.
 

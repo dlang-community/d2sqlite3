@@ -33,9 +33,9 @@ unittest // Database.tableColumnMetadata()
     db.run("CREATE TABLE test (id INTEGER PRIMARY KEY AUTOINCREMENT,
             val FLOAT NOT NULL)");
     assert(db.tableColumnMetadata("test", "id") ==
-            ColumnMetadata("INTEGER", "BINARY", false, true, true));
+            TableColumnMetadata("INTEGER", "BINARY", false, true, true));
     assert(db.tableColumnMetadata("test", "val") ==
-            ColumnMetadata("FLOAT", "BINARY", true, false, false));
+            TableColumnMetadata("FLOAT", "BINARY", true, false, false));
 }
 
 unittest // Database.run()
@@ -73,7 +73,7 @@ unittest // Database.config
     db.execute("INSERT INTO test (val) VALUES (1)");
 }
 
-unittest // Database.createFunction(ColumnMetadata[]...)
+unittest // Database.createFunction(ColumnData[]...)
 {
     string myList(ColumnData[] args...)
     {
