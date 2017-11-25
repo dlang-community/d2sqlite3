@@ -190,3 +190,21 @@ void config(Args...)(int code, Args args)
     auto result = sqlite3_config(code, args);
     enforce(result == SQLITE_OK, new SqliteException("Configuration: error %s".format(result)));
 }
+
+/++
+Tests if an SQLite compile option is set
+
+See_Also: $(LINK http://sqlite.org/c3ref/compileoption_get.html).
++/
+bool isCompiledWith(string option)
+{
+    import std.string : toStringz;
+    return cast(bool) sqlite3_compileoption_used(option.toStringz);
+}
+///
+version (SqliteEnableUnlockNotify)
+unittest
+{
+    assert(isCompiledWith("SQLITE_ENABLE_UNLOCK_NOTIFY"));
+    assert(!isCompiledWith("SQLITE_UNKNOWN_COMPILE_OPTION"));
+}
