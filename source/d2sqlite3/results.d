@@ -22,9 +22,9 @@ import std.exception : enforce;
 import std.string : format;
 import std.typecons : Nullable;
 
-/// Set UNLOCK_NOTIFY version if compiled with SQLITE_ENABLE_UNLOCK_NOTIFY or SQLITE_FAKE_UNLOCK_NOTIFY
-version (SQLITE_ENABLE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
-else version (SQLITE_FAKE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
+/// Set _UnlockNotify version if compiled with SqliteEnableUnlockNotify or SqliteFakeUnlockNotify
+version (SqliteEnableUnlockNotify) version = _UnlockNotify;
+else version (SqliteFakeUnlockNotify) version = _UnlockNotify;
 
 /++
 An input range interface to access the rows resulting from an SQL query.
@@ -50,7 +50,7 @@ package(d2sqlite3):
     {
         if (!statement.empty)
         {
-            version (UNLOCK_NOTIFY) state = sqlite3_blocking_step(statement);
+            version (_UnlockNotify) state = sqlite3_blocking_step(statement);
             else state = sqlite3_step(statement.handle);
         }
         else
@@ -64,7 +64,7 @@ package(d2sqlite3):
         current = Row(statement, colCount);
     }
 
-    version (UNLOCK_NOTIFY)
+    version (_UnlockNotify)
     {
         auto sqlite3_blocking_step(Statement statement)
         {
@@ -99,7 +99,7 @@ public:
     void popFront()
     {
         assert(!empty, "no rows available");
-        version (UNLOCK_NOTIFY) state = sqlite3_blocking_step(statement);
+        version (_UnlockNotify) state = sqlite3_blocking_step(statement);
         else state = sqlite3_step(statement.handle);
         current = Row(statement, colCount);
         enforce(state == SQLITE_DONE || state == SQLITE_ROW,
@@ -476,14 +476,16 @@ public:
         assert(row.columnName(1) == "price");
     }
 
-    version (SQLITE_ENABLE_COLUMN_METADATA)
+    version (SqliteEnableColumnMetadata)
     {
         /++
         Determines the name of the database, table, or column that is the origin of a
         particular result column in SELECT statement.
 
-        These methods are defined only when the library is compiled with
-        `-version=SQLITE_ENABLE_COLUMN_METADATA`.
+        Warning:
+        These methods are defined only when this library is compiled with
+        `-version=SqliteEnableColumnMetadata`, and SQLite compiled with the
+        `SQLITE_ENABLE_COLUMN_METADATA` option defined.
 
         See_Also: $(LINK http://www.sqlite.org/c3ref/column_database_name.html).
         +/

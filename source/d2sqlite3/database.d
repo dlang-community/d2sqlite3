@@ -23,6 +23,10 @@ import std.exception : enforce;
 import std.string : format, toStringz;
 import std.typecons : Nullable;
 
+/// Set _UnlockNotify version if compiled with SqliteEnableUnlockNotify or SqliteFakeUnlockNotify
+version (SqliteEnableUnlockNotify) version = _UnlockNotify;
+else version (SqliteFakeUnlockNotify) version = _UnlockNotify;
+
 /// Type for the internal representation of blobs
 alias Blob = immutable(ubyte)[];
 
@@ -72,7 +76,7 @@ private:
         void* progressHandler;
         void* traceCallback;
         void* profileCallback;
-        version (UNLOCK_NOTIFY) IUnlockNotifyHandler unlockNotifyHandler;
+        version (_UnlockNotify) IUnlockNotifyHandler unlockNotifyHandler;
 
         this(sqlite3* handle) nothrow
         {
@@ -995,7 +999,7 @@ public:
         sqlite3_profile(p.handle, &callback, p.profileCallback);
     }
 
-    version (UNLOCK_NOTIFY)
+    version (_UnlockNotify)
     {
         /++
         Registers a `IUnlockNotifyHandler` used to handle database locks.
@@ -1005,7 +1009,8 @@ public:
         See SQLite Shared-Cache Mode for a description of shared-cache locking.
         This API may be used to register a callback that SQLite will invoke when the connection currently
         holding the required lock relinquishes it.
-        This API can be used only if the SQLite library was compiled with the SQLITE_ENABLE_UNLOCK_NOTIFY C-preprocessor symbol defined.
+        This API can be used only if the SQLite library was compiled with the `SQLITE_ENABLE_UNLOCK_NOTIFY`
+        C-preprocessor symbol defined.
 
         See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
 
@@ -1022,7 +1027,7 @@ public:
         {
             if (p.unlockNotifyHandler is null) return SQLITE_LOCKED;
 
-            version (SQLITE_ENABLE_UNLOCK_NOTIFY)
+            version (SqliteEnableUnlockNotify)
             {
                 extern(C) static nothrow
                 void callback(void** ntfPtr, int nPtr)
@@ -1075,21 +1080,17 @@ alias TraceCallbackDelegate = void delegate(string sql) nothrow;
 /// ditto
 alias ProfileCallbackDelegate = void delegate(string sql, ulong time) nothrow;
 
-/// Set UNLOCK_NOTIFY version if compiled with SQLITE_ENABLE_UNLOCK_NOTIFY or SQLITE_FAKE_UNLOCK_NOTIFY
-version (SQLITE_ENABLE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
-else version (SQLITE_FAKE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
 
-version (UNLOCK_NOTIFY)
+version (_UnlockNotify)
 {
     /++
     UnlockNotifyHandler interface to be used for custom implementations of UnlockNotify pattern with SQLite.
 
     Note:
-    For sqlite3_unlock_notify to be used the library is need to be compiled with
-        `-version=SQLITE_ENABLE_COLUMN_METADATA`.
+    For the C API sqlite3_unlock_notify to be used, this library must be compiled with
+    `-version=SqliteEnableUnlockNotify`.
     Otherwise only emulated solution is provided, that is based on retries for the defined amount of time.
 
-    Note:
     Implementation must be able to handle situation when emit is called sooner than the wait itself.
 
     See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
@@ -1097,7 +1098,7 @@ version (UNLOCK_NOTIFY)
     +/
     interface IUnlockNotifyHandler
     {
-        version (SQLITE_ENABLE_UNLOCK_NOTIFY)
+        version (SqliteEnableUnlockNotify)
         {
             /// Blocks until emit is called
             void wait();
@@ -1114,10 +1115,11 @@ version (UNLOCK_NOTIFY)
         else
         {
             /++
-            This is used as an alternative to sqlite3_unlock_notify when SQLite is not compiled with ENABLE_UNLOCK_NOTIFY.
-            Using this, handler tries to wait out the SQLITE_LOCKED state for some time.
-            Implementation has to block for some amount of time and check if total amount is not greater than some constant afterwards.
-            If there is still some time to try again, handler must set the result to SQLITE_OK. SQLITE_LOCKED otherwise.
+            This is used as an alternative when SQLite is not compiled with SQLITE_ENABLE_UNLOCK_NOTIFY, and
+            when the library is built with `-version=SqliteFakeUnlockNotify`.
+            Using this, the handler tries to wait out the SQLITE_LOCKED state for some time.
+            Implementation have to block for some amount of time and check if total amount is not greater than some constant afterwards.
+            If there is still some time to try again, the handler must set the result to SQLITE_OK or to SQLITE_LOCKED otherwise.
             +/
             void waitOne();
         }
@@ -1129,10 +1131,13 @@ version (UNLOCK_NOTIFY)
         @property int result() const;
     }
 
-    version (SQLITE_ENABLE_UNLOCK_NOTIFY)
+    version (SqliteEnableUnlockNotify)
     {
         /++
-        UnlockNotifyHandler implemented using Phobos core.sync package
+        UnlockNotifyHandler used when SQLite is compiled with SQLITE_ENABLE_UNLOCK_NOTIFY, and
+        when the library is built with `-version=SqliteEnableUnlockNotify`. 
+        It is implemented using the standard `core.sync` package.
+        
         Use setUnlockNotifyHandler method to handle the database lock.
 
         See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
@@ -1200,8 +1205,10 @@ version (UNLOCK_NOTIFY)
     else
     {
         /++
-        UnlockNotifyHandler that can be used when SQLite is not compiled with SQLITE_ENABLE_UNLOCK_NOTIFY.
+        UnlockNotifyHandler that can be used when SQLite is not compiled with SQLITE_ENABLE_UNLOCK_NOTIFY,
+        and when the library is built with `-version=SqliteFakeUnlockNotify`..
         It retries the statement execution for the provided amount of time before the SQLITE_LOCKED is returned.
+        
         Use setUnlockNotifyHandler method to handle the database lock.
 
         See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
@@ -1299,7 +1306,7 @@ version (UNLOCK_NOTIFY)
         }
 
         testUnlockNotify();
-        version (SQLITE_FAKE_UNLOCK_NOTIFY) testUnlockNotify(1500.msecs, 1); //timeout test
+        version (SqliteFakeUnlockNotify) testUnlockNotify(1500.msecs, 1); //timeout test
     }
 }
 

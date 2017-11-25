@@ -21,6 +21,9 @@ $(UL
     with automatic type converions, with `Database.createFunction()` $(I et al).)
     $(LI Store all the rows and columns resulting from a query at once with the `cached` function
     (sometimes useful even if not memory-friendly...).)
+    $(LI Use an unlock notification when two or more connections access the same database in
+    shared-cache mode, either using SQLite's dedicated API (sqlite_unlock_notify) or using an
+    emulated equivalent.)
 )
 
 Modules:

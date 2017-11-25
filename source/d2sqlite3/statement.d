@@ -23,9 +23,9 @@ import std.exception : enforce;
 import std.string : format, toStringz;
 import std.typecons : Nullable;
 
-/// Set UNLOCK_NOTIFY version if compiled with SQLITE_ENABLE_UNLOCK_NOTIFY or SQLITE_FAKE_UNLOCK_NOTIFY
-version (SQLITE_ENABLE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
-else version (SQLITE_FAKE_UNLOCK_NOTIFY) version = UNLOCK_NOTIFY;
+/// Set _UnlockNotify version if compiled with SqliteEnableUnlockNotify or SqliteFakeUnlockNotify
+version (SqliteEnableUnlockNotify) version = _UnlockNotify;
+else version (SqliteFakeUnlockNotify) version = _UnlockNotify;
 
 /++
 A prepared statement.
@@ -73,7 +73,7 @@ private:
         enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
     }
 
-    version (UNLOCK_NOTIFY)
+    version (_UnlockNotify)
     {
         auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
         {
@@ -91,7 +91,7 @@ package(d2sqlite3):
     this(Database db, string sql)
     {
         sqlite3_stmt* handle;
-        version (UNLOCK_NOTIFY)
+        version (_UnlockNotify)
         {
             auto result = sqlite3_blocking_prepare_v2(db, sql.toStringz, sql.length.to!int,
                 &handle, null);
@@ -106,7 +106,7 @@ package(d2sqlite3):
         p.paramCount = sqlite3_bind_parameter_count(p.handle);
     }
 
-    version (UNLOCK_NOTIFY)
+    version (_UnlockNotify)
     {
         /// Setup and waits for unlock notify using the provided `IUnlockNotifyHandler`
         auto waitForUnlockNotify()

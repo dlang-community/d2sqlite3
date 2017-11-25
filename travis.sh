@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 set -ueo pipefail
-dub test -c all-included
+dub test -c travis

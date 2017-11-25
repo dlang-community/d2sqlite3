@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 rm -rf docs
-dub build -b ddox
+dub build -b ddox -c travis
 cd docs
 git init
 git add .

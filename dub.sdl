@@ -20,3 +20,8 @@ configuration "all-included" {
     sourceFiles "sqlite3.o" platform="posix"
     libs "dl" platform="linux-gdc"
 }
+configuration "travis" {
+    preBuildCommands "make -C $PACKAGE_DIR -f sqlite3.mak" platform="posix"
+    sourceFiles "sqlite3.o" platform="posix"
+    versions "SqliteEnableColumnMetadata" "SqliteEnableUnlockNotify"
+}
