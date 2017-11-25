@@ -850,6 +850,3 @@ struct CachedResults
         rows = rowapp.data;
     }
 }
-
-// Old name kept for compatibility
-alias QueryCache = CachedResults;
