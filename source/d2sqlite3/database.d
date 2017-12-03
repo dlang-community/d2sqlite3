@@ -1338,6 +1338,7 @@ class SqliteException : Exception
         super(msg, file, line, next);
     }
 
+package(d2sqlite3):
     this(string msg, int code, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
