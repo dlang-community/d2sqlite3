@@ -45,7 +45,7 @@ WrappedDelegate!T* delegateUnwrap(T)(void* ptr)
     return cast(WrappedDelegate!T*) ptr;
 }
 
-extern(C) void ptrFree(void* ptr)
+extern(C) void ptrFree(void* ptr) nothrow
 {
     free(ptr);
 }
