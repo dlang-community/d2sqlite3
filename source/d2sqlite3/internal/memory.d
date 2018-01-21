@@ -39,7 +39,7 @@ void* delegateWrap(T)(T dlg, string name = null)
     return cast(void*) d;
 }
 
-WrappedDelegate!T* delegateUnwrap(T)(void* ptr)
+WrappedDelegate!T* delegateUnwrap(T)(void* ptr) nothrow
     if (isCallable!T)
 {
     return cast(WrappedDelegate!T*) ptr;
