@@ -816,5 +816,11 @@ unittest // CachedResults copies
 unittest // UTF-8
 {
     auto db = Database(":memory:");
-    db.run("SELECT '\u2019\u2019';");
+    bool ran = false;
+    db.run("SELECT '\u2019\u2019';", (ResultRange r) {
+        assert(r.oneValue!string == "\u2019\u2019");
+        ran = true;
+        return true;
+    });
+    assert(ran);
 }
