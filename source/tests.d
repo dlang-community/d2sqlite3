@@ -786,6 +786,14 @@ unittest // Row random-access range interface
     }
 }
 
+unittest // ColumnData.init
+{
+    import core.exception : AssertError;
+    ColumnData data;
+    assertThrown!AssertError(data.type);
+    assertThrown!AssertError(data.as!string);
+}
+
 unittest // ColumnData-compatible types
 {
     import std.meta : AliasSeq;

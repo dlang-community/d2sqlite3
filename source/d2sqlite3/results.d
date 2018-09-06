@@ -695,6 +695,7 @@ struct ColumnData
     +/
     SqliteType type() const nothrow
     {
+        assertInitialized();
         return _type;
     }
 
@@ -706,6 +707,8 @@ struct ColumnData
     auto as(T)(T defaultValue = T.init)
         if (isBoolean!T || isNumeric!T || isSomeString!T)
     {
+        assertInitialized();
+
         if (_type == SqliteType.NULL)
             return defaultValue;
 
@@ -716,6 +719,8 @@ struct ColumnData
     auto as(T)(T defaultValue = T.init)
         if (isArray!T && !isSomeString!T)
     {
+        assertInitialized();
+
         if (_type == SqliteType.NULL)
             return defaultValue;
 
@@ -731,6 +736,8 @@ struct ColumnData
     /// ditto
     auto as(T : Nullable!U, U...)(T defaultValue = T.init)
     {
+        assertInitialized();
+
         if (_type == SqliteType.NULL)
             return defaultValue;
 
@@ -739,10 +746,18 @@ struct ColumnData
 
     void toString(scope void delegate(const(char)[]) sink)
     {
+        assertInitialized();
+
         if (_type == SqliteType.NULL)
             sink("null");
         else
             sink(_value.toString);
+    }
+
+private:
+    void assertInitialized() const nothrow
+    {
+        assert(_value.hasValue, "Accessing uninitialized ColumnData");
     }
 }
 
