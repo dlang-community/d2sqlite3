@@ -85,5 +85,6 @@ void ensureNotInGC(T)(string info = null) nothrow
                 T.stringof.ptr);
         if (info)
             fprintf(stderr, "Info: %s\n", info.ptr);
+        assert(false);
     }
 }
