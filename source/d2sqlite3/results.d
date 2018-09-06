@@ -41,8 +41,8 @@ struct ResultRange
 {
 private:
     Statement statement;
-    int state;
-    int colCount;
+    int state = SQLITE_DONE;
+    int colCount = 0;
     Row current;
 
 package(d2sqlite3):
@@ -157,12 +157,13 @@ struct Row
 {
     import std.traits : isBoolean, isIntegral, isSomeChar, isFloatingPoint, isSomeString, isArray;
     import std.traits : isInstanceOf, TemplateArgsOf;
+
 private:
     Statement statement;
-    size_t frontIndex;
-    size_t backIndex;
+    int frontIndex = 0;
+    int backIndex = -1;
 
-    this(Statement statement, size_t colCount)
+    this(Statement statement, int colCount)
     {
         this.statement = statement;
         backIndex = colCount - 1;
@@ -178,12 +179,14 @@ public:
     /// ditto
     ColumnData front() @property
     {
+        assertInitialized();
         return opIndex(0);
     }
 
     /// ditto
     void popFront() nothrow
     {
+        assertInitialized();
         frontIndex++;
     }
 
@@ -196,12 +199,14 @@ public:
     /// ditto
     ColumnData back() @property
     {
+        assertInitialized();
         return opIndex(backIndex - frontIndex);
     }
 
     /// ditto
     void popBack() nothrow
     {
+        assertInitialized();
         backIndex--;
     }
 
@@ -214,8 +219,8 @@ public:
     /// ditto
     ColumnData opIndex(size_t index)
     {
+        assertInitialized();
         auto i = internalIndex(index);
-        assert(statement.handle, "operation on an empty statement");
         auto type = sqlite3_column_type(statement.handle, i);
         final switch (type)
         {
@@ -310,7 +315,7 @@ public:
     T peek(T)(size_t index)
         if (isBoolean!T || isIntegral!T || isSomeChar!T)
     {
-        assert(statement.handle, "operation on an empty statement");
+        assertInitialized();
         return sqlite3_column_int64(statement.handle, internalIndex(index)).to!T;
     }
 
@@ -318,7 +323,7 @@ public:
     T peek(T)(size_t index)
         if (isFloatingPoint!T)
     {
-        assert(statement.handle, "operation on an empty statement");
+        assertInitialized();
         return sqlite3_column_double(statement.handle, internalIndex(index)).to!T;
     }
 
@@ -328,7 +333,7 @@ public:
     {
         import core.stdc.string : strlen, memcpy;
 
-        assert(statement.handle, "operation on an empty statement");
+        assertInitialized();
         auto i = internalIndex(index);
         auto str = cast(const(char)*) sqlite3_column_text(statement.handle, i);
 
@@ -353,7 +358,7 @@ public:
     T peek(T, PeekMode mode = PeekMode.copy)(size_t index)
         if (isArray!T && !isSomeString!T)
     {
-        assert(statement.handle, "operation on an empty statement");
+        assertInitialized();
         auto i = internalIndex(index);
         auto ptr = sqlite3_column_blob(statement.handle, i);
         auto length = sqlite3_column_bytes(statement.handle, i);
@@ -376,8 +381,8 @@ public:
         if (isInstanceOf!(Nullable, T)
             && !isArray!(TemplateArgsOf!T[0]) && !isSomeString!(TemplateArgsOf!T[0]))
     {
+        assertInitialized();
         alias U = TemplateArgsOf!T[0];
-        assert(statement.handle, "operation on an empty statement");
         if (sqlite3_column_type(statement.handle, internalIndex(index)) == SqliteType.NULL)
             return T.init;
         return T(peek!U(index));
@@ -388,8 +393,8 @@ public:
         if (isInstanceOf!(Nullable, T)
             && (isArray!(TemplateArgsOf!T[0]) || isSomeString!(TemplateArgsOf!T[0])))
     {
+        assertInitialized();
         alias U = TemplateArgsOf!T[0];
-        assert(statement.handle, "operation on an empty statement");
         if (sqlite3_column_type(statement.handle, internalIndex(index)) == SqliteType.NULL)
             return T.init;
         return T(peek!(U, mode)(index));
@@ -412,7 +417,7 @@ public:
     +/
     SqliteType columnType(size_t index)
     {
-        assert(statement.handle, "operation on an empty statement");
+        assertInitialized();
         return cast(SqliteType) sqlite3_column_type(statement.handle, internalIndex(index));
     }
     /// Ditto
@@ -423,7 +428,7 @@ public:
     /// Ditto
     string columnDeclaredTypeName(size_t index)
     {
-        assert(statement.handle, "operation on an empty statement");
+        assertInitialized();
         return sqlite3_column_decltype(statement.handle, internalIndex(index)).to!string;
     }
     /// Ditto
@@ -462,7 +467,7 @@ public:
     +/
     string columnName(size_t index)
     {
-        assert(statement.handle, "operation on an empty statement");
+        assertInitialized();
         return sqlite3_column_name(statement.handle, internalIndex(index)).to!string;
     }
     ///
@@ -491,7 +496,7 @@ public:
         +/
         string columnDatabaseName(size_t index)
         {
-            assert(statement.handle, "operation on an empty statement");
+            assertInitialized();
             return sqlite3_column_database_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
@@ -502,7 +507,7 @@ public:
         /// Ditto
         string columnTableName(size_t index)
         {
-            assert(statement.handle, "operation on an empty statement");
+            assertInitialized();
             return sqlite3_column_database_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
@@ -513,7 +518,7 @@ public:
         /// Ditto
         string columnOriginName(size_t index)
         {
-            assert(statement.handle, "operation on an empty statement");
+            assertInitialized();
             return sqlite3_column_origin_name(statement.handle, internalIndex(index)).to!string;
         }
         /// Ditto
@@ -567,19 +572,17 @@ public:
 private:
     int internalIndex(size_t index)
     {
+        assertInitialized();
         auto i = index + frontIndex;
         assert(i >= 0 && i <= backIndex, "invalid column index: %d".format(i));
         assert(i <= int.max, "invalid index value: %d".format(i));
         return cast(int) i;
     }
 
-    size_t indexForName(string name)
-    in
+    int indexForName(string name)
     {
+        assertInitialized();
         assert(name.length, "column with no name");
-    }
-    body
-    {
         foreach (i; frontIndex .. backIndex + 1)
         {
             assert(i <= int.max, "invalid index value: %d".format(i));
@@ -589,6 +592,12 @@ private:
 
         assert(false, "invalid column name: '%s'".format(name));
     }
+
+    void assertInitialized() nothrow
+    {
+        assert(!empty, "Accessing elements of an empty row");
+        assert(statement.handle !is null, "operation on an empty statement");
+    } 
 }
 
 /// Behavior of the `Row.peek()` method for arrays/strings

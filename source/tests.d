@@ -638,6 +638,20 @@ version (unittest) // Row is a random access range of ColumnData
     static assert(is(ElementType!Row == ColumnData));
 }
 
+unittest // Row.init
+{
+    import core.exception : AssertError;
+
+    Row row;
+    assert(row.empty);
+    assertThrown!AssertError(row.front);
+    assertThrown!AssertError(row.back);
+    assertThrown!AssertError(row.popFront);
+    assertThrown!AssertError(row.popBack);
+    assertThrown!AssertError(row[""]);
+    assertThrown!AssertError(row.peek!long(0));
+}
+
 unittest // Peek
 {
     auto db = Database(":memory:");
