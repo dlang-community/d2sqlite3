@@ -163,7 +163,7 @@ private:
     int frontIndex = 0;
     int backIndex = -1;
 
-    this(Statement statement, int colCount)
+    this(Statement statement, int colCount) nothrow
     {
         this.statement = statement;
         backIndex = colCount - 1;

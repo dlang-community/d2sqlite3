@@ -55,16 +55,10 @@ private:
         int paramCount;
         debug string sql;
 
-        ~this()
+        ~this() nothrow
         {
             debug ensureNotInGC!Statement(sql);
-            finalize();
-        }
-
-        void finalize()
-        {
             sqlite3_finalize(handle);
-            handle = null;
         }
     }
 
@@ -134,7 +128,6 @@ public:
     +/
     void finalize()
     {
-        p.finalize();
         destroy(p);
     }
 

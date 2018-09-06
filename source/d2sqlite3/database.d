@@ -79,32 +79,25 @@ private:
         version (_UnlockNotify) IUnlockNotifyHandler unlockNotifyHandler;
         debug string filename;
 
-        this(sqlite3* handle)
+        this(sqlite3* handle) nothrow
         {
             this.handle = handle;
         }
 
-        ~this()
+        ~this() nothrow
         {
             debug ensureNotInGC!Database(filename);
-            close();
-        }
-
-        void close()
-        {
-            if (!handle)
-                return;
-
-            sqlite3_progress_handler(handle, 0, null, null);
-            auto result = sqlite3_close(handle);
-            //enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
-            handle = null;
             ptrFree(updateHook);
             ptrFree(commitHook);
             ptrFree(rollbackHook);
             ptrFree(progressHandler);
             ptrFree(traceCallback);
             ptrFree(profileCallback);
+            
+            if (!handle)
+                return;
+            sqlite3_progress_handler(handle, 0, null, null);
+            sqlite3_close(handle);
         }
     }
 
@@ -140,12 +133,13 @@ public:
     /++
     Explicitly closes the database connection.
 
-    After a call to `close()`, using the database connection or one of its prepared statement
-    is an error. The `Database` object is destroyed and cannot be used any more.
+    After a successful call to `close()`, using the database connection or one of its prepared 
+    statement is an error. The `Database` object is destroyed and cannot be used any more.
     +/
     void close()
     {
-        p.close();
+        auto result = sqlite3_close(p.handle); 
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
         destroy(p);
     }
 
@@ -1103,7 +1097,7 @@ version (_UnlockNotify)
             This is called from registered callback from SQLite.
 
             Params:
-                state - Value to set as a handler result. It can be SQLITE_LOCKED or SQLITE_OK.
+                state = Value to set as a handler result. It can be SQLITE_LOCKED or SQLITE_OK.
             +/
             void emit(int state) nothrow;
         }
