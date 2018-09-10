@@ -175,6 +175,7 @@ public:
     +/
     bool isReadOnly(string database = "main")
     {
+        assert(p.handle);
         immutable ret = sqlite3_db_readonly(p.handle, database.toStringz);
         enforce(ret >= 0, new SqliteException("Database not found: %s".format(database)));
         return ret == 1;
@@ -197,6 +198,7 @@ public:
         TableColumnMetadata data;
         char* pzDataType, pzCollSeq;
         int notNull, primaryKey, autoIncrement;
+        assert(p.handle);
         check(sqlite3_table_column_metadata(p.handle, database.toStringz, table.toStringz,
             column.toStringz, &pzDataType, &pzCollSeq, &notNull, &primaryKey, &autoIncrement));
         data.declaredTypeName = pzDataType.to!string;
@@ -344,6 +346,7 @@ public:
     +/
     void config(Args...)(int code, Args args)
     {
+        assert(p.handle);
         auto result = sqlite3_db_config(p.handle, code, args);
         enforce(result == SQLITE_OK, new SqliteException("Database configuration: error %s".format(result)));
     }
@@ -353,6 +356,7 @@ public:
     +/
     void enableLoadExtensions(bool enable = true)
     {
+        assert(p.handle);
         enforce(sqlite3_enable_load_extension(p.handle, enable) == SQLITE_OK,
             new SqliteException("Could not enable loading extensions."));
     }
@@ -368,6 +372,7 @@ public:
     +/
     void loadExtension(string path, string entryPoint = null)
     {
+        assert(p.handle);
         immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
         enforce(ret == SQLITE_OK, new SqliteException(
                 "Could not load extension: %s:%s".format(entryPoint, path)));
@@ -849,6 +854,7 @@ public:
 
         ptrFree(p.updateHook);
         p.updateHook = delegateWrap(updateHook);
+        assert(p.handle);
         sqlite3_update_hook(p.handle, &callback, p.updateHook);
     }
 
@@ -874,6 +880,7 @@ public:
 
         ptrFree(p.commitHook);
         p.commitHook = delegateWrap(commitHook);
+        assert(p.handle);
         sqlite3_commit_hook(p.handle, &callback, p.commitHook);
     }
 
@@ -896,6 +903,7 @@ public:
 
         ptrFree(p.rollbackHook);
         p.rollbackHook = delegateWrap(rollbackHook);
+        assert(p.handle);
         sqlite3_rollback_hook(p.handle, &callback, p.rollbackHook);
     }
 
@@ -925,6 +933,7 @@ public:
 
         ptrFree(p.progressHandler);
         p.progressHandler = delegateWrap(progressHandler);
+        assert(p.handle);
         sqlite3_progress_handler(p.handle, pace, &callback, p.progressHandler);
     }
 
@@ -950,6 +959,7 @@ public:
 
         ptrFree(p.traceCallback);
         p.traceCallback = delegateWrap(traceCallback);
+        assert(p.handle);
         sqlite3_trace(p.handle, &callback, p.traceCallback);
     }
 
@@ -976,6 +986,7 @@ public:
 
         ptrFree(p.profileCallback);
         p.profileCallback = delegateWrap(profileCallback);
+        assert(p.handle);
         sqlite3_profile(p.handle, &callback, p.profileCallback);
     }
 
