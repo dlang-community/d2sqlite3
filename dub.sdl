@@ -15,8 +15,8 @@ configuration "without-lib" {
 }
 configuration "all-included" {
     libs "sqlite3" platform="windows"
-    copyFiles "lib/win32/sqlite3.dll" platform="win32"
-    copyFiles "lib/win64/sqlite3.dll" platform="win64"
+    copyFiles "lib/win32/sqlite3.*" platform="win32"
+    copyFiles "lib/win64/sqlite3.*" platform="win64"
     preBuildCommands "make -C $PACKAGE_DIR -f sqlite3.mak" platform="posix"
     sourceFiles "sqlite3.o" platform="posix"
     libs "dl" platform="linux-gdc"
