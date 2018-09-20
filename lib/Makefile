@@ -1,12 +1,9 @@
-# This must be run from the relevant (x86/x86_64) VS Native Tools command interpreter.
+# This must be run from a VS Native Tools command interpreter, or after running
+# vcvarsall.bat
 
-# I'm taking the lazy and reliable route for forcing manual specification of
-# x86/64 rather than try to determine it here.
+.PHONY: all x86 x64
 
-.PHONY: no_build_specified x86 x64
-
-no_build_specified:
-	@echo Build either 'x86' or 'x64' from the respective VS command-line environment, or after running vcvarsall.bat.
+all: x86 x64
 
 x86: win32\sqlite3.lib
 
