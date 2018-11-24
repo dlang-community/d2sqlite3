@@ -1,11 +1,11 @@
 /++
-This module is part of d2sqlite3.
+Managing query results.
 
 Authors:
     Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
 
 Copyright:
-    Copyright 2011-17 Nicolas Sicard.
+    Copyright 2011-18 Nicolas Sicard.
 
 License:
     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
@@ -597,7 +597,7 @@ private:
     {
         assert(!empty, "Accessing elements of an empty row");
         assert(statement.handle !is null, "operation on an empty statement");
-    } 
+    }
 }
 
 /// Behavior of the `Row.peek()` method for arrays/strings

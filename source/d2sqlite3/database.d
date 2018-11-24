@@ -1,11 +1,11 @@
 /++
-This module is part of d2sqlite3.
+Managing SQLite3 database connections.
 
 Authors:
     Nicolas Sicard (biozic) and other contributors at $(LINK https://github.com/biozic/d2sqlite3)
 
 Copyright:
-    Copyright 2011-17 Nicolas Sicard.
+    Copyright 2011-18 Nicolas Sicard.
 
 License:
     $(LINK2 http://www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
@@ -93,7 +93,7 @@ private:
             ptrFree(progressHandler);
             ptrFree(traceCallback);
             ptrFree(profileCallback);
-            
+
             if (!handle)
                 return;
             sqlite3_progress_handler(handle, 0, null, null);
@@ -133,12 +133,12 @@ public:
     /++
     Explicitly closes the database connection.
 
-    After a successful call to `close()`, using the database connection or one of its prepared 
+    After a successful call to `close()`, using the database connection or one of its prepared
     statement is an error. The `Database` object is destroyed and cannot be used any more.
     +/
     void close()
     {
-        auto result = sqlite3_close(p.handle); 
+        auto result = sqlite3_close(p.handle);
         enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
         destroy(p);
     }
@@ -1135,9 +1135,9 @@ version (_UnlockNotify)
     {
         /++
         UnlockNotifyHandler used when SQLite is compiled with SQLITE_ENABLE_UNLOCK_NOTIFY, and
-        when the library is built with `-version=SqliteEnableUnlockNotify`. 
+        when the library is built with `-version=SqliteEnableUnlockNotify`.
         It is implemented using the standard `core.sync` package.
-        
+
         Use setUnlockNotifyHandler method to handle the database lock.
 
         See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).
@@ -1208,7 +1208,7 @@ version (_UnlockNotify)
         UnlockNotifyHandler that can be used when SQLite is not compiled with SQLITE_ENABLE_UNLOCK_NOTIFY,
         and when the library is built with `-version=SqliteFakeUnlockNotify`..
         It retries the statement execution for the provided amount of time before the SQLITE_LOCKED is returned.
-        
+
         Use setUnlockNotifyHandler method to handle the database lock.
 
         See_Also: $(LINK http://sqlite.org/c3ref/unlock_notify.html).

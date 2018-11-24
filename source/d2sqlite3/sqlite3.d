@@ -1,3 +1,4 @@
+/++ Auto-generated C API bindings. +/
 /*
 ** 2001-09-15
 **

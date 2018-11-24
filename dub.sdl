@@ -2,7 +2,7 @@ name        "d2sqlite3"
 description "A thin wrapper around SQLite 3"
 homepage    "https://github.com/biozic/d2sqlite3"
 authors     "Nicolas Sicard" "Other contributors: see Github repo"
-copyright   "Copyright 2011-17 Nicolas Sicard"
+copyright   "Copyright 2011-18 Nicolas Sicard"
 license     "BSL-1.0"
 targetType  "library"
 configuration "with-lib" {
