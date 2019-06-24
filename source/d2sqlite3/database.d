@@ -272,7 +272,7 @@ public:
     }
 
     /++
-    Prepares (compiles) a single SQL statement and returngs it, so that it can be bound to
+    Prepares (compiles) a single SQL statement and returns it, so that it can be bound to
     values before execution.
 
     The statement becomes invalid if the Database goes out of scope and is destroyed.
