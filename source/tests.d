@@ -450,7 +450,6 @@ unittest // Struct injecting
         int i;
         double f;
         string t;
-        private bool _notused;
     }
 
     auto db = Database(":memory:");
