@@ -20,12 +20,48 @@ unittest // COV
     auto ts = threadSafe;
 }
 
-unittest // Configuration
+unittest // Configuration logging and db.close()
 {
+    static extern (C) void loggerCallback(void* arg, int code, const(char)* msg) nothrow
+    {
+        ++*(cast(int*) arg);
+    }
+
+    int marker = 42;
+
     shutdown();
     config(SQLITE_CONFIG_MULTITHREAD);
-    config(SQLITE_CONFIG_LOG, function(void*, int, const(char)*) {}, null);
+    config(SQLITE_CONFIG_LOG, &loggerCallback, &marker);
     initialize();
+
+    {
+        auto db = Database(":memory:");
+        try
+        {
+            db.run("DROP TABLE wtf");
+        }
+        catch (Exception e)
+        {
+        }
+        db.close();
+    }
+    assert(marker == 43);
+
+    shutdown();
+    config(SQLITE_CONFIG_LOG, null, null);
+    initialize();
+
+    {
+        auto db = Database(":memory:");
+        try
+        {
+            db.run("DROP TABLE wtf");
+        }
+        catch (Exception e)
+        {
+        }
+    }
+    assert(marker == 43);
 }
 
 unittest // Database.tableColumnMetadata()

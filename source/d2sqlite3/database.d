@@ -139,7 +139,8 @@ public:
     void close()
     {
         auto result = sqlite3_close(p.handle);
-        enforce(result == SQLITE_OK, new SqliteException(errmsg(handle), result));
+        enforce(result == SQLITE_OK, new SqliteException(errmsg(p.handle), result));
+        p.handle = null;
         destroy(p);
     }
 
