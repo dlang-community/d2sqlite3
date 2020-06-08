@@ -18,7 +18,7 @@ import d2sqlite3.sqlite3;
 import d2sqlite3.internal.memory;
 import d2sqlite3.internal.util;
 
-import std.conv : to;
+import std.conv : text, to;
 import std.exception : enforce;
 import std.string : format, toStringz;
 import std.typecons : Nullable;
@@ -1328,6 +1328,7 @@ class SqliteException : Exception
 
     private this(string msg, string sql, int code,
                  string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+        @safe pure nothrow @nogc
     {
         this.sql = sql;
         this.code = code;
@@ -1337,12 +1338,14 @@ class SqliteException : Exception
 package(d2sqlite3):
     this(string msg, int code, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+        @safe pure nothrow
     {
-        this("error %d: %s".format(code, msg), sql, code, file, line, next);
+        this(text("error ", code, ": ", msg), sql, code, file, line, next);
     }
 
     this(string msg, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+        @safe pure nothrow @nogc
     {
         this(msg, sql, 0, file, line, next);
     }
