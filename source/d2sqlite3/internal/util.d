@@ -20,13 +20,13 @@ import d2sqlite3.internal.memory;
 
 package(d2sqlite3):
 
-string errmsg(sqlite3* db)
+string errmsg(sqlite3* db) nothrow
 {
     import std.conv : to;
     return sqlite3_errmsg(db).to!string;
 }
 
-string errmsg(sqlite3_stmt* stmt)
+string errmsg(sqlite3_stmt* stmt) nothrow
 {
     return errmsg(sqlite3_db_handle(stmt));
 }
@@ -44,12 +44,12 @@ auto byStatement(string sql)
             end = findEnd();
         }
 
-        bool empty()
+        bool empty() const @safe pure nothrow @nogc
         {
             return !sql.length;
         }
 
-        string front()
+        string front() const @safe pure nothrow @nogc
         {
             return sql[0 .. end];
         }
