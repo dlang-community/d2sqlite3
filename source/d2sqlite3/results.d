@@ -728,7 +728,7 @@ struct ColumnData
         try
             data = _value.get!Blob;
         catch (VariantException e)
-            throw new SqliteException("impossible to convert this column to a " ~ T.stringof);
+            throw new SqliteException("impossible to convert this column to a " ~ T.stringof, 0);
 
         return cast(T) data;
     }
