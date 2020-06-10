@@ -178,7 +178,7 @@ public:
     {
         assert(p.handle);
         immutable ret = sqlite3_db_readonly(p.handle, database.toStringz);
-        enforce(ret >= 0, new SqliteException("Database not found: %s".format(database)));
+        enforce(ret >= 0, new SqliteException("Database not found: %s".format(database), ret));
         return ret == 1;
     }
 
@@ -349,7 +349,7 @@ public:
     {
         assert(p.handle);
         auto result = sqlite3_db_config(p.handle, code, args);
-        enforce(result == SQLITE_OK, new SqliteException("Database configuration: error %s".format(result)));
+        enforce(result == SQLITE_OK, new SqliteException("Database configuration: error %s".format(result), result));
     }
 
     /++
@@ -358,8 +358,9 @@ public:
     void enableLoadExtensions(bool enable = true)
     {
         assert(p.handle);
-        enforce(sqlite3_enable_load_extension(p.handle, enable) == SQLITE_OK,
-            new SqliteException("Could not enable loading extensions."));
+        immutable ret = sqlite3_enable_load_extension(p.handle, enable);
+        enforce(ret == SQLITE_OK,
+            new SqliteException("Could not enable loading extensions.", ret));
     }
 
     /++
@@ -376,7 +377,7 @@ public:
         assert(p.handle);
         immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
         enforce(ret == SQLITE_OK, new SqliteException(
-                "Could not load extension: %s:%s".format(entryPoint, path)));
+                "Could not load extension: %s:%s".format(entryPoint, path), ret));
     }
 
     /++
@@ -1317,7 +1318,7 @@ Exception thrown when SQLite functions return an error.
 class SqliteException : Exception
 {
     /++
-    The _code of the error that raised the exception, or 0 if this _code is not known.
+    The _code of the error that raised the exception, or 0 if it's not an Sqlite error code.
     +/
     int code;
 
@@ -1339,11 +1340,5 @@ package(d2sqlite3):
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
     {
         this("error %d: %s".format(code, msg), sql, code, file, line, next);
-    }
-
-    this(string msg, string sql = null,
-         string file = __FILE__, size_t line = __LINE__, Throwable next = null)
-    {
-        this(msg, sql, 0, file, line, next);
     }
 }
