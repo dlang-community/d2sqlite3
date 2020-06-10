@@ -886,3 +886,12 @@ unittest // UTF-8
     });
     assert(ran);
 }
+
+unittest // loadExtension failure test
+{
+    import std.algorithm : canFind;
+    import std.exception : collectExceptionMsg;
+    auto db = Database(":memory:");
+    auto msg = collectExceptionMsg(db.loadExtension("foobar"));
+    assert(msg.canFind("(not authorized)"));
+}

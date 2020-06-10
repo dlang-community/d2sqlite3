@@ -20,7 +20,7 @@ import d2sqlite3.internal.util;
 
 import std.conv : to;
 import std.exception : enforce;
-import std.string : format, toStringz;
+import std.string : format, fromStringz, toStringz;
 import std.typecons : Nullable;
 
 /// Set _UnlockNotify version if compiled with SqliteEnableUnlockNotify or SqliteFakeUnlockNotify
@@ -375,9 +375,17 @@ public:
     void loadExtension(string path, string entryPoint = null)
     {
         assert(p.handle);
-        immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
+        char* p_err;
+        scope (failure)
+        {
+            if (p_err !is null)
+                sqlite3_free(p_err);
+        }
+
+        immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, &p_err);
         enforce(ret == SQLITE_OK, new SqliteException(
-                "Could not load extension: %s:%s".format(entryPoint, path), ret));
+                "Could not load extension: %s:%s (%s)".format(entryPoint, path,
+                p_err !is null ? fromStringz(p_err) : "No additional info"), ret));
     }
 
     /++
