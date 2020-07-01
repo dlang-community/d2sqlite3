@@ -114,6 +114,13 @@ package(d2sqlite3):
 			debug p.sql = sql;
 			sql = "";
 		} else {
+			/++
+			 the tail will be 1 past the end of the SQL statement that was just
+			 prepared. So if you prepare a string with two SQL statements,
+			 it will prepare the first statement, then set tail at the
+			 beginning of the second. This allows to prepare many ; delineated
+			 statements, without having to parse the SQL ourselves.
+			 +/
 			size head_length = tail - head;
 			debug p.sql = sql[0..head_length];
 			sql = sql[head_length..$];

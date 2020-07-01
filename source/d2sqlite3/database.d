@@ -56,6 +56,27 @@ enum Deterministic
     no = 0
 }
 
+struct PrepareMany {
+	Database db;
+	Statement current;
+	string sql_left;
+	this(Database db, const string sql) {
+		this.db = db;
+		this.sql_left = sql.trim();
+		popFront();
+	}
+	void popFront() {
+		current = Statement(this, sql_left);
+		sql_left = sql_left.trim();
+	}
+	@property void empty() {
+		return sql_left.length == 0;
+	}
+	@property Statement front() {
+		return current;
+	}
+}
+
 /++
 An database connection.
 
@@ -288,19 +309,11 @@ public:
 
     The statements become invalid if the Database goes out of scope and is destroyed.
     +/
-	struct PrepareMany {
-		Statement current;
-		string sql_left;
-		this() {
-			popFront();
-		}
-		void popFront() {
-			current = Statement(this, sql);
-		@property
-			Statement front() {
-		}
+
 	Range!Statement prepare_many(string sql)
 	{
+		return PrepareMany(this, sql);
+	}
 		
 
     /// Convenience functions equivalent to an SQL statement.
