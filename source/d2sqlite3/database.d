@@ -18,10 +18,10 @@ import d2sqlite3.sqlite3;
 import d2sqlite3.internal.memory;
 import d2sqlite3.internal.util;
 
-import std.range.interfaces: Range;
+import std.range.interfaces: InputRange;
 import std.conv : to;
 import std.exception : enforce;
-import std.string : format, toStringz, trim;
+import std.string : format, toStringz, chomp;
 import std.typecons : Nullable;
 
 /// Set _UnlockNotify version if compiled with SqliteEnableUnlockNotify or SqliteFakeUnlockNotify
@@ -63,14 +63,14 @@ struct PrepareMany {
 	string sql_left;
 	this(Database db, const string sql) {
 		this.db = db;
-		this.sql_left = sql.trim();
+		this.sql_left = sql;
 		popFront();
 	}
 	void popFront() {
-		current = Statement(this, sql_left);
-		sql_left = sql_left.trim();
+		current = Statement(this.db, sql_left);
+		sql_left = sql_left.chomp();
 	}
-	@property void empty() {
+	@property bool empty() {
 		return sql_left.length == 0;
 	}
 	@property Statement front() {
@@ -311,7 +311,7 @@ public:
     The statements become invalid if the Database goes out of scope and is destroyed.
     +/
 
-	Range!Statement prepare_many(string sql)
+	InputRange!Statement prepare_many(string sql)
 	{
 		return PrepareMany(this, sql);
 	}
@@ -326,8 +326,8 @@ VALUES (:v);
 SELECT val FROM
 -- gosh I love SQL comments and ;s!
    test WHERE val > :v;
--- SELECT 23; -- don't do this one
 SELECT 'A fun string containing ; and -- because why not?'; -- I'm so clever
+-- SELECT 23; -- don't do this one
 SELECT 42; -- do this one
  SELECT val FROM test WHERE val < :v;
 ]");
@@ -336,9 +336,11 @@ SELECT 42; -- do this one
 		assert(!statements.empty);
 		statements.popFront();
 		assert(!statements.empty);
-		assert statements.front.oneValue!int ==
-			"A fun string containing ; and -- because why not?";
-		assert statements.front.oneValue!int == 42;
+		assert(statements.front.oneValue!int ==
+			"A fun string containing ; and -- because why not?");
+		statements.popFront();
+		assert(!statements.empty);		
+		assert(statements.front.oneValue!int == 42);
 		statements.popFront();
 		assert(!statements.empty);
 		statements.popFront();
