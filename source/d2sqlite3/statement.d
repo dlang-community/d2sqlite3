@@ -88,7 +88,7 @@ package(d2sqlite3):
 	this(Database db, const string sql)
 	{
 		string temp = sql;
-		this(temp);
+		this(db, temp);
 		// this constructor won't be able to give any indication that
 		// the sql wasn't fully parsed, so make sure it is.
 		assert(temp.length == 0);
@@ -99,8 +99,8 @@ package(d2sqlite3):
     this(Database db, ref string sql)
     {
         sqlite3_stmt* handle;
-		const byte* head = sql.toStringz;
-		const byte* tail = null;
+		immutable(char)* head = sql.toStringz;
+		immutable(char)* tail = null;
         version (_UnlockNotify)
         {
             auto result = sqlite3_blocking_prepare_v2(db, head, sql.length.to!int,
@@ -125,7 +125,7 @@ package(d2sqlite3):
 			 beginning of the second. This allows to prepare many ; delineated
 			 statements, without having to parse the SQL ourselves.
 			 +/
-			size head_length = tail - head;
+			size_t head_length = tail - head;
 			debug p.sql = sql[0..head_length];
 			sql = sql[head_length..$];
 		}

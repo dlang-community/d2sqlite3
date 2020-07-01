@@ -18,7 +18,6 @@ import d2sqlite3.sqlite3;
 import d2sqlite3.internal.memory;
 import d2sqlite3.internal.util;
 
-import std.range.interfaces: InputRange;
 import std.conv : to;
 import std.exception : enforce;
 import std.string : format, toStringz, chomp;
@@ -61,19 +60,19 @@ struct PrepareMany {
 	Database db;
 	Statement current;
 	string sql_left;
+	bool empty;
 	this(Database db, const string sql) {
 		this.db = db;
 		this.sql_left = sql;
 		popFront();
 	}
 	void popFront() {
+		const size_t old = sql_left.length;
 		current = Statement(this.db, sql_left);
+		empty = old == sql_left.length;
 		sql_left = sql_left.chomp();
 	}
-	@property bool empty() {
-		return sql_left.length == 0;
-	}
-	@property Statement front() {
+	Statement front() {
 		return current;
 	}
 }
@@ -311,7 +310,7 @@ public:
     The statements become invalid if the Database goes out of scope and is destroyed.
     +/
 
-	InputRange!Statement prepare_many(string sql)
+	PrepareMany prepare_many(string sql)
 	{
 		return PrepareMany(this, sql);
 	}
@@ -336,11 +335,11 @@ SELECT 42; -- do this one
 		assert(!statements.empty);
 		statements.popFront();
 		assert(!statements.empty);
-		assert(statements.front.oneValue!int ==
+		assert(statements.front.execute().oneValue!string ==
 			"A fun string containing ; and -- because why not?");
 		statements.popFront();
 		assert(!statements.empty);		
-		assert(statements.front.oneValue!int == 42);
+		assert(statements.front.execute().oneValue!int == 42);
 		statements.popFront();
 		assert(!statements.empty);
 		statements.popFront();
