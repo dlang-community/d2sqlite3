@@ -315,7 +315,35 @@ public:
 	{
 		return PrepareMany(this, sql);
 	}
-		
+	unittest {
+		auto db = Database(":memory:");
+        db.execute("CREATE TABLE test (val INTEGER)");
+        auto statements =
+			db.prepare_many(q"[
+   --sql comment with a ; in it
+INSERT INTO test (val)
+VALUES (:v);
+SELECT val FROM
+-- gosh I love SQL comments and ;s!
+   test WHERE val > :v;
+-- SELECT 23; -- don't do this one
+SELECT 'A fun string containing ; and -- because why not?'; -- I'm so clever
+SELECT 42; -- do this one
+ SELECT val FROM test WHERE val < :v;
+]");
+		assert(!statements.empty);
+		statements.popFront();
+		assert(!statements.empty);
+		statements.popFront();
+		assert(!statements.empty);
+		assert statements.front.oneValue!int ==
+			"A fun string containing ; and -- because why not?";
+		assert statements.front.oneValue!int == 42;
+		statements.popFront();
+		assert(!statements.empty);
+		statements.popFront();
+		assert(statements.empty);
+	}
 
     /// Convenience functions equivalent to an SQL statement.
     void begin() { execute("BEGIN"); }
