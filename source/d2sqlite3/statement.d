@@ -89,14 +89,18 @@ package(d2sqlite3):
 	{
 		string temp = sql;
 		this(temp);
+		// this constructor won't be able to give any indication that
+		// the sql wasn't fully parsed, so make sure it is.
 		assert(temp.length == 0);
+		// the second constructor moves the sql parameter to the
+		// unparsed tail, so use that if you might be preparing 2 statements
 	}
 	
-    this(Database db, inout string sql)
+    this(Database db, ref string sql)
     {
         sqlite3_stmt* handle;
-		byte* head = sql.toStringz;
-		byte* tail = null;
+		const byte* head = sql.toStringz;
+		const byte* tail = null;
         version (_UnlockNotify)
         {
             auto result = sqlite3_blocking_prepare_v2(db, head, sql.length.to!int,

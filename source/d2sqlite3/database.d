@@ -18,9 +18,10 @@ import d2sqlite3.sqlite3;
 import d2sqlite3.internal.memory;
 import d2sqlite3.internal.util;
 
+import std.range.interfaces: Range;
 import std.conv : to;
 import std.exception : enforce;
-import std.string : format, toStringz;
+import std.string : format, toStringz, trim;
 import std.typecons : Nullable;
 
 /// Set _UnlockNotify version if compiled with SqliteEnableUnlockNotify or SqliteFakeUnlockNotify
