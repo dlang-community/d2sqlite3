@@ -344,6 +344,15 @@ SELECT 42; -- do this one
 		assert(!statements.empty);
 		statements.popFront();
 		assert(statements.empty);
+		int count = 4;
+		foreach(prep;db.prepare_many(q"[
+SELECT 3;
+SELECT 2;
+SELECT 1;
+-- contact!]")) {
+			--count;
+		}
+		assert(count == 0);
 	}
 
     /// Convenience functions equivalent to an SQL statement.
