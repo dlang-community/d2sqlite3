@@ -278,10 +278,30 @@ public:
 
     The statement becomes invalid if the Database goes out of scope and is destroyed.
     +/
-    Statement prepare(string sql)
+    Statement prepare(const string sql)
     {
         return Statement(this, sql);
     }
+
+	/++
+	 Prepares (compiles) several SQL statements and return them.
+
+    The statements become invalid if the Database goes out of scope and is destroyed.
+    +/
+	struct PrepareMany {
+		Statement current;
+		string sql_left;
+		this() {
+			popFront();
+		}
+		void popFront() {
+			current = Statement(this, sql);
+		@property
+			Statement front() {
+		}
+	Range!Statement prepare_many(string sql)
+	{
+		
 
     /// Convenience functions equivalent to an SQL statement.
     void begin() { execute("BEGIN"); }

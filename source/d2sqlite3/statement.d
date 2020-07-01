@@ -84,23 +84,40 @@ private:
     }
 
 package(d2sqlite3):
-    this(Database db, string sql)
+
+	this(Database db, const string sql)
+	{
+		string temp = sql;
+		this(temp);
+		assert(temp.length == 0);
+	}
+	
+    this(Database db, inout string sql)
     {
         sqlite3_stmt* handle;
+		byte* head = sql.toStringz;
+		byte* tail = null;
         version (_UnlockNotify)
         {
-            auto result = sqlite3_blocking_prepare_v2(db, sql.toStringz, sql.length.to!int,
-                &handle, null);
+            auto result = sqlite3_blocking_prepare_v2(db, head, sql.length.to!int,
+                &handle, &tail);
         }
         else
         {
-            auto result = sqlite3_prepare_v2(db.handle(), sql.toStringz, sql.length.to!int,
-                &handle, null);
+            auto result = sqlite3_prepare_v2(db.handle(), head, sql.length.to!int,
+                &handle, &tail);
         }
         enforce(result == SQLITE_OK, new SqliteException(errmsg(db.handle()), result, sql));
         p = Payload(db, handle);
         p.paramCount = sqlite3_bind_parameter_count(p.handle);
-        debug p.sql = sql;
+		if(tail == null) {
+			debug p.sql = sql;
+			sql = "";
+		} else {
+			size head_length = tail - head;
+			debug p.sql = sql[0..head_length];
+			sql = sql[head_length..$];
+		}
     }
 
     version (_UnlockNotify)
