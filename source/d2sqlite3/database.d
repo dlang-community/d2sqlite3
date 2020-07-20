@@ -1320,7 +1320,7 @@ Exception thrown when SQLite functions return an error.
 class SqliteException : Exception
 {
     /++
-    The _code of the error that raised the exception, or 0 if it's not an Sqlite error code.
+    The _code of the error that raised the exception
     +/
     int code;
 
