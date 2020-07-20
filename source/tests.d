@@ -460,7 +460,8 @@ unittest // Binding/peeking text values
     assert(results.front.peek!(string, PeekMode.copy)(0) == "I am a text.");
 
     import std.exception : assertThrown;
-    assertThrown!SqliteException(results.front[0].as!Blob);
+    import std.variant : VariantException;
+    assertThrown!VariantException(results.front[0].as!Blob);
 }
 
 unittest // Binding/peeking blob values
