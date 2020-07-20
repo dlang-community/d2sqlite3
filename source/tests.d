@@ -317,11 +317,14 @@ unittest // Callbacks
 
     auto db = Database(":memory:");
     db.setTraceCallback((string s) { wasTraced = true; });
-    db.setProfileCallback((string s, ulong t) { wasProfiled = true; });
-    db.setProgressHandler(1, { hasProgressed = true; return 0; });
     db.execute("SELECT * FROM sqlite_master;");
     assert(wasTraced);
+    db.setProfileCallback((string s, ulong t) { wasProfiled = true; });
+    db.execute("SELECT * FROM sqlite_master;");
     assert(wasProfiled);
+
+    db.setProgressHandler(1, { hasProgressed = true; return 0; });
+    db.execute("SELECT * FROM sqlite_master;");
     assert(hasProgressed);
 }
 
