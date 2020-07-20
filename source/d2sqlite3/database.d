@@ -943,7 +943,7 @@ public:
     /++
     Registers a delegate of type `TraceCallbackDelegate` as the trace callback.
 
-    Any previously set trace callback is released.
+    Any previously set profile or trace callback is released.
     Pass `null` to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being
@@ -969,7 +969,7 @@ public:
     /++
     Registers a delegate of type `ProfileCallbackDelegate` as the profile callback.
 
-    Any previously set profile callback is released.
+    Any previously set profile or trace callback is released.
     Pass `null` to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being
