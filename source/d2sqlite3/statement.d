@@ -71,7 +71,9 @@ private:
 
     version (_UnlockNotify)
     {
-        auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
+        auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte,
+                                         sqlite3_stmt **ppStmt, const char **pzTail)
+            nothrow @nogc
         {
             int rc;
             while(SQLITE_LOCKED == (rc = sqlite3_prepare_v2(db.handle(), zSql, nByte, ppStmt, pzTail)))
@@ -116,7 +118,7 @@ public:
     /++
     Gets the SQLite internal _handle of the statement.
     +/
-    sqlite3_stmt* handle() @property nothrow
+    inout(sqlite3_stmt)* handle() inout @safe pure nothrow @nogc
     {
         return p.handle;
     }
@@ -134,7 +136,7 @@ public:
     /++
     Tells whether the statement is empty (no SQL statement).
     +/
-    bool empty() @property nothrow
+    bool empty() const @safe pure nothrow @nogc
     {
         return p.handle is null;
     }

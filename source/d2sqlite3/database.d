@@ -18,10 +18,12 @@ import d2sqlite3.sqlite3;
 import d2sqlite3.internal.memory;
 import d2sqlite3.internal.util;
 
-import std.conv : to;
+import std.conv : text, to;
 import std.exception : enforce;
 import std.string : format, toStringz;
 import std.typecons : Nullable;
+
+import core.stdc.stdlib : free;
 
 /// Set _UnlockNotify version if compiled with SqliteEnableUnlockNotify or SqliteFakeUnlockNotify
 version (SqliteEnableUnlockNotify) version = _UnlockNotify;
@@ -87,12 +89,12 @@ private:
         ~this() nothrow
         {
             debug ensureNotInGC!Database(filename);
-            ptrFree(updateHook);
-            ptrFree(commitHook);
-            ptrFree(rollbackHook);
-            ptrFree(progressHandler);
-            ptrFree(traceCallback);
-            ptrFree(profileCallback);
+            free(updateHook);
+            free(commitHook);
+            free(rollbackHook);
+            free(progressHandler);
+            free(traceCallback);
+            free(profileCallback);
 
             if (!handle)
                 return;
@@ -544,7 +546,7 @@ public:
 
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, -1,
-              SQLITE_UTF8 | det, delegateWrap(fun, name), &x_func, null, null, &ptrFree));
+              SQLITE_UTF8 | det, delegateWrap(fun, name), &x_func, null, null, &free));
     }
     ///
     unittest
@@ -702,7 +704,7 @@ public:
 
         assert(p.handle);
         check(sqlite3_create_function_v2(p.handle, name.toStringz, PT.length, SQLITE_UTF8 | det,
-            cast(void*) ctx, null, &x_step, &x_final, &ptrFree));
+            cast(void*) ctx, null, &x_step, &x_final, &free));
     }
     ///
     unittest // Aggregate creation
@@ -806,10 +808,10 @@ public:
         assert(p.handle);
         auto dgw = delegateWrap(fun, name);
         auto result = sqlite3_create_collation_v2(p.handle, name.toStringz, SQLITE_UTF8,
-            delegateWrap(fun, name), &x_compare, &ptrFree);
+            delegateWrap(fun, name), &x_compare, &free);
         if (result != SQLITE_OK)
         {
-            ptrFree(dgw);
+            free(dgw);
             throw new SqliteException(errmsg(p.handle), result);
         }
     }
@@ -853,7 +855,7 @@ public:
             dg.dlg(type, dbName.to!string, tableName.to!string, rowid);
         }
 
-        ptrFree(p.updateHook);
+        free(p.updateHook);
         p.updateHook = delegateWrap(updateHook);
         assert(p.handle);
         sqlite3_update_hook(p.handle, &callback, p.updateHook);
@@ -879,7 +881,7 @@ public:
             return dlg();
         }
 
-        ptrFree(p.commitHook);
+        free(p.commitHook);
         p.commitHook = delegateWrap(commitHook);
         assert(p.handle);
         sqlite3_commit_hook(p.handle, &callback, p.commitHook);
@@ -902,7 +904,7 @@ public:
             dlg();
         }
 
-        ptrFree(p.rollbackHook);
+        free(p.rollbackHook);
         p.rollbackHook = delegateWrap(rollbackHook);
         assert(p.handle);
         sqlite3_rollback_hook(p.handle, &callback, p.rollbackHook);
@@ -932,7 +934,7 @@ public:
             return dlg();
         }
 
-        ptrFree(p.progressHandler);
+        free(p.progressHandler);
         p.progressHandler = delegateWrap(progressHandler);
         assert(p.handle);
         sqlite3_progress_handler(p.handle, pace, &callback, p.progressHandler);
@@ -958,7 +960,7 @@ public:
             dlg(str.to!string);
         }
 
-        ptrFree(p.traceCallback);
+        free(p.traceCallback);
         p.traceCallback = delegateWrap(traceCallback);
         assert(p.handle);
         sqlite3_trace(p.handle, &callback, p.traceCallback);
@@ -985,7 +987,7 @@ public:
             dlg(str.to!string, time);
         }
 
-        ptrFree(p.profileCallback);
+        free(p.profileCallback);
         p.profileCallback = delegateWrap(profileCallback);
         assert(p.handle);
         sqlite3_profile(p.handle, &callback, p.profileCallback);
@@ -1328,6 +1330,7 @@ class SqliteException : Exception
 
     private this(string msg, string sql, int code,
                  string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+        @safe pure nothrow @nogc
     {
         this.sql = sql;
         this.code = code;
@@ -1337,12 +1340,14 @@ class SqliteException : Exception
 package(d2sqlite3):
     this(string msg, int code, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+        @safe pure nothrow
     {
-        this("error %d: %s".format(code, msg), sql, code, file, line, next);
+        this(text("error ", code, ": ", msg), sql, code, file, line, next);
     }
 
     this(string msg, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
+        @safe pure nothrow @nogc
     {
         this(msg, sql, 0, file, line, next);
     }
