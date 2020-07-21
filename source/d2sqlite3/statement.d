@@ -73,7 +73,6 @@ private:
     {
         auto sqlite3_blocking_prepare_v2(Database db, const char *zSql, int nByte,
                                          sqlite3_stmt **ppStmt, const char **pzTail)
-            nothrow @nogc
         {
             int rc;
             while(SQLITE_LOCKED == (rc = sqlite3_prepare_v2(db.handle(), zSql, nByte, ppStmt, pzTail)))
