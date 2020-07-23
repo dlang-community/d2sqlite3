@@ -20,7 +20,7 @@ import d2sqlite3.internal.util;
 
 import std.conv : text, to;
 import std.exception : enforce;
-import std.string : format, toStringz;
+import std.string : format, fromStringz, toStringz;
 import std.typecons : Nullable;
 
 import core.stdc.stdlib : free;
@@ -180,7 +180,7 @@ public:
     {
         assert(p.handle);
         immutable ret = sqlite3_db_readonly(p.handle, database.toStringz);
-        enforce(ret >= 0, new SqliteException("Database not found: %s".format(database)));
+        enforce(ret >= 0, new SqliteException("Database not found: %s".format(database), ret));
         return ret == 1;
     }
 
@@ -351,7 +351,7 @@ public:
     {
         assert(p.handle);
         auto result = sqlite3_db_config(p.handle, code, args);
-        enforce(result == SQLITE_OK, new SqliteException("Database configuration: error %s".format(result)));
+        enforce(result == SQLITE_OK, new SqliteException("Database configuration: error %s".format(result), result));
     }
 
     /++
@@ -360,8 +360,9 @@ public:
     void enableLoadExtensions(bool enable = true)
     {
         assert(p.handle);
-        enforce(sqlite3_enable_load_extension(p.handle, enable) == SQLITE_OK,
-            new SqliteException("Could not enable loading extensions."));
+        immutable ret = sqlite3_enable_load_extension(p.handle, enable);
+        enforce(ret == SQLITE_OK,
+            new SqliteException("Could not enable loading extensions.", ret));
     }
 
     /++
@@ -376,9 +377,14 @@ public:
     void loadExtension(string path, string entryPoint = null)
     {
         assert(p.handle);
-        immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, null);
+        char* p_err;
+        scope (failure)
+            sqlite3_free(p_err);
+
+        immutable ret = sqlite3_load_extension(p.handle, path.toStringz, entryPoint.toStringz, &p_err);
         enforce(ret == SQLITE_OK, new SqliteException(
-                "Could not load extension: %s:%s".format(entryPoint, path)));
+                "Could not load extension: %s:%s (%s)".format(entryPoint, path,
+                p_err !is null ? fromStringz(p_err) : "No additional info"), ret));
     }
 
     /++
@@ -943,7 +949,7 @@ public:
     /++
     Registers a delegate of type `TraceCallbackDelegate` as the trace callback.
 
-    Any previously set trace callback is released.
+    Any previously set profile or trace callback is released.
     Pass `null` to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being
@@ -969,7 +975,7 @@ public:
     /++
     Registers a delegate of type `ProfileCallbackDelegate` as the profile callback.
 
-    Any previously set profile callback is released.
+    Any previously set profile or trace callback is released.
     Pass `null` to disable the callback.
 
     The string parameter that is passed to the callback is the SQL text of the statement being
@@ -1319,7 +1325,7 @@ Exception thrown when SQLite functions return an error.
 class SqliteException : Exception
 {
     /++
-    The _code of the error that raised the exception, or 0 if this _code is not known.
+    The _code of the error that raised the exception
     +/
     int code;
 
@@ -1340,15 +1346,8 @@ class SqliteException : Exception
 package(d2sqlite3):
     this(string msg, int code, string sql = null,
          string file = __FILE__, size_t line = __LINE__, Throwable next = null)
-        @safe pure nothrow
+         @safe pure nothrow
     {
         this(text("error ", code, ": ", msg), sql, code, file, line, next);
-    }
-
-    this(string msg, string sql = null,
-         string file = __FILE__, size_t line = __LINE__, Throwable next = null)
-        @safe pure nothrow @nogc
-    {
-        this(msg, sql, 0, file, line, next);
     }
 }

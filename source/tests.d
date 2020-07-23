@@ -317,11 +317,14 @@ unittest // Callbacks
 
     auto db = Database(":memory:");
     db.setTraceCallback((string s) { wasTraced = true; });
-    db.setProfileCallback((string s, ulong t) { wasProfiled = true; });
-    db.setProgressHandler(1, { hasProgressed = true; return 0; });
     db.execute("SELECT * FROM sqlite_master;");
     assert(wasTraced);
+    db.setProfileCallback((string s, ulong t) { wasProfiled = true; });
+    db.execute("SELECT * FROM sqlite_master;");
     assert(wasProfiled);
+
+    db.setProgressHandler(1, { hasProgressed = true; return 0; });
+    db.execute("SELECT * FROM sqlite_master;");
     assert(hasProgressed);
 }
 
@@ -457,7 +460,8 @@ unittest // Binding/peeking text values
     assert(results.front.peek!(string, PeekMode.copy)(0) == "I am a text.");
 
     import std.exception : assertThrown;
-    assertThrown!SqliteException(results.front[0].as!Blob);
+    import std.variant : VariantException;
+    assertThrown!VariantException(results.front[0].as!Blob);
 }
 
 unittest // Binding/peeking blob values
@@ -881,4 +885,13 @@ unittest // UTF-8
         return true;
     });
     assert(ran);
+}
+
+unittest // loadExtension failure test
+{
+    import std.algorithm : canFind;
+    import std.exception : collectExceptionMsg;
+    auto db = Database(":memory:");
+    auto msg = collectExceptionMsg(db.loadExtension("foobar"));
+    assert(msg.canFind("(not authorized)"));
 }
