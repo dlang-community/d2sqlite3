@@ -20,7 +20,7 @@ import d2sqlite3.internal.util;
 
 import std.conv : text, to;
 import std.exception : enforce;
-import std.string : format, toStringz;
+import std.string : format, toStringz, chomp;
 import std.typecons : Nullable;
 
 import core.stdc.stdlib : free;
@@ -56,6 +56,27 @@ enum Deterministic
     The returned value can vary even if the function is called with the same parameters.
     +/
     no = 0
+}
+
+struct PrepareMany {
+	Database db;
+	Statement current;
+	string sql_left;
+	bool empty;
+	this(Database db, const string sql) {
+		this.db = db;
+		this.sql_left = sql;
+		popFront();
+	}
+	void popFront() {
+		const size_t old = sql_left.length;
+		current = Statement(this.db, sql_left);
+		empty = old == sql_left.length;
+		sql_left = sql_left.chomp();
+	}
+	Statement front() {
+		return current;
+	}
 }
 
 /++
@@ -280,10 +301,61 @@ public:
 
     The statement becomes invalid if the Database goes out of scope and is destroyed.
     +/
-    Statement prepare(string sql)
+    Statement prepare(const string sql)
     {
         return Statement(this, sql);
     }
+
+	/++
+	 Prepares (compiles) several SQL statements and return them.
+
+    The statements become invalid if the Database goes out of scope and is destroyed.
+    +/
+
+	PrepareMany prepare_many(string sql)
+	{
+		return PrepareMany(this, sql);
+	}
+	unittest {
+		auto db = Database(":memory:");
+        db.execute("CREATE TABLE test (val INTEGER)");
+        auto statements =
+			db.prepare_many(q"[
+   --sql comment with a ; in it
+INSERT INTO test (val)
+VALUES (:v);
+SELECT val FROM
+-- gosh I love SQL comments and ;s!
+   test WHERE val > :v;
+SELECT 'A fun string containing ; and -- because why not?'; -- I'm so clever
+-- SELECT 23; -- don't do this one
+SELECT 42; -- do this one
+ SELECT val FROM test WHERE val < :v;
+]");
+		assert(!statements.empty);
+		statements.popFront();
+		assert(!statements.empty);
+		statements.popFront();
+		assert(!statements.empty);
+		assert(statements.front.execute().oneValue!string ==
+			"A fun string containing ; and -- because why not?");
+		statements.popFront();
+		assert(!statements.empty);		
+		assert(statements.front.execute().oneValue!int == 42);
+		statements.popFront();
+		assert(!statements.empty);
+		statements.popFront();
+		assert(statements.empty);
+		int count = 4;
+		foreach(prep;db.prepare_many(q"[
+SELECT 3;
+SELECT 2;
+SELECT 1;
+-- contact!]")) {
+			--count;
+		}
+		assert(count == 0);
+	}
 
     /// Convenience functions equivalent to an SQL statement.
     void begin() { execute("BEGIN"); }

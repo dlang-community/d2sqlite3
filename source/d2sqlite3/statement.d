@@ -85,23 +85,51 @@ private:
     }
 
 package(d2sqlite3):
-    this(Database db, string sql)
+
+	this(Database db, const string sql)
+	{
+		string temp = sql;
+		this(db, temp);
+		// this constructor won't be able to give any indication that
+		// the sql wasn't fully parsed, so make sure it is.
+		assert(temp.length == 0);
+		// the second constructor moves the sql parameter to the
+		// unparsed tail, so use that if you might be preparing 2 statements
+	}
+	
+    this(Database db, ref string sql)
     {
         sqlite3_stmt* handle;
+		immutable(char)* head = sql.toStringz;
+		immutable(char)* tail = null;
         version (_UnlockNotify)
         {
-            auto result = sqlite3_blocking_prepare_v2(db, sql.toStringz, sql.length.to!int,
-                &handle, null);
+            auto result = sqlite3_blocking_prepare_v2(db, head, sql.length.to!int,
+                &handle, &tail);
         }
         else
         {
-            auto result = sqlite3_prepare_v2(db.handle(), sql.toStringz, sql.length.to!int,
-                &handle, null);
+            auto result = sqlite3_prepare_v2(db.handle(), head, sql.length.to!int,
+                &handle, &tail);
         }
         enforce(result == SQLITE_OK, new SqliteException(errmsg(db.handle()), result, sql));
         p = Payload(db, handle);
         p.paramCount = sqlite3_bind_parameter_count(p.handle);
-        debug p.sql = sql;
+		if(tail == null) {
+			debug p.sql = sql;
+			sql = "";
+		} else {
+			/++
+			 the tail will be 1 past the end of the SQL statement that was just
+			 prepared. So if you prepare a string with two SQL statements,
+			 it will prepare the first statement, then set tail at the
+			 beginning of the second. This allows to prepare many ; delineated
+			 statements, without having to parse the SQL ourselves.
+			 +/
+			size_t head_length = tail - head;
+			debug p.sql = sql[0..head_length];
+			sql = sql[head_length..$];
+		}
     }
 
     version (_UnlockNotify)
