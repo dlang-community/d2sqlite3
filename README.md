@@ -1,6 +1,6 @@
 # `D2Sqlite3`
 
-[![Build Status](https://travis-ci.org/biozic/d2sqlite3.svg)](https://travis-ci.org/biozic/d2sqlite3)
+[![Build Status](https://travis-ci.org/dlang-community/d2sqlite3.svg)](https://travis-ci.org/dlang-community/d2sqlite3)
 [![Dub](https://img.shields.io/dub/v/d2sqlite3.svg)](http://code.dlang.org/packages/d2sqlite3)
 [![Downloads](https://img.shields.io/dub/dt/d2sqlite3.svg)](https://code.dlang.org/packages/d2sqlite3)
 
@@ -10,7 +10,7 @@ It wraps the C API in an idiomatic manner and handles built-in D types and
 
 ## Documentation
 
-[Online documentation](http://biozic.github.io/d2sqlite3/d2sqlite3.html)
+[Online documentation](http://dlang-community.github.io/d2sqlite3/d2sqlite3.html)
 
 ## `dub` configurations
 
