@@ -1,0 +1,128 @@
+# Github worflow to test thus library on all platforms,
+# build the documentation, and upload it to Github pages.
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  main:
+    name: Run
+    strategy:
+      # Disable `fail-fast` because we want the whole test suite to run even if one
+      # of the nigthly is broken
+      fail-fast: false
+      matrix:
+# TODO: FIXME. Requires fixes to the dub.sdl to work on Windows
+#        os: [ ubuntu-18.04, macOS-10.15, windows-2019 ]
+        os: [ ubuntu-18.04, macOS-10.15 ]
+        # Oldest supported FE is 2.088.1 because older DMD don't work on macOS-10.15
+        dc: [ ldc-master, ldc-latest, ldc-1.21.0, dmd-master, dmd-latest, dmd-2.088.1 ]
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+
+    - uses: actions/checkout@v2
+    - name: Prepare compiler
+      uses: dlang-community/setup-dlang@v1
+      with:
+          compiler: ${{ matrix.dc }}
+
+    # Install os-specific packages
+    # Those will show up in the list of steps, but be grayed out,
+    # hence the usage of the `[OSX]` tag
+    - name: '[OSX] Install dependencies & setup environment'
+      if: runner.os == 'macOS'
+      run: |
+        brew install pkg-config
+        echo ::set-env name=LIBRARY_PATH::${LD_LIBRARY_PATH-}:/usr/local/lib/
+        echo ::set-env name=PKG_CONFIG_PATH::/usr/local/opt/sqlite/lib/pkgconfig
+
+    - name: '[Linux] Install dependencies & setup environment'
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsqlite3-dev
+
+    - name: '[Windows] Install dependencies & setup environment'
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        echo "::set-env name=LIB::${{ github.workspace }}\lib\win64\;$LIB"
+
+    # Add whatever debugging information can be useful in the long run here
+    - name: Print system information
+      shell: bash
+      run: |
+        ${DC} --version
+        dub --version
+
+    # Build and run the tests
+    - name: '[POSIX] Build & test Agora'
+      if: runner.os != 'Windows'
+      #continue-on-error: matrix.dc == 'ldc-master' || matrix.dc == 'dmd-master'
+      run: ./travis.sh
+
+    - name: '[Windows] Build & test Agora'
+      if: runner.os == 'Windows'
+      #continue-on-error: matrix.dc == 'ldc-master' || matrix.dc == 'dmd-master'
+      shell: cmd
+      run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        dub test -c travis
+
+  # Documentation build: Only runs on Linux
+  # Still need to install dependencies and the compiler because DDOX
+  # does a full build
+  doc:
+    name: Build and upload documentation
+    needs: main
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+
+      # Checkout this repository and its submodules
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # Install the D compiler
+      - name: Prepare compiler
+        uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ldc-latest
+
+      - name: 'Install dependencies & setup environment'
+        run: |
+          sudo apt-get update
+          sudo apt-get install libsqlite3-dev
+
+      - name: Build documentation
+        run: |
+          dub build -b ddox
+          # Generate the HTML to docs
+          dub run ddox -- generate-html docs.json ./docs/
+
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: documentation
+          path: docs/
+
+      - name: Deploy documentation
+        if: github.event_name == 'push'
+        run: |
+          # Remove gh-branch if it already exists, check it out
+          git branch -D gh-pages || true
+          git checkout --orphan gh-pages
+          # Remove all staged files - We only need the docs
+          git rm -rf $(git ls-files)
+          # We can have some leftover files (e.g. build)
+          # So add docs (which is only what we need), then `git mv` it.
+          git add docs/
+          git mv -k docs/* ./
+          # Configure user (because persist-credentials does not persist everything...)
+          git config --global user.name  "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          # We're done
+          git commit -m "Documentation for commit ${{ github.sha }}"
+          git push -f ${{ github.event.repository.clone_url }} gh-pages:gh-pages
