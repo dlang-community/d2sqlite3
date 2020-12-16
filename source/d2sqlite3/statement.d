@@ -158,7 +158,6 @@ public:
         or a Nullable!T where T is any of the previous types.
     +/
     void bind(T)(int index, T value)
-        if (is(T == typeof(null)) || is(T == void*))
     in
     {
         assert(index > 0 && index <= p.paramCount, "parameter index out of range");
@@ -166,93 +165,37 @@ public:
     body
     {
         assert(p.handle);
-        checkResult(sqlite3_bind_null(p.handle, index));
-    }
 
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isIntegral!T || isSomeChar!T || isBoolean!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        checkResult(sqlite3_bind_int64(p.handle, index, value.to!long));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isFloatingPoint!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        checkResult(sqlite3_bind_double(p.handle, index, value.to!double));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isSomeString!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        string str = value.to!string;
-        auto ptr = anchorMem(cast(void*) str.ptr);
-        checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr, str.length, &releaseMem, SQLITE_UTF8));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isStaticArray!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        checkResult(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr, value.sizeof, SQLITE_TRANSIENT));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (isDynamicArray!T && !isSomeString!T)
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        assert(p.handle);
-        auto arr = cast(void[]) value;
-        checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr), arr.length, &releaseMem));
-    }
-
-    /// ditto
-    void bind(T)(int index, T value)
-        if (is(T == Nullable!U, U...))
-    in
-    {
-        assert(index > 0 && index <= p.paramCount, "parameter index out of range");
-    }
-    body
-    {
-        if (value.isNull)
-        {
-            assert(p.handle);
+        static if (is(T == typeof(null)) || is(T == void*))
             checkResult(sqlite3_bind_null(p.handle, index));
+        else static if (isIntegral!T || isSomeChar!T || isBoolean!T)
+            checkResult(sqlite3_bind_int64(p.handle, index, value.to!long));
+        else static if (isFloatingPoint!T)
+            checkResult(sqlite3_bind_double(p.handle, index, value.to!double));
+        else static if (isSomeString!T)
+        {
+            string str = value.to!string;
+            auto ptr = anchorMem(cast(void*) str.ptr);
+            checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr,
+                                            str.length, &releaseMem, SQLITE_UTF8));
+        }
+        else static if (isStaticArray!T)
+            checkResult(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr,
+                                            value.sizeof, SQLITE_TRANSIENT));
+        else static if (isDynamicArray!T && !isSomeString!T)
+        {
+            auto arr = cast(void[]) value;
+            checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr), arr.length, &releaseMem));
+        }
+        else static if (is(T == Nullable!U, U...))
+        {
+            if (value.isNull)
+                checkResult(sqlite3_bind_null(p.handle, index));
+            else
+                this.bind(index, value.get);
         }
         else
-            bind(index, value.get);
+            static assert(0, "Don't know how to bind an instance of type: " ~ T.stringof);
     }
 
     /++
