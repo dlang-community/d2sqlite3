@@ -34,9 +34,8 @@ jobs:
     - name: '[OSX] Install dependencies & setup environment'
       if: runner.os == 'macOS'
       run: |
-        brew install pkg-config
-        echo ::set-env name=LIBRARY_PATH::${LD_LIBRARY_PATH-}:/usr/local/lib/
-        echo ::set-env name=PKG_CONFIG_PATH::/usr/local/opt/sqlite/lib/pkgconfig
+        echo "LIBRARY_PATH=${LD_LIBRARY_PATH-}:/usr/local/lib/" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=/usr/local/opt/sqlite/lib/pkgconfig" >> $GITHUB_ENV
 
     - name: '[Linux] Install dependencies & setup environment'
       if: runner.os == 'Linux'
@@ -48,7 +47,7 @@ jobs:
       if: runner.os == 'Windows'
       shell: powershell
       run: |
-        echo "::set-env name=LIB::${{ github.workspace }}\lib\win64\;$LIB"
+        echo "LIB=${{ github.workspace }}\lib\win64\;$LIB" >> $GITHUB_ENV
 
     # Add whatever debugging information can be useful in the long run here
     - name: Print system information
