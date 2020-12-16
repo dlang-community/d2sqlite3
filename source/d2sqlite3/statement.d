@@ -182,10 +182,11 @@ public:
         else static if (isStaticArray!T)
             checkResult(sqlite3_bind_blob64(p.handle, index, cast(void*) value.ptr,
                                             value.sizeof, SQLITE_TRANSIENT));
-        else static if (isDynamicArray!T && !isSomeString!T)
+        else static if (isDynamicArray!T)
         {
-            auto arr = cast(void[]) value;
-            checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr), arr.length, &releaseMem));
+            const void[] arr = value;
+            checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr),
+                                            arr.length, &releaseMem));
         }
         else static if (is(T == Nullable!U, U...))
         {
