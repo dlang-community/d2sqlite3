@@ -1,4 +1,4 @@
-# Github worflow to test thus library on all platforms,
+# Github worflow to test this library on all platforms,
 # build the documentation, and upload it to Github pages.
 name: CI
 
