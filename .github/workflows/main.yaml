@@ -60,7 +60,7 @@ jobs:
     - name: '[POSIX] Build & test Agora'
       if: runner.os != 'Windows'
       #continue-on-error: matrix.dc == 'ldc-master' || matrix.dc == 'dmd-master'
-      run: ./travis.sh
+      run: dub test -c ci
 
     - name: '[Windows] Build & test Agora'
       if: runner.os == 'Windows'
@@ -68,7 +68,7 @@ jobs:
       shell: cmd
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        dub test -c travis
+        dub test -c ci
 
   # Documentation build: Only runs on Linux
   # Still need to install dependencies and the compiler because DDOX
