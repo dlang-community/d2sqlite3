@@ -400,6 +400,45 @@ unittest // Multiple parameters binding
     }
 }
 
+// Binding/peeking structs with `toString` and `fromString`
+unittest
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val TEXT)");
+
+    static struct ToStringSink {
+        string value;
+        void toString(scope void delegate(in char[]) sink) const
+        {
+            sink(this.value);
+        }
+    }
+
+    static struct ToStringMethod {
+        string value;
+        string toString() const
+        {
+            return this.value;
+        }
+    }
+
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.bind(1, ToStringMethod("oldmethod"));
+    statement.clearBindings();
+    statement.bind(1, ToStringMethod("method"));
+    statement.execute();
+    statement.reset();
+    statement.bind(1, ToStringSink("sink"));
+    statement.execute();
+
+    assert(db.lastInsertRowid == 2);
+    assert(db.changes == 1);
+    assert(db.totalChanges == 2);
+
+    auto results = db.execute("SELECT * FROM test");
+    results.equal!((a, b) => a.peek!string(0) == b)(["method", "sink"]);
+}
+
 unittest // Multiple parameters binding: tuples
 {
     auto db = Database(":memory:");

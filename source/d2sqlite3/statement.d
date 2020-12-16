@@ -168,6 +168,33 @@ public:
 
         static if (is(T == typeof(null)) || is(T == void*))
             checkResult(sqlite3_bind_null(p.handle, index));
+
+        // Handle nullable before user-provided hook as we don't want to write
+        // `Nullable.null` when the value `isNull`.
+        else static if (is(T == Nullable!U, U...))
+        {
+            if (value.isNull)
+                checkResult(sqlite3_bind_null(p.handle, index));
+            else
+                this.bind(index, value.get);
+        }
+
+        // Check for user-defined hook
+        else static if (is(typeof(value.toString((in char[]) {}))))
+        {
+            string str = format("%s", value);
+            auto ptr = anchorMem(cast(void*) str.ptr);
+            checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr,
+                                            str.length, &releaseMem, SQLITE_UTF8));
+        }
+        else static if (is(typeof(value.toString()) : string))
+        {
+            string str = value.toString();
+            auto ptr = anchorMem(cast(void*) str.ptr);
+            checkResult(sqlite3_bind_text64(p.handle, index, cast(const(char)*) ptr,
+                                            str.length, &releaseMem, SQLITE_UTF8));
+        }
+
         else static if (isIntegral!T || isSomeChar!T || isBoolean!T)
             checkResult(sqlite3_bind_int64(p.handle, index, value.to!long));
         else static if (isFloatingPoint!T)
@@ -187,13 +214,6 @@ public:
             const void[] arr = value;
             checkResult(sqlite3_bind_blob64(p.handle, index, anchorMem(arr.ptr),
                                             arr.length, &releaseMem));
-        }
-        else static if (is(T == Nullable!U, U...))
-        {
-            if (value.isNull)
-                checkResult(sqlite3_bind_null(p.handle, index));
-            else
-                this.bind(index, value.get);
         }
         else
             static assert(0, "Don't know how to bind an instance of type: " ~ T.stringof);
