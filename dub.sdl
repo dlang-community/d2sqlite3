@@ -27,3 +27,9 @@ configuration "ci" {
     sourceFiles "sqlite3.o" platform="posix"
     versions "SqliteEnableColumnMetadata" "SqliteEnableUnlockNotify"
 }
+
+configuration "unittest" {
+    // Make sure source/tests.d is included
+    systemDependencies "SQLite version >= 3.8.7"
+    libs "sqlite3"
+}
