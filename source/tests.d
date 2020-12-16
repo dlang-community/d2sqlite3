@@ -544,13 +544,9 @@ unittest // Injecting nullable
     statement = db.prepare("INSERT INTO test (i) VALUES (?)");
     statement.inject(Nullable!int.init);
 
-    auto results = db.execute("SELECT i FROM test ORDER BY rowid")
-        .map!(a => a.peek!(Nullable!int)(0))
-        .array;
-
-    assert(results.length == 2);
-    assert(results[0] == 1);
-    assert(results[1].isNull);
+    auto results = db.execute("SELECT i FROM test ORDER BY rowid");
+    assert(results.equal!((a, b) => a.peek!(Nullable!int)(0) == b)(
+               [ Nullable!int(1), Nullable!int.init ] ));
 }
 
 unittest // Injecting tuple
