@@ -3,6 +3,7 @@ module tests.d;
 version (unittest):
 
 import d2sqlite3;
+import std.algorithm;
 import std.exception : assertThrown, assertNotThrown;
 import std.string : format;
 import std.typecons : Nullable;
@@ -534,7 +535,6 @@ unittest // Iterable struct injecting
 
 unittest // Injecting nullable
 {
-    import std.algorithm : map;
     import std.array : array;
 
     auto db = Database(":memory:");
@@ -889,7 +889,6 @@ unittest // UTF-8
 
 unittest // loadExtension failure test
 {
-    import std.algorithm : canFind;
     import std.exception : collectExceptionMsg;
     auto db = Database(":memory:");
     auto msg = collectExceptionMsg(db.loadExtension("foobar"));
