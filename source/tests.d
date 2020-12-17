@@ -3,6 +3,7 @@ module tests.d;
 version (unittest):
 
 import d2sqlite3;
+import std.algorithm;
 import std.exception : assertThrown, assertNotThrown;
 import std.string : format;
 import std.typecons : Nullable;
@@ -399,6 +400,45 @@ unittest // Multiple parameters binding
     }
 }
 
+// Binding/peeking structs with `toString` and `fromString`
+unittest
+{
+    auto db = Database(":memory:");
+    db.execute("CREATE TABLE test (val TEXT)");
+
+    static struct ToStringSink {
+        string value;
+        void toString(scope void delegate(in char[]) sink) const
+        {
+            sink(this.value);
+        }
+    }
+
+    static struct ToStringMethod {
+        string value;
+        string toString() const
+        {
+            return this.value;
+        }
+    }
+
+    auto statement = db.prepare("INSERT INTO test (val) VALUES (?)");
+    statement.bind(1, ToStringMethod("oldmethod"));
+    statement.clearBindings();
+    statement.bind(1, ToStringMethod("method"));
+    statement.execute();
+    statement.reset();
+    statement.bind(1, ToStringSink("sink"));
+    statement.execute();
+
+    assert(db.lastInsertRowid == 2);
+    assert(db.changes == 1);
+    assert(db.totalChanges == 2);
+
+    auto results = db.execute("SELECT * FROM test");
+    results.equal!((a, b) => a.peek!string(0) == b)(["method", "sink"]);
+}
+
 unittest // Multiple parameters binding: tuples
 {
     auto db = Database(":memory:");
@@ -534,7 +574,6 @@ unittest // Iterable struct injecting
 
 unittest // Injecting nullable
 {
-    import std.algorithm : map;
     import std.array : array;
 
     auto db = Database(":memory:");
@@ -544,13 +583,9 @@ unittest // Injecting nullable
     statement = db.prepare("INSERT INTO test (i) VALUES (?)");
     statement.inject(Nullable!int.init);
 
-    auto results = db.execute("SELECT i FROM test ORDER BY rowid")
-        .map!(a => a.peek!(Nullable!int)(0))
-        .array;
-
-    assert(results.length == 2);
-    assert(results[0] == 1);
-    assert(results[1].isNull);
+    auto results = db.execute("SELECT i FROM test ORDER BY rowid");
+    assert(results.equal!((a, b) => a.peek!(Nullable!int)(0) == b)(
+               [ Nullable!int(1), Nullable!int.init ] ));
 }
 
 unittest // Injecting tuple
@@ -889,7 +924,6 @@ unittest // UTF-8
 
 unittest // loadExtension failure test
 {
-    import std.algorithm : canFind;
     import std.exception : collectExceptionMsg;
     auto db = Database(":memory:");
     auto msg = collectExceptionMsg(db.loadExtension("foobar"));
