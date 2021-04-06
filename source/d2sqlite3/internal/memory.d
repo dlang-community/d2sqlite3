@@ -66,22 +66,17 @@ extern(C) void releaseMem(const void* ptr)
 // Adapted from https://p0nce.github.io/d-idioms/#GC-proof-resource-class
 void ensureNotInGC(T)(string info = null) nothrow
 {
-    import core.exception : InvalidMemoryOperationError;
-    try
-    {
-        import core.memory : GC;
-        cast(void) GC.malloc(1);
+    import core.memory : GC;
+    import core.stdc.stdio : fprintf, stderr;
+    import core.stdc.stdlib : exit;
+
+    if (!GC.inFinalizer)
         return;
-    }
-    catch(InvalidMemoryOperationError e)
-    {
-        import core.stdc.stdio : fprintf, stderr;
-        import core.stdc.stdlib : exit;
-        fprintf(stderr,
-                "Error: clean-up of %s incorrectly depends on destructors called by the GC.\n",
-                T.stringof.ptr);
-        if (info)
-            fprintf(stderr, "Info: %s\n", info.ptr);
-        assert(false);
-    }
+
+    fprintf(stderr,
+            "Error: clean-up of %s incorrectly depends on destructors called by the GC.\n",
+            T.stringof.ptr);
+    if (info)
+        fprintf(stderr, "Info: %s\n", info.ptr);
+    assert(false);
 }
