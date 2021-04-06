@@ -15,8 +15,9 @@ jobs:
 # TODO: FIXME. Requires fixes to the dub.sdl to work on Windows
 #        os: [ ubuntu-18.04, macOS-10.15, windows-2019 ]
         os: [ ubuntu-18.04, macOS-10.15 ]
-        # Oldest supported FE is 2.088.1 because older DMD don't work on macOS-10.15
-        dc: [ ldc-master, ldc-latest, ldc-1.21.0, dmd-master, dmd-latest, dmd-2.088.1 ]
+        # Oldest supported FE is 2.090.1 because we need `GC.inFinalizer`
+        # https://dlang.org/changelog/2.090.0.html
+        dc: [ ldc-master, ldc-latest, ldc-1.21.0, dmd-master, dmd-latest, dmd-2.090.1 ]
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
