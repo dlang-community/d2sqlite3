@@ -162,7 +162,7 @@ public:
     {
         assert(index > 0 && index <= p.paramCount, "parameter index out of range");
     }
-    body
+    do
     {
         assert(p.handle);
 
@@ -239,7 +239,7 @@ public:
     {
         assert(name.length);
     }
-    body
+    do
     {
         assert(p.handle);
         auto index = sqlite3_bind_parameter_index(p.handle, name.toStringz);
@@ -255,7 +255,7 @@ public:
     {
         assert(Args.length == this.parameterCount, "parameter count mismatch");
     }
-    body
+    do
     {
         foreach (index, _; Args)
             bind(index + 1, args[index]);
@@ -342,7 +342,7 @@ public:
         static if (__traits(compiles, obj.length))
             assert(obj.length == this.parameterCount, "parameter count mismatch");
     }
-    body
+    do
     {
         static if (__traits(compiles, { foreach (string k, ref v; obj) {} }))
         {
@@ -377,7 +377,7 @@ public:
     {
         assert(index > 0 && index <= p.paramCount, "parameter index out of range");
     }
-    body
+    do
     {
         assert(p.handle);
         return sqlite3_bind_parameter_name(p.handle, index).to!string;
@@ -394,7 +394,7 @@ public:
     {
         assert(name.length);
     }
-    body
+    do
     {
         assert(p.handle);
         return sqlite3_bind_parameter_index(p.handle, name.toStringz);
