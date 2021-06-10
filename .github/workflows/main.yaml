@@ -58,12 +58,12 @@ jobs:
         dub --version
 
     # Build and run the tests
-    - name: '[POSIX] Build & test Agora'
+    - name: '[POSIX] Build & test'
       if: runner.os != 'Windows'
       #continue-on-error: matrix.dc == 'ldc-master' || matrix.dc == 'dmd-master'
       run: dub test -c ci
 
-    - name: '[Windows] Build & test Agora'
+    - name: '[Windows] Build & test'
       if: runner.os == 'Windows'
       #continue-on-error: matrix.dc == 'ldc-master' || matrix.dc == 'dmd-master'
       shell: cmd
